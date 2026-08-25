@@ -1,0 +1,9 @@
+# Rust build output
+/target
+
+# Local runtime state: morphod writes the working database and the media store
+# into the configured data_dir; never commit either.
+/data
+
+# Local configuration copied from morphod.example.toml
+/morphod.toml

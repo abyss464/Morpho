@@ -1,0 +1,31 @@
+[package]
+name = "morphod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Morpho content reconciliation engine, admin API and exporter"
+
+[[bin]]
+name = "morphod"
+path = "src/main.rs"
+
+[dependencies]
+morpho-domain = { workspace = true }
+morpho-store = { workspace = true }
+morpho-reconcile = { workspace = true }
+morpho-api = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+# Present for wave 2 adapters (HTTP sources); unused for now.
+reqwest = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

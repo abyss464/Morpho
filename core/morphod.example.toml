@@ -1,0 +1,36 @@
+# morphod configuration. Copy to ./morphod.toml (or pass --config PATH).
+# Every key is optional; omitted keys keep the built-in defaults shown here.
+# Precedence: command-line flags > MORPHOD_* environment > this file > defaults.
+#
+# Relative paths resolve against the process working directory, so morphod is
+# normally launched from the repository root.
+
+# Holds working.db and the content-addressed media store.
+data_dir = "data"
+
+# Admin API and admin UI listen address.
+bind = "127.0.0.1:8787"
+
+# Built admin UI; served as a single-page app when the directory exists.
+admin_ui_dist = "admin-ui/dist"
+
+[store]
+# Read-only connections in the pool (README Part 4 says 4-8).
+read_pool_size = 6
+# Pending write operations before callers start waiting.
+write_queue_depth = 256
+# Change-bus capacity; slow subscribers lag rather than block the writer.
+change_bus_capacity = 1024
+
+[reconcile]
+# Periodic full-pass interval. Correctness never depends on change events.
+full_pass_interval_secs = 60
+# Window used to absorb bursts of edits before running a scoped pass.
+coalesce_window_ms = 250
+
+# Environment overrides:
+#   MORPHOD_CONFIG         path to this file
+#   MORPHOD_DATA_DIR       overrides data_dir
+#   MORPHOD_BIND           overrides bind
+#   MORPHOD_ADMIN_UI_DIST  overrides admin_ui_dist
+#   RUST_LOG               overrides --log

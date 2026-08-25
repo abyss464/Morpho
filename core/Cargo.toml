@@ -1,0 +1,61 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/domain",
+    "crates/store",
+    "crates/reconcile",
+    "crates/api",
+    "crates/morphod",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+
+[workspace.dependencies]
+# Internal crates
+morpho-domain = { path = "crates/domain" }
+morpho-store = { path = "crates/store" }
+morpho-reconcile = { path = "crates/reconcile" }
+morpho-api = { path = "crates/api" }
+
+# Runtime
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+async-trait = "0.1"
+futures-util = "0.3"
+
+# HTTP
+axum = { version = "0.8", features = ["multipart"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Storage
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Errors / logging
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Domain support
+blake3 = "1"
+unicode-normalization = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+governor = "0.6"
+clap = { version = "4", features = ["derive"] }
+
+# Dev
+tempfile = "3"
+
+[profile.release]
+lto = "thin"

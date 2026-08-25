@@ -1,0 +1,160 @@
+//! Out-of-scope (OOV) queue resolution.
+//!
+//! Both resolutions are pure state writes; the engine derives every
+//! consequence (README Part 3 §"派生 · 分词与依赖", Part 4 example C).
+
+use rusqlite::OptionalExtension;
+
+use morpho_domain::canon::fold_lemma;
+use morpho_domain::change::EntityType;
+use morpho_domain::event::{Action, EventDraft};
+use morpho_domain::types::{AuxStatus, CreatedBy, DefinitionSource, OosStatus, Role, SelectedBy};
+
+use super::selections::{MintDefinitionCandidate, SetSelection};
+use super::words::CreateWord;
+use super::{selections, words, OpCtx, WriteResult};
+use crate::error::{Result, StoreError};
+
+/// How an operator disposed of one out-of-scope lemma.
+#[derive(Debug, Clone)]
+pub enum OovResolution {
+    /// Promote the lemma to an active auxiliary word.
+    Promote {
+        phonetic: Option<String>,
+        frequency_rank: Option<i64>,
+    },
+    /// Mint a rewritten definition that avoids the lemma, and select it.
+    Rewrite {
+        def_cand_id: i64,
+        text: String,
+        source: DefinitionSource,
+    },
+}
+
+pub(super) fn resolve_oov(
+    lemma: &str,
+    resolution: OovResolution,
+    ctx: &mut OpCtx<'_, '_>,
+) -> Result<WriteResult> {
+    let lemma = fold_lemma(lemma);
+    if lemma.is_empty() {
+        return Err(StoreError::invalid("oos lemma must not be empty"));
+    }
+
+    let (status, result) = match resolution {
+        OovResolution::Promote {
+            phonetic,
+            frequency_rank,
+        } => {
+            let existing: Option<(i64, String, Option<String>)> = ctx
+                .tx
+                .query_row(
+                    "SELECT word_id, role, aux_status FROM words WHERE lemma = ?1",
+                    rusqlite::params![lemma],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .optional()?;
+
+            let result = match existing {
+                None => words::create_word(
+                    CreateWord {
+                        lemma: lemma.clone(),
+                        role: Role::Auxiliary,
+                        phonetic,
+                        frequency_rank,
+                        created_by: CreatedBy::Promotion,
+                        if_absent: true,
+                    },
+                    ctx,
+                )?,
+                Some((word_id, role, aux_status)) => {
+                    // A retired auxiliary coming back into use is reactivated;
+                    // an existing target/base word needs no promotion at all.
+                    if role == Role::Auxiliary.as_str()
+                        && aux_status.as_deref() != Some(AuxStatus::Active.as_str())
+                    {
+                        ctx.tx.execute(
+                            "UPDATE words SET aux_status = 'active' WHERE word_id = ?1",
+                            rusqlite::params![word_id],
+                        )?;
+                        ctx.event(
+                            EventDraft::new(
+                                EntityType::Word,
+                                word_id.to_string(),
+                                Action::AuxPromoted,
+                            )
+                            .detail(serde_json::json!({ "lemma": lemma, "reactivated": true })),
+                        )?;
+                        ctx.touch(EntityType::Word, word_id.to_string());
+                    }
+                    WriteResult::Word {
+                        word_id,
+                        created: false,
+                    }
+                }
+            };
+            (OosStatus::ResolvedPromote, result)
+        }
+        OovResolution::Rewrite {
+            def_cand_id,
+            text,
+            source,
+        } => {
+            let (word_id, pos): (i64, String) = ctx
+                .tx
+                .query_row(
+                    "SELECT word_id, pos FROM definition_candidates WHERE def_cand_id = ?1",
+                    rusqlite::params![def_cand_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?
+                .ok_or_else(|| {
+                    StoreError::not_found(format!("definition candidate {def_cand_id}"))
+                })?;
+
+            let minted = selections::mint_definition_candidate(
+                MintDefinitionCandidate {
+                    word_id,
+                    pos: pos.clone(),
+                    text,
+                    source,
+                    source_ref: Some(format!("oos_rewrite:{lemma}")),
+                    parent_cand_id: Some(def_cand_id),
+                    created_by: None,
+                    select: false,
+                },
+                ctx,
+            )?;
+            let new_cand_id = minted
+                .def_cand_id()
+                .ok_or_else(|| StoreError::invalid("mint did not return a candidate id"))?;
+            selections::set_selection(
+                SetSelection {
+                    slot: morpho_domain::types::SlotRef::Definition { word_id, pos },
+                    cand_id: new_cand_id,
+                    selected_by: SelectedBy::Human,
+                    pinned: true,
+                },
+                ctx,
+            )?;
+            (OosStatus::ResolvedRewrite, minted)
+        }
+    };
+
+    ctx.tx.execute(
+        "INSERT INTO oos_queue (oos_lemma, status, first_seen, resolved_by, resolved_at)
+         VALUES (?1, ?2, ?3, ?4, ?3)
+         ON CONFLICT (oos_lemma) DO UPDATE SET
+             status = excluded.status,
+             resolved_by = excluded.resolved_by,
+             resolved_at = excluded.resolved_at",
+        rusqlite::params![lemma, status.as_str(), ctx.now, ctx.actor.to_string()],
+    )?;
+    ctx.event(
+        EventDraft::new(EntityType::OosQueue, lemma.clone(), Action::OosResolved)
+            .detail(serde_json::json!({ "lemma": lemma, "status": status.as_str() })),
+    )?;
+    ctx.touch(EntityType::OosQueue, lemma);
+
+    Ok(result)
+}
