@@ -14,6 +14,14 @@
 > 10. **`OovOccurrence.suggested_rewrite`**: newest `available` `llm_rewrite` candidate text for that definition, else `null`.
 > 11. Media content types: `image/webp`, `audio/ogg`; `Cache-Control: immutable`.
 > 12. A dedicated `/jobs` screen is deferred; the endpoint stays live for the dashboard.
+>
+> **Wave-3 rulings:**
+>
+> 13. **`TtsStatusView.status` is `failed`** whenever a dead `job_state` row exists for that TTS input (agreeing with the word's `tts_failed` blocker); `missing` strictly means "not yet attempted or still retrying".
+> 14. `GET /dead-letters` accepts optional `?rate_key=` filter. Bulk retry/waive stays client-composed over the per-key endpoints.
+> 15. `releases` gains a `word_count` column (migration); `Release.word_count` reads it, not the audit log.
+> 16. An empty release passing all gates is VALID (dependency closure may legitimately empty the cut); UI warns, never blocks.
+> 17. Adapter invocation must be cwd-independent: morphod resolves the adapters directory from config (`adapters_root`, default = repo root relative to the config file), and `morphod status` + startup logs report each adapter's availability.
 
 Base path `/api`. JSON everywhere. Errors: `{"error": {"code": "string", "message": "string"}}` with proper HTTP status. Pagination: `?page=1&page_size=50` → `{"items": [...], "total": n}`. All mutations write an `events` row and return the updated resource. IDs are integers unless noted.
 
