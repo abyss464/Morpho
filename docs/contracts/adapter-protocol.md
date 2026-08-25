@@ -55,3 +55,10 @@ Unconfigured backend (no ComfyUI reachable) → `{"ok": false, "error": {"kind":
 ## Timeouts (enforced by morphod)
 
 tts 60 s · morfessor 120 s/batch · sdxl 600 s
+
+## Wave-2 normative rulings (conductor, 2026-08-26)
+
+1. **Invocation**: morphod spawns `uv run --project adapters/<name> <name>-adapter` from the repo root. morphod owns the `out_path` staging directory (creates before spawn, cleans after result handling); adapters never write anywhere else.
+2. **`tts.synthesize` gains optional `volume`** (edge-tts syntax, default `"+0%"`). It is part of `params_json` and therefore feeds the TTS `input_hash`.
+3. **Unknown op** → `{"ok": false, "error": {"kind": "permanent", ...}}` with exit 0 (the envelope was honored). Exit code **2** = protocol crash (malformed stdin, handler escape); morphod maps any non-zero exit to `Transient`.
+4. **Morfessor batching**: until a corpus-pretrained model ships in `adapters/morfessor/model/`, morphod batches ≥300 distinct words per `morfessor.segment` call (the ad-hoc trainer refuses <100 and degrades below ~300). With a pretrained model present, any batch size is fine.

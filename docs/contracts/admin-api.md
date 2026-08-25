@@ -1,5 +1,20 @@
 # Admin API Contract (morphod ⇄ admin-ui)
 
+> **Wave-2 normative rulings (conductor, 2026-08-26).** These resolve all wave-1 drift reports and OVERRIDE anything below that conflicts:
+>
+> 1. **Wire shapes**: `admin-ui/src/api/types.ts` is the normative reference for every request/response body. morphod conforms to it exactly — JSON booleans are real booleans, TEXT-JSON columns (`blockers`, `score_detail`, `stats_json`, `events.detail`) are decoded server-side into objects.
+> 2. **Word-scoped mutations return the full `WordDetail`** (one write cascades; the row alone is useless).
+> 3. **Actor header is `X-Morpho-User`** (admin-ui migrates off `X-Admin-User`), default actor `local`.
+> 4. **Blocker vocabulary** = the `BlockerCode` union in types.ts (incl. `distractor_{1,2,3}_not_ready`, `not_in_plan`). Core emits exactly these codes.
+> 5. **`words` gains a reconciler-owned `core_ready` column** (see working-db.sql); `DistractorView.core_ready` reads it, no derivation hacks.
+> 6. **TTS status at API level** is `ready | failed | missing` (`missing` = in `tts_desired`, no `tts_assets` row for the current voice/params config).
+> 7. **SSE `/stream` frame**: `event: change`, `data: {"entity_type": string, "entity_ids": (number|string)[]}`, coalesced ≤250 ms, `: ping` comment every 30 s.
+> 8. **Dashboard `words.auxiliary` counts ACTIVE auxiliaries only.**
+> 9. `GET /dead-letters` accepts optional `?page&page_size`; `{items,total}` envelope always.
+> 10. **`OovOccurrence.suggested_rewrite`**: newest `available` `llm_rewrite` candidate text for that definition, else `null`.
+> 11. Media content types: `image/webp`, `audio/ogg`; `Cache-Control: immutable`.
+> 12. A dedicated `/jobs` screen is deferred; the endpoint stays live for the dashboard.
+
 Base path `/api`. JSON everywhere. Errors: `{"error": {"code": "string", "message": "string"}}` with proper HTTP status. Pagination: `?page=1&page_size=50` → `{"items": [...], "total": n}`. All mutations write an `events` row and return the updated resource. IDs are integers unless noted.
 
 admin-ui develops against MSW mocks implementing exactly these shapes; morphod implements them verbatim. Divergence is a contract change and goes through the conductor.

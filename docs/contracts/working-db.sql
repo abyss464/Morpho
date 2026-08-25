@@ -28,7 +28,9 @@ CREATE TABLE words (
     etymology_source TEXT CHECK (etymology_source IN ('wiktionary','morfessor','manual')),
     -- Derived caches, reconciler-owned (recomputed inline every pass):
     ready            INTEGER NOT NULL DEFAULT 0,
-    blockers         TEXT NOT NULL DEFAULT '[]',   -- JSON array of blocker codes
+    core_ready       INTEGER NOT NULL DEFAULT 0,   -- readiness minus the distractor recursion
+    blockers         TEXT NOT NULL DEFAULT '[]',   -- JSON array of blocker codes (normative
+                                                   -- vocabulary: admin-ui/src/api/types.ts BlockerCode)
     created_by       TEXT NOT NULL DEFAULT 'import'
                      CHECK (created_by IN ('import','promotion','manual')),
     created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -87,8 +89,9 @@ CREATE TABLE example_candidates (
     word_id      INTEGER NOT NULL REFERENCES words(word_id),
     text         TEXT NOT NULL,               -- IMMUTABLE
     text_hash    TEXT NOT NULL,
-    hl_start     INTEGER NOT NULL,            -- byte offsets into text (UTF-8)
-    hl_end       INTEGER NOT NULL,
+    hl_start     INTEGER NOT NULL,            -- UTF-8 byte offsets into the CANONICALIZED text
+    hl_end       INTEGER NOT NULL,            -- (stored text is canonicalized; fetchers must
+                                              --  compute offsets after canonicalization)
     source       TEXT NOT NULL CHECK (source IN ('exam_corpus','llm','manual')),
     source_ref   TEXT,
     status       TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available','rejected')),
@@ -322,6 +325,18 @@ CREATE TABLE rate_limits (
     refill_per_min  REAL NOT NULL,
     burst           INTEGER NOT NULL
 );
+
+-- Normative seed defaults (operator tuning survives: INSERT OR IGNORE on boot)
+INSERT OR IGNORE INTO rate_limits VALUES
+    ('freedict', 2, 120.0, 4),
+    ('wiktionary', 1, 60.0, 2),
+    ('unsplash', 2, 45.0, 4),
+    ('pexels', 2, 180.0, 4),
+    ('pixabay', 2, 90.0, 4),
+    ('sdxl', 1, 6.0, 1),
+    ('edge_tts', 4, 240.0, 8),
+    ('llm', 2, 30.0, 4),
+    ('cpu', 8, 6000.0, 16);
 
 -- Append-only audit log
 CREATE TABLE events (
