@@ -51,11 +51,49 @@ pub struct SetApproval {
     pub approved: bool,
 }
 
+/// One auto-selection decision computed from a read snapshot.
+///
+/// `expected_cand_id` is the optimistic-concurrency guard: it is what the rule
+/// saw in the slot. If the slot moved in the meantime the decision is dropped
+/// and the next pass recomputes it (README Part 4 §"对账循环").
+#[derive(Debug, Clone)]
+pub struct AutoSelection {
+    pub slot: SlotRef,
+    pub cand_id: i64,
+    pub expected_cand_id: Option<i64>,
+    /// Set on the first selection of a word's senses.
+    pub make_primary: bool,
+}
+
+/// Apply a batch of auto-selection decisions.
+#[derive(Debug, Clone)]
+pub struct ApplyAutoSelections {
+    pub selections: Vec<AutoSelection>,
+}
+
+/// One rescored candidate.
+#[derive(Debug, Clone)]
+pub struct ScoreUpdate {
+    pub kind: CandidateKind,
+    pub cand_id: i64,
+    pub auto_score: f64,
+    /// JSON breakdown stored in `score_detail`.
+    pub detail_json: String,
+}
+
+/// Apply a batch of candidate scores.
+#[derive(Debug, Clone)]
+pub struct ApplyScores {
+    pub updates: Vec<ScoreUpdate>,
+    pub scorer_ver: String,
+}
+
 #[derive(Debug, Clone)]
 struct CurrentSelection {
     cand_id: i64,
     selection_rev: i64,
     approved: bool,
+    pinned: bool,
 }
 
 fn selection_entity(kind: CandidateKind) -> EntityType {
@@ -189,13 +227,14 @@ fn current_selection(ctx: &OpCtx<'_, '_>, slot: &SlotRef) -> Result<Option<Curre
             cand_id: row.get(0)?,
             selection_rev: row.get(1)?,
             approved: row.get::<_, i64>(2)? != 0,
+            pinned: row.get::<_, i64>(3)? != 0,
         })
     };
     let found = match slot {
         SlotRef::Definition { word_id, pos } => ctx
             .tx
             .query_row(
-                "SELECT def_cand_id, selection_rev, approved FROM definition_selections
+                "SELECT def_cand_id, selection_rev, approved, pinned FROM definition_selections
                  WHERE word_id = ?1 AND pos = ?2",
                 rusqlite::params![word_id, pos],
                 map,
@@ -204,7 +243,7 @@ fn current_selection(ctx: &OpCtx<'_, '_>, slot: &SlotRef) -> Result<Option<Curre
         SlotRef::Example { word_id, slot } => ctx
             .tx
             .query_row(
-                "SELECT ex_cand_id, selection_rev, approved FROM example_selections
+                "SELECT ex_cand_id, selection_rev, approved, pinned FROM example_selections
                  WHERE word_id = ?1 AND slot = ?2",
                 rusqlite::params![word_id, slot],
                 map,
@@ -213,7 +252,7 @@ fn current_selection(ctx: &OpCtx<'_, '_>, slot: &SlotRef) -> Result<Option<Curre
         SlotRef::Image { word_id } => ctx
             .tx
             .query_row(
-                "SELECT img_cand_id, selection_rev, approved FROM image_selections
+                "SELECT img_cand_id, selection_rev, approved, pinned FROM image_selections
                  WHERE word_id = ?1",
                 rusqlite::params![word_id],
                 map,
@@ -590,6 +629,187 @@ pub(super) fn set_approval(req: SetApproval, ctx: &mut OpCtx<'_, '_>) -> Result<
     ctx.touch(entity, entity_id);
     ctx.touch(EntityType::Word, req.slot.word_id().to_string());
     Ok(WriteResult::Unit)
+}
+
+// ---------------------------------------------------------------------------
+// Primary sense / slot enablement
+// ---------------------------------------------------------------------------
+
+/// Move `is_primary` to one part of speech.
+///
+/// The partial unique index `ux_defsel_primary` allows exactly one primary
+/// sense per word, so the clear and the set must share a transaction — which
+/// they do, because every [`WriteOp`](super::WriteOp) is one.
+pub(super) fn set_primary_sense(
+    word_id: i64,
+    pos: &str,
+    ctx: &mut OpCtx<'_, '_>,
+) -> Result<WriteResult> {
+    let pos = canonicalize(pos).to_lowercase();
+    let exists: i64 = ctx.tx.query_row(
+        "SELECT EXISTS (SELECT 1 FROM definition_selections WHERE word_id = ?1 AND pos = ?2)",
+        rusqlite::params![word_id, pos],
+        |row| row.get(0),
+    )?;
+    if exists == 0 {
+        return Err(StoreError::not_found(format!(
+            "definition selection {word_id}:{pos}"
+        )));
+    }
+
+    let previous: Option<String> = ctx
+        .tx
+        .query_row(
+            "SELECT pos FROM definition_selections WHERE word_id = ?1 AND is_primary = 1",
+            rusqlite::params![word_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if previous.as_deref() == Some(pos.as_str()) {
+        return Ok(WriteResult::Unit);
+    }
+
+    ctx.tx.execute(
+        "UPDATE definition_selections SET is_primary = 0, updated_at = ?2
+         WHERE word_id = ?1 AND is_primary = 1",
+        rusqlite::params![word_id, ctx.now],
+    )?;
+    ctx.tx.execute(
+        "UPDATE definition_selections SET is_primary = 1, updated_at = ?3
+         WHERE word_id = ?1 AND pos = ?2",
+        rusqlite::params![word_id, pos, ctx.now],
+    )?;
+
+    ctx.event(
+        EventDraft::new(
+            EntityType::DefinitionSelection,
+            format!("{word_id}:{pos}"),
+            Action::PrimaryMoved,
+        )
+        .detail(serde_json::json!({ "word_id": word_id, "from_pos": previous, "to_pos": pos })),
+    )?;
+    ctx.touch(EntityType::DefinitionSelection, format!("{word_id}:{pos}"));
+    ctx.touch(EntityType::Word, word_id.to_string());
+    Ok(WriteResult::Unit)
+}
+
+/// Enable or disable one sense slot without changing what it points at.
+pub(super) fn set_slot_enabled(
+    word_id: i64,
+    pos: &str,
+    enabled: bool,
+    ctx: &mut OpCtx<'_, '_>,
+) -> Result<WriteResult> {
+    let pos = canonicalize(pos).to_lowercase();
+    let changed = ctx.tx.execute(
+        "UPDATE definition_selections SET enabled = ?3, updated_at = ?4
+         WHERE word_id = ?1 AND pos = ?2 AND enabled <> ?3",
+        rusqlite::params![word_id, pos, i64::from(enabled), ctx.now],
+    )?;
+    if changed == 0 {
+        let exists: i64 = ctx.tx.query_row(
+            "SELECT EXISTS (SELECT 1 FROM definition_selections WHERE word_id = ?1 AND pos = ?2)",
+            rusqlite::params![word_id, pos],
+            |row| row.get(0),
+        )?;
+        if exists == 0 {
+            return Err(StoreError::not_found(format!(
+                "definition selection {word_id}:{pos}"
+            )));
+        }
+        return Ok(WriteResult::Unit);
+    }
+
+    ctx.event(
+        EventDraft::new(
+            EntityType::DefinitionSelection,
+            format!("{word_id}:{pos}"),
+            Action::SlotEnabledChanged,
+        )
+        .detail(serde_json::json!({ "word_id": word_id, "pos": pos, "enabled": enabled })),
+    )?;
+    ctx.touch(EntityType::DefinitionSelection, format!("{word_id}:{pos}"));
+    ctx.touch(EntityType::Word, word_id.to_string());
+    Ok(WriteResult::Unit)
+}
+
+// ---------------------------------------------------------------------------
+// Automatic selection & scoring
+// ---------------------------------------------------------------------------
+
+pub(super) fn apply_scores(req: ApplyScores, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResult> {
+    let mut changed = 0usize;
+    for update in &req.updates {
+        let (table, pk) = match update.kind {
+            CandidateKind::Definition => ("definition_candidates", "def_cand_id"),
+            CandidateKind::Example => ("example_candidates", "ex_cand_id"),
+            CandidateKind::Image => ("image_candidates", "img_cand_id"),
+        };
+        let sql = format!(
+            "UPDATE {table} SET auto_score = ?2, score_detail = ?3, scorer_ver = ?4 WHERE {pk} = ?1"
+        );
+        changed += ctx.tx.execute(
+            &sql,
+            rusqlite::params![
+                update.cand_id,
+                update.auto_score,
+                update.detail_json,
+                req.scorer_ver
+            ],
+        )?;
+        ctx.changes
+            .touch(candidate_entity(update.kind), update.cand_id.to_string());
+    }
+    Ok(WriteResult::Scored { changed })
+}
+
+pub(super) fn apply_auto_selections(
+    req: ApplyAutoSelections,
+    ctx: &mut OpCtx<'_, '_>,
+) -> Result<WriteResult> {
+    let mut applied = 0usize;
+    let mut skipped = 0usize;
+    for decision in req.selections {
+        let current = current_selection(ctx, &decision.slot)?;
+        // Rule 4: a pinned slot is untouchable by automatic selection.
+        if current.as_ref().is_some_and(|c| c.pinned) {
+            skipped += 1;
+            continue;
+        }
+        // Optimistic concurrency: the slot must still hold what the rule saw.
+        if current.as_ref().map(|c| c.cand_id) != decision.expected_cand_id {
+            skipped += 1;
+            continue;
+        }
+        if current.as_ref().map(|c| c.cand_id) == Some(decision.cand_id) {
+            skipped += 1;
+            continue;
+        }
+        set_selection(
+            SetSelection {
+                slot: decision.slot.clone(),
+                cand_id: decision.cand_id,
+                selected_by: SelectedBy::Auto,
+                pinned: false,
+            },
+            ctx,
+        )?;
+        if decision.make_primary {
+            if let SlotRef::Definition { word_id, pos } = &decision.slot {
+                let has_primary: i64 = ctx.tx.query_row(
+                    "SELECT EXISTS (SELECT 1 FROM definition_selections
+                                    WHERE word_id = ?1 AND is_primary = 1)",
+                    rusqlite::params![word_id],
+                    |row| row.get(0),
+                )?;
+                if has_primary == 0 {
+                    set_primary_sense(*word_id, pos, ctx)?;
+                }
+            }
+        }
+        applied += 1;
+    }
+    Ok(WriteResult::Selected { applied, skipped })
 }
 
 // ---------------------------------------------------------------------------

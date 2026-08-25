@@ -63,6 +63,7 @@ job_enum!(
         FetchExamples => "fetch_examples",
         FetchEtymology => "fetch_etymology",
         FetchImages => "fetch_images",
+        SegmentMorphology => "segment_morphology",
         GenImageSdxl => "gen_image_sdxl",
         RewriteDefinition => "rewrite_definition",
         SynthTts => "synth_tts",
@@ -71,10 +72,13 @@ job_enum!(
 
 job_enum!(
     /// `job_state.rate_key` — one dispatcher lane each.
+    ///
+    /// The set mirrors the normative `rate_limits` seed rows in
+    /// `docs/contracts/working-db.sql`. WordNet and Morfessor are in-process /
+    /// local-subprocess work and therefore share the `cpu` lane.
     RateKey, "rate_key", {
         Cpu => "cpu",
         Freedict => "freedict",
-        Wordnet => "wordnet",
         Wiktionary => "wiktionary",
         Unsplash => "unsplash",
         Pexels => "pexels",
@@ -105,8 +109,8 @@ job_enum!(
 );
 
 impl JobKind {
-    /// Lane this kind of work runs on. External kinds may be overridden per
-    /// job (e.g. `FetchImages` fans out over three stock-photo lanes).
+    /// Lane this kind of work runs on. Kinds that fan out over several external
+    /// sources (definitions, images) override it per job.
     pub const fn default_rate_key(self) -> RateKey {
         match self {
             Self::ExtractTokens
@@ -117,9 +121,10 @@ impl JobKind {
             | Self::RecomputeReadiness
             | Self::BindDistractors
             | Self::BuildPlan
-            | Self::GcMedia => RateKey::Cpu,
+            | Self::GcMedia
+            | Self::SegmentMorphology
+            | Self::FetchExamples => RateKey::Cpu,
             Self::FetchDefinitions => RateKey::Freedict,
-            Self::FetchExamples => RateKey::Llm,
             Self::FetchEtymology => RateKey::Wiktionary,
             Self::FetchImages => RateKey::Unsplash,
             Self::GenImageSdxl => RateKey::Sdxl,
@@ -133,7 +138,7 @@ impl JobKind {
     pub const fn dead_after_attempts(self) -> u32 {
         match self {
             Self::GenImageSdxl => 3,
-            Self::RewriteDefinition | Self::FetchExamples => 4,
+            Self::RewriteDefinition => 4,
             Self::SynthTts => 5,
             Self::FetchDefinitions | Self::FetchEtymology | Self::FetchImages => 8,
             // Local CPU work: a repeated failure is a bug, surface it early.
@@ -175,6 +180,15 @@ impl SubjectRef {
         Self::new(SubjectType::Word, word_id.to_string())
     }
 
+    /// A per-source fan-out of a word job: `"{word_id}:{source}"`.
+    ///
+    /// The composite key of `job_state` has no source column, so the source
+    /// rides in `subject_id`. That is what lets one stock-photo provider die
+    /// or be waived without silencing the other two.
+    pub fn word_source(word_id: i64, source: &str) -> Self {
+        Self::new(SubjectType::Word, format!("{word_id}:{source}"))
+    }
+
     pub fn def_candidate(def_cand_id: i64) -> Self {
         Self::new(SubjectType::DefCandidate, def_cand_id.to_string())
     }
@@ -185,6 +199,23 @@ impl SubjectRef {
 
     pub fn global(name: impl Into<String>) -> Self {
         Self::new(SubjectType::Global, name)
+    }
+
+    /// Numeric word id encoded in this subject, if any.
+    pub fn word_id(&self) -> Option<i64> {
+        if self.subject_type != SubjectType::Word {
+            return None;
+        }
+        let head = self
+            .subject_id
+            .split_once(':')
+            .map_or(self.subject_id.as_str(), |(head, _)| head);
+        head.parse().ok()
+    }
+
+    /// Source suffix of a `word_source` subject, if any.
+    pub fn source(&self) -> Option<&str> {
+        self.subject_id.split_once(':').map(|(_, tail)| tail)
     }
 }
 
@@ -213,35 +244,32 @@ impl fmt::Display for JobKey {
     }
 }
 
-/// One row of `GET /api/jobs`.
+/// One row of `GET /api/jobs` (`JobView` in admin-ui/src/api/types.ts).
+///
+/// `status` is `null` for work that only exists in memory; `job_state` rows
+/// carry `backoff | dead | waived`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobView {
-    pub kind: JobKind,
+    pub kind: String,
     pub subject_type: SubjectType,
     pub subject_id: String,
-    pub rate_key: RateKey,
-    pub priority: Priority,
-    /// `queued` | `running` for in-flight rows; `job_state.status` otherwise.
-    pub state: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub attempts: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rate_key: String,
+    pub status: Option<JobStatus>,
+    pub attempts: i64,
     pub next_retry_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+    pub subject_label: Option<String>,
 }
 
-/// Per-lane counters of `GET /api/jobs`.
+/// Per-lane counters of `GET /api/jobs` (`LaneView` in types.ts).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LaneView {
     pub queued: usize,
     pub running: usize,
     pub limit: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parked_until: Option<String>,
 }
 
-/// Body of `GET /api/jobs`.
+/// Body of `GET /api/jobs` (`JobsSnapshot` in types.ts).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct JobsSnapshot {
     pub in_flight: Vec<JobView>,
@@ -264,8 +292,31 @@ mod tests {
     }
 
     #[test]
+    fn every_lane_has_a_contract_seed_row() {
+        // docs/contracts/working-db.sql seeds exactly these rate keys.
+        let seeded = [
+            "freedict",
+            "wiktionary",
+            "unsplash",
+            "pexels",
+            "pixabay",
+            "sdxl",
+            "edge_tts",
+            "llm",
+            "cpu",
+        ];
+        for key in RateKey::ALL {
+            assert!(
+                seeded.contains(&key.as_str()),
+                "lane {key} has no rate_limits seed"
+            );
+        }
+    }
+
+    #[test]
     fn local_work_lands_on_the_cpu_lane() {
         assert_eq!(JobKind::ExtractTokens.default_rate_key(), RateKey::Cpu);
+        assert_eq!(JobKind::SegmentMorphology.default_rate_key(), RateKey::Cpu);
         assert_eq!(JobKind::SynthTts.default_rate_key(), RateKey::EdgeTts);
     }
 
@@ -291,5 +342,20 @@ mod tests {
     fn job_key_display_is_stable() {
         let key = JobKey::new(JobKind::ExtractTokens, SubjectRef::def_candidate(42));
         assert_eq!(key.to_string(), "extract_tokens/def_candidate:42");
+    }
+
+    #[test]
+    fn word_source_subjects_decode() {
+        let subject = SubjectRef::word_source(7, "pexels");
+        assert_eq!(subject.subject_id, "7:pexels");
+        assert_eq!(subject.word_id(), Some(7));
+        assert_eq!(subject.source(), Some("pexels"));
+
+        let plain = SubjectRef::word(7);
+        assert_eq!(plain.word_id(), Some(7));
+        assert_eq!(plain.source(), None);
+
+        let global = SubjectRef::global("morfessor");
+        assert_eq!(global.word_id(), None);
     }
 }

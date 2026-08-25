@@ -6,6 +6,10 @@
 //!   2. timer — a full pass every 60 s; a lost change event costs a minute;
 //!   3. change events — coalesced over 250 ms, then a scoped pass. Purely a
 //!      latency optimization: a full pass always yields a superset.
+//!
+//! One pass is: run the inline maintenance sweep (scoring → selection → OOV →
+//! liveness → distractors → plan → readiness → GC), then derive external work
+//! from a fresh snapshot and hand it to the dispatcher.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,15 +17,53 @@ use std::time::Duration;
 use morpho_domain::change::ChangeEvent;
 use morpho_domain::job::JobStatus;
 use morpho_domain::time::parse_ts;
-use morpho_store::queries::{job_states, rate_limits, JobStateRow};
-use morpho_store::{Result, Store};
+use morpho_domain::tts::TtsConfig;
+use morpho_store::queries::JobStateRow;
+use morpho_store::{MediaStore, Result, Store};
 
 use crate::dispatch::Dispatcher;
 use crate::exec::{default_executors, Executor};
+use crate::facts::Facts;
+use crate::graph::PlanParams;
 use crate::registry::JobRegistry;
 use crate::rule::{JobSpec, Rule, Scope, Snapshot};
 use crate::rules::default_rules;
+use crate::sources::SourceSet;
+use crate::stages::{self, SweepClocks, SweepStats};
 use crate::text::TextPipeline;
+
+/// Everything a rule or executor needs beyond the store.
+pub struct EngineContext {
+    pub sources: SourceSet,
+    pub media: MediaStore,
+    pub tts: TtsConfig,
+    pub plan: PlanParams,
+    pub pipeline: TextPipeline,
+}
+
+impl EngineContext {
+    pub fn new(sources: SourceSet, media: MediaStore) -> Self {
+        Self {
+            sources,
+            media,
+            tts: TtsConfig::default(),
+            plan: PlanParams::default(),
+            pipeline: TextPipeline::default(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_tts(mut self, tts: TtsConfig) -> Self {
+        self.tts = tts;
+        self
+    }
+
+    #[must_use]
+    pub fn with_plan_params(mut self, plan: PlanParams) -> Self {
+        self.plan = plan;
+        self
+    }
+}
 
 /// Loop timing.
 #[derive(Debug, Clone, Copy)]
@@ -50,6 +92,7 @@ pub struct PassStats {
     pub skipped_backoff: usize,
     pub skipped_dead: usize,
     pub skipped_waived: usize,
+    pub sweep: SweepStats,
 }
 
 /// Why the loop woke up.
@@ -62,26 +105,26 @@ pub enum Trigger {
 
 pub struct Reconciler {
     store: Store,
+    context: Arc<EngineContext>,
     rules: Arc<Vec<Arc<dyn Rule>>>,
     dispatcher: Arc<Dispatcher>,
     registry: Arc<JobRegistry>,
+    clocks: Arc<SweepClocks>,
     config: ReconcilerConfig,
 }
 
 impl Reconciler {
-    /// Build the wave-1 reconciler: the real `ExtractTokens` rule plus stubs.
-    pub fn new(store: Store, config: ReconcilerConfig) -> Self {
-        let pipeline = TextPipeline::default();
-        Self::with_parts(
-            store,
-            config,
-            default_rules(pipeline.clone()),
-            default_executors(pipeline),
-        )
+    /// Build the full engine: every rule, every executor.
+    pub fn new(store: Store, context: EngineContext, config: ReconcilerConfig) -> Self {
+        let context = Arc::new(context);
+        let rules = default_rules(context.clone());
+        let executors = default_executors(context.clone());
+        Self::with_parts(store, context, config, rules, executors)
     }
 
     pub fn with_parts(
         store: Store,
+        context: Arc<EngineContext>,
         config: ReconcilerConfig,
         rules: Vec<Arc<dyn Rule>>,
         executors: Vec<Arc<dyn Executor>>,
@@ -90,9 +133,11 @@ impl Reconciler {
         let dispatcher = Dispatcher::new(store.clone(), registry.clone(), executors);
         Self {
             store,
+            context,
             rules: Arc::new(rules),
             dispatcher,
             registry,
+            clocks: Arc::new(SweepClocks::new()),
             config,
         }
     }
@@ -106,6 +151,10 @@ impl Reconciler {
         self.dispatcher.clone()
     }
 
+    pub fn context(&self) -> Arc<EngineContext> {
+        self.context.clone()
+    }
+
     /// Run until `shutdown` flips to true.
     pub async fn run(self, mut shutdown: tokio::sync::watch::Receiver<bool>) {
         let mut changes = self.store.subscribe();
@@ -114,6 +163,11 @@ impl Reconciler {
         // The first tick fires immediately; consume it so the startup pass
         // below is the one that runs first.
         ticker.tick().await;
+
+        self.context.sources.log_availability();
+        if let Err(err) = self.context.media.clean_staging() {
+            tracing::warn!(error = %err, "could not clean the staging directory");
+        }
 
         self.pass(Trigger::Startup, Scope::Full).await;
 
@@ -171,7 +225,7 @@ impl Reconciler {
     async fn pass(&self, trigger: Trigger, scope: Scope) {
         match self.run_once(scope).await {
             Ok(stats) => {
-                if stats.dispatched > 0 || stats.derived > 0 {
+                if stats.dispatched > 0 || stats.derived > 0 || !stats.sweep.is_quiet() {
                     tracing::debug!(?trigger, ?stats, "reconcile pass");
                 }
             }
@@ -179,25 +233,47 @@ impl Reconciler {
         }
     }
 
-    /// One derivation + dispatch cycle. Public so tests can drive it directly.
+    /// One maintenance sweep + derivation + dispatch cycle.
+    /// Public so tests can drive it directly.
     pub async fn run_once(&self, scope: Scope) -> Result<PassStats> {
+        // Local convergence first: everything downstream reads its results.
+        let sweep = match stages::run(&self.store, &self.context, &self.clocks).await {
+            Ok(sweep) => sweep,
+            Err(err) => {
+                tracing::error!(error = %err, "maintenance sweep failed");
+                SweepStats::default()
+            }
+        };
+
         let rules = self.rules.clone();
         let now = chrono::Utc::now();
 
         let (mut jobs, states, limits) = self
             .store
             .read(move |conn| {
+                let facts = Facts::load(conn)?;
                 let snapshot = Snapshot {
                     conn,
+                    facts: &facts,
                     scope: &scope,
                     now,
                 };
                 let mut jobs: Vec<JobSpec> = Vec::new();
                 for rule in rules.iter() {
-                    let derived = rule.derive(&snapshot)?;
-                    jobs.extend(derived);
+                    match rule.derive(&snapshot) {
+                        Ok(derived) => jobs.extend(derived),
+                        // One broken rule must not stop the others from
+                        // converging their half of the world.
+                        Err(err) => {
+                            tracing::error!(rule = rule.name(), error = %err, "rule derivation failed")
+                        }
+                    }
                 }
-                Ok((jobs, job_states(conn)?, rate_limits(conn)?))
+                Ok((
+                    jobs,
+                    morpho_store::queries::job_states(conn)?,
+                    morpho_store::queries::rate_limits(conn)?,
+                ))
             })
             .await?;
 
@@ -205,6 +281,7 @@ impl Reconciler {
 
         let mut stats = PassStats {
             derived: jobs.len(),
+            sweep,
             ..PassStats::default()
         };
 

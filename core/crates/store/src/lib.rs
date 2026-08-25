@@ -11,6 +11,7 @@
 
 pub mod conn;
 pub mod error;
+pub mod media;
 pub mod ops;
 pub mod queries;
 pub mod read;
@@ -19,11 +20,16 @@ mod store;
 mod writer;
 
 pub use error::{Result, StoreError};
+pub use media::{MediaStore, StagingDir, StoredMedia};
 pub use ops::{
-    CreateWord, ImportStats, ImportWords, MintDefinitionCandidate, OovResolution,
-    RecordDefExtraction, SetApproval, SetSelection, UpsertJobState, WriteOp, WriteResult,
+    ApplyAutoSelections, ApplyReadiness, ApplyScores, AutoSelection, BindDistractors, CreateWord,
+    DistractorBinding, ImportStats, ImportWords, IngestDefinitions, IngestExamples, IngestImages,
+    MarkMediaGc, MediaRegistration, MintDefinitionCandidate, MintExampleCandidate,
+    MintImageCandidate, OovResolution, PlanGroupRow, PlanWordRow, ReadinessRow,
+    RecordDefExtraction, RecordRelease, RecordTtsAsset, ScoreUpdate, SetApproval, SetAuxStatus,
+    SetEtymology, SetSelection, SyncOosQueue, UpsertJobState, WriteOp, WritePlan, WriteResult,
 };
 pub use read::{ReadPool, DEFAULT_READ_POOL_SIZE};
-pub use schema::{ensure_schema, WORKING_DB_SQL};
+pub use schema::{ensure_schema, migrate, WORKING_DB_SQL};
 pub use store::{Store, StoreConfig};
 pub use writer::WriteOutcome;

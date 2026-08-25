@@ -12,23 +12,41 @@ use morpho_domain::change::{ChangeSet, EntityType};
 use morpho_domain::event::{Actor, EventDraft};
 use morpho_domain::job::{JobKey, JobStatus, RateKey};
 use morpho_domain::types::{
-    CandidateKind, CreatedBy, DefinitionSource, ExtractedToken, MediaKind, Role, SelectedBy,
-    SlotRef, WordImport,
+    AuxStatus, CandidateKind, CreatedBy, DefinitionSource, EtymologySource, ExtractedToken,
+    MediaKind, Role, SelectedBy, SlotRef, WordImport,
 };
 
 use crate::error::Result;
 
+mod candidates;
 mod derived;
+mod distractors;
 mod jobs;
 mod oov;
+mod plan;
+mod readiness;
+mod release;
 mod selections;
+mod tts;
 mod words;
 
-pub use derived::RecordDefExtraction;
+pub use candidates::{
+    IngestDefinitions, IngestExamples, IngestImages, MediaRegistration, MintExampleCandidate,
+    MintImageCandidate, FETCH_DEFINITIONS, FETCH_ETYMOLOGY, FETCH_EXAMPLES, FETCH_IMAGES,
+};
+pub use derived::{MarkMediaGc, RecordDefExtraction};
+pub use distractors::{BindDistractors, DistractorBinding};
 pub use jobs::UpsertJobState;
-pub use oov::OovResolution;
-pub use selections::{MintDefinitionCandidate, SetApproval, SetSelection};
-pub use words::{CreateWord, ImportStats, ImportWords};
+pub use oov::{OovResolution, SyncOosQueue};
+pub use plan::{PlanGroupRow, PlanWordRow, WritePlan};
+pub use readiness::{ApplyReadiness, ReadinessRow};
+pub use release::RecordRelease;
+pub use selections::{
+    ApplyAutoSelections, ApplyScores, AutoSelection, MintDefinitionCandidate, ScoreUpdate,
+    SetApproval, SetSelection,
+};
+pub use tts::RecordTtsAsset;
+pub use words::{CreateWord, ImportStats, ImportWords, SetAuxStatus, SetEtymology};
 
 /// One atomic unit of change.
 #[derive(Debug, Clone)]
@@ -39,12 +57,36 @@ pub enum WriteOp {
     CreateWord(CreateWord),
     /// Insert an immutable definition candidate, optionally selecting it.
     MintDefinitionCandidate(MintDefinitionCandidate),
+    /// Insert an immutable example candidate.
+    MintExampleCandidate(MintExampleCandidate),
+    /// Insert an immutable image candidate (bytes already in the library).
+    MintImageCandidate(MintImageCandidate),
+    /// One definition fetch's whole result plus its completion marker.
+    IngestDefinitions(IngestDefinitions),
+    /// One example fetch's whole result plus its completion marker.
+    IngestExamples(IngestExamples),
+    /// One image fetch's whole result plus its completion marker.
+    IngestImages(IngestImages),
     /// Point a selection slot at a candidate.
     SetSelection(SetSelection),
+    /// Apply automatic selection decisions computed from a read snapshot.
+    ApplyAutoSelections(ApplyAutoSelections),
+    /// Store candidate scores.
+    ApplyScores(ApplyScores),
     /// Approve or un-approve the current content of a slot.
     SetApproval(SetApproval),
+    /// Move `is_primary` to one part of speech.
+    SetPrimarySense { word_id: i64, pos: String },
+    /// Enable or disable one sense slot.
+    SetSlotEnabled {
+        word_id: i64,
+        pos: String,
+        enabled: bool,
+    },
     /// Mark a candidate rejected (and release the slot's pin if it was selected).
     RejectCandidate { kind: CandidateKind, cand_id: i64 },
+    /// Reconcile `oos_queue` against the `oos_occurrences` view.
+    SyncOosQueue(SyncOosQueue),
     /// Resolve one out-of-scope lemma by promotion or rewrite.
     ResolveOov {
         lemma: String,
@@ -59,6 +101,10 @@ pub enum WriteOp {
         source: String,
         result_count: i64,
     },
+    /// Write a word's etymology.
+    SetEtymology(SetEtymology),
+    /// Flip an auxiliary word between active and retired.
+    SetAuxStatus(SetAuxStatus),
     /// Register a file in the content-addressed media registry.
     RegisterMediaFile {
         file_hash: String,
@@ -66,6 +112,18 @@ pub enum WriteOp {
         rel_path: String,
         bytes: i64,
     },
+    /// Record one TTS synthesis (or its failure) with its media file.
+    RecordTtsAsset(RecordTtsAsset),
+    /// Bind missing distractors. Existing bindings are never rewritten.
+    BindDistractors(BindDistractors),
+    /// Publish a freshly computed learning plan.
+    WritePlan(WritePlan),
+    /// Refresh the `ready` / `core_ready` / `blockers` caches.
+    ApplyReadiness(ApplyReadiness),
+    /// Stamp or clear `media_files.gc_eligible_at`.
+    MarkMediaGc(MarkMediaGc),
+    /// Record a finished export and pin its media.
+    RecordRelease(RecordRelease),
     /// Persist a failure state that must survive a restart.
     UpsertJobState(UpsertJobState),
     /// Drop a `job_state` row: success, or an operator hitting "retry".
@@ -94,10 +152,49 @@ pub enum WriteResult {
         def_cand_id: i64,
         created: bool,
     },
+    /// Example or image candidate.
+    Candidate {
+        cand_id: i64,
+        created: bool,
+    },
+    /// One bulk fetch ingest.
+    Ingest {
+        received: usize,
+        created: usize,
+    },
     /// `applied = false` means the computed input drifted before the write
     /// landed and the result was discarded (optimistic concurrency).
     Extraction {
         applied: bool,
+    },
+    Selected {
+        applied: usize,
+        skipped: usize,
+    },
+    Scored {
+        changed: usize,
+    },
+    OosSync {
+        opened: usize,
+        closed: usize,
+    },
+    Bound {
+        bound: usize,
+    },
+    Plan {
+        plan_id: i64,
+        applied: bool,
+    },
+    Readiness {
+        changed: usize,
+    },
+    MediaGc {
+        marked: usize,
+        unmarked: usize,
+    },
+    Release {
+        release_id: i64,
+        created: bool,
     },
     Event {
         event_id: i64,
@@ -116,6 +213,28 @@ impl WriteResult {
     pub fn def_cand_id(&self) -> Option<i64> {
         match self {
             Self::DefinitionCandidate { def_cand_id, .. } => Some(*def_cand_id),
+            _ => None,
+        }
+    }
+
+    pub fn cand_id(&self) -> Option<i64> {
+        match self {
+            Self::Candidate { cand_id, .. } => Some(*cand_id),
+            Self::DefinitionCandidate { def_cand_id, .. } => Some(*def_cand_id),
+            _ => None,
+        }
+    }
+
+    pub fn plan_id(&self) -> Option<i64> {
+        match self {
+            Self::Plan { plan_id, .. } => Some(*plan_id),
+            _ => None,
+        }
+    }
+
+    pub fn release_id(&self) -> Option<i64> {
+        match self {
+            Self::Release { release_id, .. } => Some(*release_id),
             _ => None,
         }
     }
@@ -170,11 +289,27 @@ pub(crate) fn apply_op(op: WriteOp, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResu
         WriteOp::ImportWords(req) => words::import_words(req, ctx),
         WriteOp::CreateWord(req) => words::create_word(req, ctx),
         WriteOp::MintDefinitionCandidate(req) => selections::mint_definition_candidate(req, ctx),
+        WriteOp::MintExampleCandidate(req) => candidates::mint_example_candidate(req, ctx),
+        WriteOp::MintImageCandidate(req) => candidates::mint_image_candidate(req, ctx),
+        WriteOp::IngestDefinitions(req) => candidates::ingest_definitions(req, ctx),
+        WriteOp::IngestExamples(req) => candidates::ingest_examples(req, ctx),
+        WriteOp::IngestImages(req) => candidates::ingest_images(req, ctx),
         WriteOp::SetSelection(req) => selections::set_selection(req, ctx),
+        WriteOp::ApplyAutoSelections(req) => selections::apply_auto_selections(req, ctx),
+        WriteOp::ApplyScores(req) => selections::apply_scores(req, ctx),
         WriteOp::SetApproval(req) => selections::set_approval(req, ctx),
+        WriteOp::SetPrimarySense { word_id, pos } => {
+            selections::set_primary_sense(word_id, &pos, ctx)
+        }
+        WriteOp::SetSlotEnabled {
+            word_id,
+            pos,
+            enabled,
+        } => selections::set_slot_enabled(word_id, &pos, enabled, ctx),
         WriteOp::RejectCandidate { kind, cand_id } => {
             selections::reject_candidate(kind, cand_id, ctx)
         }
+        WriteOp::SyncOosQueue(req) => oov::sync_oos_queue(req, ctx),
         WriteOp::ResolveOov { lemma, resolution } => oov::resolve_oov(&lemma, resolution, ctx),
         WriteOp::RecordDefExtraction(req) => derived::record_def_extraction(req, ctx),
         WriteOp::RecordSourceFetch {
@@ -183,12 +318,20 @@ pub(crate) fn apply_op(op: WriteOp, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResu
             source,
             result_count,
         } => derived::record_source_fetch(&kind, word_id, &source, result_count, ctx),
+        WriteOp::SetEtymology(req) => words::set_etymology(req, ctx),
+        WriteOp::SetAuxStatus(req) => words::set_aux_status(req, ctx),
         WriteOp::RegisterMediaFile {
             file_hash,
             kind,
             rel_path,
             bytes,
         } => derived::register_media_file(&file_hash, kind, &rel_path, bytes, ctx),
+        WriteOp::RecordTtsAsset(req) => tts::record_tts_asset(req, ctx),
+        WriteOp::BindDistractors(req) => distractors::bind_distractors(req, ctx),
+        WriteOp::WritePlan(req) => plan::write_plan(req, ctx),
+        WriteOp::ApplyReadiness(req) => readiness::apply_readiness(req, ctx),
+        WriteOp::MarkMediaGc(req) => derived::mark_media_gc(req, ctx),
+        WriteOp::RecordRelease(req) => release::record_release(req, ctx),
         WriteOp::UpsertJobState(req) => jobs::upsert_job_state(req, ctx),
         WriteOp::ClearJobState { key } => jobs::clear_job_state(&key, ctx),
         WriteOp::AppendEvent {
@@ -264,6 +407,30 @@ impl WriteOp {
         Self::SetApproval(SetApproval {
             slot,
             approved: false,
+        })
+    }
+
+    pub fn set_etymology(word_id: i64, etymology: Option<String>, source: EtymologySource) -> Self {
+        Self::SetEtymology(SetEtymology {
+            word_id,
+            etymology,
+            source,
+        })
+    }
+
+    pub fn retire_aux(word_id: i64, reason: &'static str) -> Self {
+        Self::SetAuxStatus(SetAuxStatus {
+            word_id,
+            status: AuxStatus::Retired,
+            reason,
+        })
+    }
+
+    pub fn reactivate_aux(word_id: i64, reason: &'static str) -> Self {
+        Self::SetAuxStatus(SetAuxStatus {
+            word_id,
+            status: AuxStatus::Active,
+            reason,
         })
     }
 

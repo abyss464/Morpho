@@ -5,15 +5,25 @@
 //! deduplicate against in-flight work, and never consult backoff state — the
 //! reconciler does all of that centrally, which is what keeps "full pass" and
 //! "partial pass" provably equivalent modulo latency.
+//!
+//! Rules derive **external** work only. Everything local — scoring, automatic
+//! selection, OOV sync, auxiliary liveness, distractor binding, plan rebuild,
+//! readiness, media GC — runs inline as an ordered maintenance sweep in
+//! [`crate::stages`], because those stages read the results of the previous one
+//! and dispatching them as independent jobs would only add a round trip per
+//! stage per pass.
 
 use std::collections::BTreeSet;
 
 use chrono::{DateTime, Utc};
-use rusqlite::Connection;
 
 use morpho_domain::change::{ChangeEvent, EntityType};
 use morpho_domain::job::{JobKey, Priority, RateKey};
+use morpho_domain::tts::DesiredTts;
+use morpho_domain::types::{DefinitionSource, ImageSource};
 use morpho_store::error::Result;
+
+use crate::facts::Facts;
 
 /// What a pass is allowed to look at.
 ///
@@ -47,8 +57,12 @@ impl Scope {
 }
 
 /// A read-only view of the world handed to every rule during one pass.
+///
+/// `facts` covers what every rule needs; `conn` is the same read connection the
+/// facts came from, for the rare rule whose input is too big to preload.
 pub struct Snapshot<'a> {
-    pub conn: &'a Connection,
+    pub conn: &'a rusqlite::Connection,
+    pub facts: &'a Facts,
     pub scope: &'a Scope,
     pub now: DateTime<Utc>,
 }
@@ -63,6 +77,38 @@ pub enum JobPayload {
         def_cand_id: i64,
         text: String,
         text_hash: String,
+    },
+    FetchDefinitions {
+        word_id: i64,
+        lemma: String,
+        source: DefinitionSource,
+    },
+    FetchEtymology {
+        word_id: i64,
+        lemma: String,
+    },
+    /// One Morfessor batch (adapter-protocol.md ruling #4).
+    SegmentMorphology {
+        words: Vec<(i64, String)>,
+    },
+    FetchExamples {
+        word_id: i64,
+        lemma: String,
+    },
+    FetchImages {
+        word_id: i64,
+        lemma: String,
+        source: ImageSource,
+        /// Selected primary gloss, used to make the search query specific.
+        gloss: Option<String>,
+    },
+    GenImageSdxl {
+        word_id: i64,
+        lemma: String,
+        gloss: Option<String>,
+    },
+    SynthTts {
+        desired: DesiredTts,
     },
 }
 

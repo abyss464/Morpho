@@ -1,4 +1,4 @@
-//! `ExtractTokens` — the reference rule, implemented end to end.
+//! `ExtractTokens` — the reference rule.
 //!
 //! Desired state: every available definition candidate has a `def_extractions`
 //! row whose `input_hash` equals `blake3(text_hash ‖ tokenizer_ver ‖
@@ -6,9 +6,10 @@
 //! changes when a tool version is bumped — which is exactly the invalidation
 //! semantics the whitepaper asks for.
 //!
-//! Note the rule reads its scope but derives fully: extraction is a single
-//! indexed scan that yields nothing once converged, so a partial derivation
-//! would buy nothing and could only lose work.
+//! This is the one rule that still queries directly rather than reading the
+//! shared fact set: it needs every candidate's full text, which is the largest
+//! table in the database and pointless to hold in memory when the answer is
+//! usually "nothing to do".
 
 use morpho_domain::job::{JobKey, JobKind, Priority, RateKey, SubjectRef};
 use morpho_store::error::Result;
@@ -24,15 +25,9 @@ impl ExtractTokensRule {
     pub fn new(pipeline: TextPipeline) -> Self {
         Self { pipeline }
     }
-}
 
-impl Rule for ExtractTokensRule {
-    fn name(&self) -> &'static str {
-        "extract_tokens"
-    }
-
-    fn derive(&self, snapshot: &Snapshot<'_>) -> Result<Vec<JobSpec>> {
-        let mut stmt = snapshot.conn.prepare_cached(
+    fn derive_from(&self, conn: &rusqlite::Connection) -> Result<Vec<JobSpec>> {
+        let mut stmt = conn.prepare_cached(
             "SELECT dc.def_cand_id, dc.text, dc.text_hash, e.input_hash, w.frequency_rank
              FROM definition_candidates dc
              JOIN words w ON w.word_id = dc.word_id
@@ -76,5 +71,15 @@ impl Rule for ExtractTokensRule {
             );
         }
         Ok(jobs)
+    }
+}
+
+impl Rule for ExtractTokensRule {
+    fn name(&self) -> &'static str {
+        "extract_tokens"
+    }
+
+    fn derive(&self, snapshot: &Snapshot<'_>) -> Result<Vec<JobSpec>> {
+        self.derive_from(snapshot.conn)
     }
 }

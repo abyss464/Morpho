@@ -115,6 +115,64 @@ pub(super) fn record_source_fetch(
     Ok(WriteResult::Unit)
 }
 
+/// Media GC: stamp `gc_eligible_at` on unreferenced files and clear it on
+/// files that came back into use.
+///
+/// This wave **only ever writes the column** — nothing is deleted or moved to
+/// the trash (README Part 3: unreferenced files get a 14-day grace period, and
+/// even then they are trashed, never `rm`ed). The reference set is computed by
+/// the caller from candidates ∪ TTS assets ∪ release manifests.
+#[derive(Debug, Clone)]
+pub struct MarkMediaGc {
+    /// Files with no live reference; stamped with `gc_eligible_at` if unset.
+    pub unreferenced: Vec<String>,
+    /// Absolute timestamp to stamp (now + grace period).
+    pub eligible_at: String,
+    /// Files that regained a reference; their stamp is cleared.
+    pub referenced: Vec<String>,
+}
+
+pub(super) fn mark_media_gc(req: MarkMediaGc, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResult> {
+    let mut marked = 0usize;
+    {
+        // Never move an existing deadline: the grace period starts when the
+        // file first went unreferenced, not on every pass.
+        let mut stmt = ctx.tx.prepare(
+            "UPDATE media_files SET gc_eligible_at = ?2
+             WHERE file_hash = ?1 AND gc_eligible_at IS NULL",
+        )?;
+        for file_hash in &req.unreferenced {
+            marked += stmt.execute(rusqlite::params![file_hash, req.eligible_at])?;
+        }
+    }
+    let mut unmarked = 0usize;
+    {
+        let mut stmt = ctx.tx.prepare(
+            "UPDATE media_files SET gc_eligible_at = NULL
+             WHERE file_hash = ?1 AND gc_eligible_at IS NOT NULL",
+        )?;
+        for file_hash in &req.referenced {
+            unmarked += stmt.execute(rusqlite::params![file_hash])?;
+        }
+    }
+
+    if marked > 0 {
+        ctx.event(
+            morpho_domain::event::EventDraft::new(
+                EntityType::MediaFile,
+                "gc",
+                morpho_domain::event::Action::MediaGcMarked,
+            )
+            .detail(serde_json::json!({
+                "marked": marked,
+                "unmarked": unmarked,
+                "eligible_at": req.eligible_at,
+            })),
+        )?;
+    }
+    Ok(WriteResult::MediaGc { marked, unmarked })
+}
+
 pub(super) fn register_media_file(
     file_hash: &str,
     kind: MediaKind,

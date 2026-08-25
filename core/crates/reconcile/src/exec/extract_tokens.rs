@@ -1,10 +1,5 @@
-//! Job executors.
-//!
-//! An executor performs one job and commits **one atomic** `WriteOp`: the
-//! result rows and the input hash they were computed from land in the same
-//! transaction, so there is never a window where a product exists without its
-//! provenance (README Part 4 §"组件"). Executors hold no database connection
-//! of their own — they go through the store handle like everyone else.
+//! Tokenizes one definition candidate and stores the result with its input
+//! hash, in a single transaction.
 
 use async_trait::async_trait;
 
@@ -13,16 +8,10 @@ use morpho_domain::event::Actor;
 use morpho_domain::job::JobKind;
 use morpho_store::{Store, WriteOp, WriteResult};
 
+use crate::exec::{store_error, wrong_payload, Executor};
 use crate::rule::{JobPayload, JobSpec};
 use crate::text::TextPipeline;
 
-#[async_trait]
-pub trait Executor: Send + Sync {
-    fn kind(&self) -> JobKind;
-    async fn run(&self, job: &JobSpec, store: &Store) -> Result<(), TaskError>;
-}
-
-/// Tokenizes one definition candidate and stores the result with its input hash.
 pub struct ExtractTokensExecutor {
     pipeline: TextPipeline,
 }
@@ -46,9 +35,7 @@ impl Executor for ExtractTokensExecutor {
             text_hash,
         } = &job.payload
         else {
-            return Err(TaskError::permanent(
-                "extract_tokens job carried the wrong payload",
-            ));
+            return Err(wrong_payload(JobKind::ExtractTokens));
         };
 
         let tokens = self.pipeline.extract(text);
@@ -64,7 +51,7 @@ impl Executor for ExtractTokensExecutor {
         let outcome = store
             .write(Actor::Worker(JobKind::ExtractTokens), op)
             .await
-            .map_err(|err| TaskError::transient(err.to_string()))?;
+            .map_err(store_error)?;
 
         if let WriteResult::Extraction { applied: false } = outcome.result {
             // The candidate changed underneath us; the next pass re-derives.
@@ -72,9 +59,4 @@ impl Executor for ExtractTokensExecutor {
         }
         Ok(())
     }
-}
-
-/// The wave-1 executor set.
-pub fn default_executors(pipeline: TextPipeline) -> Vec<std::sync::Arc<dyn Executor>> {
-    vec![std::sync::Arc::new(ExtractTokensExecutor::new(pipeline))]
 }

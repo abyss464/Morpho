@@ -2,8 +2,11 @@
 //!
 //! Precedence: command-line flags > environment > config file > defaults.
 //! Relative paths resolve against the process working directory, so morphod is
-//! normally launched from the repository root where `data/` and
+//! normally launched from the repository root where `data/`, `adapters/` and
 //! `admin-ui/dist/` live.
+//!
+//! Secrets are the one place environment beats the file: API keys do not belong
+//! in a checked-in config, so `UNSPLASH_ACCESS_KEY` and friends override it.
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -11,6 +14,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+
+use morpho_domain::tts::TtsConfig;
+use morpho_reconcile::{AdapterConfig, PlanParams, SourcesConfig};
 
 /// Config file consulted when `--config` is not given.
 pub const DEFAULT_CONFIG_FILE: &str = "morphod.toml";
@@ -20,12 +26,18 @@ pub const DEFAULT_CONFIG_FILE: &str = "morphod.toml";
 pub struct Config {
     /// Directory holding `working.db` and the content-addressed media store.
     pub data_dir: PathBuf,
+    /// Where `morphod export` and `POST /releases/export` write bundles.
+    pub releases_dir: PathBuf,
     /// Admin API / UI listen address.
     pub bind: SocketAddr,
     /// Built admin UI to serve as static files.
     pub admin_ui_dist: PathBuf,
     pub store: StoreSection,
     pub reconcile: ReconcileSection,
+    pub sources: SourcesConfig,
+    pub adapters: AdapterConfig,
+    pub tts: TtsConfig,
+    pub plan: PlanParams,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,10 +63,15 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             data_dir: PathBuf::from("data"),
+            releases_dir: PathBuf::from("data/releases"),
             bind: "127.0.0.1:8787".parse().expect("valid default address"),
             admin_ui_dist: PathBuf::from("admin-ui/dist"),
             store: StoreSection::default(),
             reconcile: ReconcileSection::default(),
+            sources: SourcesConfig::default(),
+            adapters: AdapterConfig::default(),
+            tts: TtsConfig::default(),
+            plan: PlanParams::default(),
         }
     }
 }
@@ -118,6 +135,10 @@ impl Config {
         if let Some(value) = std::env::var_os("MORPHOD_ADMIN_UI_DIST") {
             self.admin_ui_dist = PathBuf::from(value);
         }
+        if let Some(value) = std::env::var_os("MORPHOD_RELEASES_DIR") {
+            self.releases_dir = PathBuf::from(value);
+        }
+        self.sources.apply_env();
         Ok(())
     }
 
@@ -149,6 +170,31 @@ impl Config {
             coalesce_window: self.coalesce_window(),
         }
     }
+
+    /// Resolve every external source and build the engine context.
+    pub fn engine_context(&self) -> Result<morpho_reconcile::EngineContext> {
+        let sources =
+            morpho_reconcile::SourceSet::load(self.sources.clone(), self.adapters.clone())?;
+        Ok(morpho_reconcile::EngineContext::new(
+            sources,
+            morpho_store::MediaStore::new(&self.data_dir),
+        )
+        .with_tts(self.tts.clone())
+        .with_plan_params(self.plan))
+    }
+
+    /// Settings for the exporter. The tokenizer/lemmatizer versions must match
+    /// the engine's, or every word would look stale.
+    pub fn export_settings(&self) -> morpho_export::ExportSettings {
+        let pipeline = morpho_reconcile::TextPipeline::default();
+        morpho_export::ExportSettings {
+            tts: self.tts.clone(),
+            tokenizer_ver: pipeline.tokenizer_ver().to_string(),
+            lemmatizer_ver: pipeline.lemmatizer_ver().to_string(),
+            data_dir: self.data_dir.clone(),
+            exporter: format!("morphod/{}", env!("CARGO_PKG_VERSION")),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -162,6 +208,9 @@ mod tests {
         assert_eq!(config.bind.port(), 8787);
         assert_eq!(config.full_pass_interval(), Duration::from_secs(60));
         assert_eq!(config.coalesce_window(), Duration::from_millis(250));
+        assert_eq!(config.tts.voice, "en-US-AriaNeural");
+        assert_eq!(config.plan.group_max, 20);
+        assert_eq!(config.adapters.morfessor_batch, 300);
     }
 
     #[test]
@@ -179,8 +228,42 @@ mod tests {
     }
 
     #[test]
+    fn source_and_voice_sections_parse() {
+        let toml = r#"
+            [sources]
+            wordnet_dir = "/usr/share/wordnet"
+            corpus_path = "data/exam-corpus.jsonl"
+            unsplash_access_key = "abc"
+
+            [tts]
+            voice = "en-GB-SoniaNeural"
+            word_bitrate_kbps = 64
+
+            [plan]
+            group_min = 12
+            group_max = 18
+
+            [adapters]
+            morfessor_batch = 500
+        "#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            config.sources.wordnet_dir,
+            Some(PathBuf::from("/usr/share/wordnet"))
+        );
+        assert_eq!(config.sources.unsplash_access_key.as_deref(), Some("abc"));
+        assert_eq!(config.tts.voice, "en-GB-SoniaNeural");
+        assert_eq!(config.tts.word_bitrate_kbps, 64);
+        assert_eq!(config.tts.text_bitrate_kbps, 32, "unset keys keep defaults");
+        assert_eq!(config.plan.group_min, 12);
+        assert_eq!(config.adapters.morfessor_batch, 500);
+    }
+
+    #[test]
     fn unknown_keys_are_rejected() {
         let err = toml::from_str::<Config>("nonsense = 1").unwrap_err();
+        assert!(err.to_string().contains("nonsense"));
+        let err = toml::from_str::<Config>("[tts]\nnonsense = 1").unwrap_err();
         assert!(err.to_string().contains("nonsense"));
     }
 
@@ -190,5 +273,24 @@ mod tests {
         let text = toml::to_string(&config).unwrap();
         let back: Config = toml::from_str(&text).unwrap();
         assert_eq!(back.working_db(), config.working_db());
+        assert_eq!(back.tts, config.tts);
+    }
+
+    #[test]
+    fn the_example_config_parses() {
+        // Guards against the shipped example drifting from the struct.
+        let raw = include_str!("../../../morphod.example.toml");
+        let config: Config = toml::from_str(raw).expect("example config must parse");
+        assert_eq!(config.data_dir, PathBuf::from("data"));
+    }
+
+    #[test]
+    fn export_settings_track_the_engine_pipeline() {
+        let config = Config::default();
+        let settings = config.export_settings();
+        let pipeline = morpho_reconcile::TextPipeline::default();
+        assert_eq!(settings.tokenizer_ver, pipeline.tokenizer_ver());
+        assert_eq!(settings.lemmatizer_ver, pipeline.lemmatizer_ver());
+        assert!(settings.exporter.starts_with("morphod/"));
     }
 }

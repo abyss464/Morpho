@@ -70,6 +70,8 @@ pub enum Action {
     JobWaived,
     JobRetried,
     SourceFetched,
+    EtymologySet,
+    MediaGcMarked,
     ReleaseExported,
 }
 
@@ -98,6 +100,8 @@ impl Action {
             Self::JobWaived => "job_waived",
             Self::JobRetried => "job_retried",
             Self::SourceFetched => "source_fetched",
+            Self::EtymologySet => "etymology_set",
+            Self::MediaGcMarked => "media_gc_marked",
             Self::ReleaseExported => "release_exported",
         }
     }

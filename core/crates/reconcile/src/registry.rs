@@ -102,10 +102,17 @@ impl Lane {
             queued: self.queued.load(Ordering::Relaxed),
             running: self.running.load(Ordering::Relaxed),
             limit: self.limit,
-            parked_until: self.park_remaining().map(|left| {
-                format_ts(chrono::Utc::now() + chrono::Duration::from_std(left).unwrap_or_default())
-            }),
         }
+    }
+
+    /// When this lane's park expires, in contract timestamp format.
+    ///
+    /// Not part of `LaneView` (types.ts carries three counters), but the
+    /// operator log wants it.
+    pub fn parked_until(&self) -> Option<String> {
+        self.park_remaining().map(|left| {
+            format_ts(chrono::Utc::now() + chrono::Duration::from_std(left).unwrap_or_default())
+        })
     }
 }
 
@@ -211,27 +218,42 @@ impl JobRegistry {
 
     /// Body of `GET /api/jobs`. `backoff` comes from `job_state`, which is the
     /// only part of the queue that is persisted.
-    pub fn snapshot(&self, backoff: Vec<JobView>) -> JobsSnapshot {
-        let mut in_flight: Vec<JobView> = self
+    ///
+    /// `labels` maps a subject id onto a human-facing string (a lemma, a text
+    /// excerpt); anything unlabelled reports `null`, per `JobView` in types.ts.
+    pub fn snapshot(
+        &self,
+        backoff: Vec<JobView>,
+        labels: &std::collections::HashMap<String, String>,
+    ) -> JobsSnapshot {
+        let mut in_flight: Vec<(Priority, JobView)> = self
             .in_flight
             .lock()
             .expect("in-flight map poisoned")
             .iter()
-            .map(|(key, entry)| JobView {
-                kind: key.kind,
-                subject_type: key.subject.subject_type,
-                subject_id: key.subject.subject_id.clone(),
-                rate_key: entry.rate_key,
-                priority: entry.priority,
-                state: if entry.running { "running" } else { "queued" }.to_string(),
-                attempts: None,
-                next_retry_at: None,
-                last_error: None,
+            .map(|(key, entry)| {
+                (
+                    entry.priority,
+                    JobView {
+                        kind: key.kind.as_str().to_string(),
+                        subject_type: key.subject.subject_type,
+                        subject_id: key.subject.subject_id.clone(),
+                        rate_key: entry.rate_key.as_str().to_string(),
+                        // In-flight work has no persisted status; `null` is
+                        // what distinguishes it from a `job_state` row.
+                        status: None,
+                        attempts: 0,
+                        next_retry_at: None,
+                        last_error: None,
+                        subject_label: labels.get(&key.subject.subject_id).cloned(),
+                    },
+                )
             })
             .collect();
-        in_flight.sort_by(|a, b| {
-            (a.priority, a.kind, &a.subject_id).cmp(&(b.priority, b.kind, &b.subject_id))
+        in_flight.sort_by(|(pa, a), (pb, b)| {
+            (pa, &a.kind, &a.subject_id).cmp(&(pb, &b.kind, &b.subject_id))
         });
+        let in_flight: Vec<JobView> = in_flight.into_iter().map(|(_, view)| view).collect();
 
         let lanes = self
             .lanes
@@ -290,9 +312,18 @@ mod tests {
         lane.start_running();
         registry.mark_running(&job.key);
 
-        let snapshot = registry.snapshot(Vec::new());
+        let labels = std::collections::HashMap::from([("7".to_string(), "serene".to_string())]);
+        let snapshot = registry.snapshot(Vec::new(), &labels);
         assert_eq!(snapshot.in_flight.len(), 1);
-        assert_eq!(snapshot.in_flight[0].state, "running");
+        assert!(
+            snapshot.in_flight[0].status.is_none(),
+            "in-flight has no job_state row"
+        );
+        assert_eq!(snapshot.in_flight[0].attempts, 0);
+        assert_eq!(
+            snapshot.in_flight[0].subject_label.as_deref(),
+            Some("serene")
+        );
         let cpu = &snapshot.lanes["cpu"];
         assert_eq!(cpu.limit, 4);
         assert_eq!(cpu.running, 1);

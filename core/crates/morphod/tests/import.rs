@@ -74,7 +74,7 @@ fn imports_fixtures_and_is_idempotent() {
         ],
     );
     assert!(ok, "{out}");
-    assert!(out.contains("25 new"), "{out}");
+    assert!(out.contains("60 new"), "{out}");
 
     // Re-importing both lists changes nothing at all.
     for (path, role) in [(&base, "base"), (&target, "target")] {
@@ -95,8 +95,8 @@ fn imports_fixtures_and_is_idempotent() {
 
     let (ok, out) = run(data_dir, &["status"]);
     assert!(ok, "{out}");
-    assert!(out.contains("89 total"), "{out}");
-    assert!(out.contains("25 target"), "{out}");
+    assert!(out.contains("124 total"), "{out}");
+    assert!(out.contains("60 target"), "{out}");
     assert!(out.contains("64 base"), "{out}");
     assert!(out.contains("plan            none built yet"), "{out}");
 }

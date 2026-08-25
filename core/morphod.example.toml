@@ -8,6 +8,9 @@
 # Holds working.db and the content-addressed media store.
 data_dir = "data"
 
+# Where `morphod export` and POST /api/releases/export write bundles.
+releases_dir = "data/releases"
+
 # Admin API and admin UI listen address.
 bind = "127.0.0.1:8787"
 
@@ -28,9 +31,104 @@ full_pass_interval_secs = 60
 # Window used to absorb bursts of edits before running a scoped pass.
 coalesce_window_ms = 250
 
+# ---------------------------------------------------------------------------
+# Content sources
+#
+# An unset source is DISABLED, and disabled is treated exactly like waived: the
+# engine derives no job for it, and the next fallback in the chain fires
+# immediately instead of waiting out eight retries. Nothing is ever faked to
+# stand in for a source that is not configured.
+# ---------------------------------------------------------------------------
+[sources]
+# Free Dictionary API. Needs no credentials, so it is always available.
+freedict_url = "https://api.dictionaryapi.dev/api/v2/entries/en"
+
+# Wiktionary MediaWiki API, used for etymology. Wikimedia requires a real
+# User-Agent; keep the contact address current.
+wiktionary_url = "https://en.wiktionary.org/w/api.php"
+user_agent = "morphod/0.1 (Morpho content engine; +https://github.com/morpho)"
+
+# Per-request HTTP timeout.
+http_timeout_secs = 20
+
+# WNdb data files (data.noun, index.noun, ...). Enables two things at once:
+# the WordNet gloss fallback for definitions, and the semantic clustering stage
+# of the learning plan. Unset -> both are skipped, not approximated.
+# wordnet_dir = "/usr/share/wordnet"
+
+# Exam-corpus JSONL, one object per line:
+#   {"word": "benevolent", "sentence": "The benevolent donor funded the library."}
+#   {"word": "adapt", "sentence": "Species adapt to a changing climate.", "source": "2019-T1"}
+# `word` is matched case-insensitively and may appear inflected in the sentence;
+# `source` is optional provenance. Highlight offsets are computed after
+# canonicalization, and a sentence that does not contain its own target word is
+# dropped rather than stored with a guessed range.
+# Unset -> no example jobs at all, and every word reports `missing_example`.
+# corpus_path = "data/exam-corpus.jsonl"
+
+# Stock photo providers. A provider without a key is never queried. When all
+# three are keyless, the SDXL fallback becomes the live path; when that is
+# absent too, words honestly report `missing_image`.
+# Environment overrides these: UNSPLASH_ACCESS_KEY, PEXELS_API_KEY,
+# PIXABAY_API_KEY.
+# unsplash_access_key = ""
+# pexels_api_key = ""
+# pixabay_api_key = ""
+
+# Local ComfyUI for the SDXL image fallback. Environment: COMFYUI_URL.
+# comfyui_url = "http://127.0.0.1:8188"
+
+# ---------------------------------------------------------------------------
+# Python adapters (docs/contracts/adapter-protocol.md)
+# ---------------------------------------------------------------------------
+[adapters]
+# Repository root; the command below runs from here.
+repo_root = "."
+# Argument vector template; every {adapter} becomes tts / morfessor / sdxl.
+# Override it if you vendored the virtualenvs, e.g.
+#   command = ["python", "-m", "morpho_{adapter}"]
+command = ["uv", "run", "--project", "adapters/{adapter}", "{adapter}-adapter"]
+# Morfessor needs a few hundred distinct words before its ad-hoc trainer
+# produces anything useful (protocol ruling #4). Smaller pending sets wait...
+morfessor_batch = 300
+# ...but not forever: after this long, the batch goes anyway and the words that
+# come back unsegmented are recorded as a zero-result fetch.
+morfessor_batch_max_age_secs = 600
+
+# ---------------------------------------------------------------------------
+# Text-to-speech
+#
+# Every field here feeds the TTS content address. Changing any of them does not
+# rewrite existing audio: it produces different input hashes, so new rows appear
+# and the orphans become GC-eligible.
+# ---------------------------------------------------------------------------
+[tts]
+voice = "en-US-AriaNeural"
+rate = "+0%"
+pitch = "+0Hz"
+volume = "+0%"
+# The dictation quiz needs clean phonemes, so the word track is richer than the
+# prose tracks (README Part 5 budget).
+word_bitrate_kbps = 48
+text_bitrate_kbps = 32
+engine = "edge-tts"
+engine_ver = "7"
+
+# ---------------------------------------------------------------------------
+# Learning plan
+# ---------------------------------------------------------------------------
+[plan]
+# Group size window (README Part 1: 15-20 words per group).
+group_min = 15
+group_max = 20
+
 # Environment overrides:
 #   MORPHOD_CONFIG         path to this file
 #   MORPHOD_DATA_DIR       overrides data_dir
+#   MORPHOD_RELEASES_DIR   overrides releases_dir
 #   MORPHOD_BIND           overrides bind
 #   MORPHOD_ADMIN_UI_DIST  overrides admin_ui_dist
+#   MORPHO_WORDNET_DIR     overrides sources.wordnet_dir
+#   MORPHO_CORPUS_PATH     overrides sources.corpus_path
+#   UNSPLASH_ACCESS_KEY / PEXELS_API_KEY / PIXABAY_API_KEY / COMFYUI_URL
 #   RUST_LOG               overrides --log

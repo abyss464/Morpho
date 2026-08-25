@@ -13,5 +13,30 @@ pub const EXTRACTION_ALGO_VER: &str = "def-extract/1";
 /// Version of the code that composes `tts_assets.input_hash`.
 pub const TTS_ALGO_VER: &str = "tts-input/1";
 
+/// Version of the candidate scorer. Bumping it re-scores every candidate.
+pub const SCORER_ALGO_VER: &str = "scorer/1";
+
+/// Version of the plan builder (Tarjan → condensation → grouping).
+pub const PLAN_ALGO_VER: &str = "plan/1";
+
+/// Version of the code that composes `plan_artifacts.input_hash`.
+pub const PLAN_INPUT_ALGO_VER: &str = "plan-input/1";
+
+/// Version of the distractor binder. Written to `distractors.algo_ver`; the
+/// table is deliberately exempt from staleness, so this is provenance only.
+pub const DISTRACTOR_ALGO_VER: &str = "distractor/1";
+
+/// Version of the readiness/blocker evaluator.
+pub const READINESS_ALGO_VER: &str = "readiness/1";
+
+/// Version of the exporter, mixed into `releases.input_hash`.
+pub const EXPORT_ALGO_VER: &str = "export/1";
+
+/// `meta.schema_ver` written into every `release.db`.
+pub const RELEASE_SCHEMA_VER: &str = "1";
+
 /// Working-database schema version stamped into `PRAGMA user_version`.
-pub const SCHEMA_USER_VERSION: i32 = 1;
+///
+/// * 1 — wave-1 shape.
+/// * 2 — wave-2: `words.core_ready`, normative `rate_limits` seeds.
+pub const SCHEMA_USER_VERSION: i32 = 2;

@@ -14,6 +14,7 @@ path = "src/main.rs"
 morpho-domain = { workspace = true }
 morpho-store = { workspace = true }
 morpho-reconcile = { workspace = true }
+morpho-export = { workspace = true }
 morpho-api = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
@@ -24,8 +25,10 @@ toml = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-# Present for wave 2 adapters (HTTP sources); unused for now.
-reqwest = { workspace = true }
+chrono = { workspace = true }
+rusqlite = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio = { workspace = true }
+rusqlite = { workspace = true }

@@ -6,21 +6,41 @@
 //!   * a build system — every derived artifact records the hash of its exact
 //!     inputs, and "stale" is a comparison, never a propagated flag.
 //!
-//! Wave 1 ships the machinery plus one real rule (`ExtractTokens`) end to end.
+//! Layout:
+//!   * [`rule`] / [`rules`] — desired-state derivation for external work;
+//!   * [`exec`] — one executor per job kind, each committing one atomic write;
+//!   * [`stages`] — the inline local sweep (scoring, selection, OOV, liveness,
+//!     distractors, plan, readiness, media GC);
+//!   * [`sources`] — HTTP, WordNet, the exam corpus and the Python adapters;
+//!   * [`graph`], [`score`], [`distance`], [`readiness`] — the pure algorithms.
 
 pub mod backoff;
+pub mod config;
 pub mod dispatch;
+pub mod distance;
 pub mod engine;
 pub mod exec;
+pub mod facts;
+pub mod graph;
+pub mod readiness;
 pub mod registry;
 pub mod rule;
 pub mod rules;
+pub mod score;
+pub mod sources;
+pub mod stages;
 pub mod text;
 
+pub use config::{AdapterConfig, SourcesConfig};
 pub use dispatch::Dispatcher;
-pub use engine::{PassStats, Reconciler, ReconcilerConfig, Trigger};
-pub use exec::{default_executors, Executor, ExtractTokensExecutor};
+pub use engine::{EngineContext, PassStats, Reconciler, ReconcilerConfig, Trigger};
+pub use exec::{default_executors, Executor};
+pub use facts::Facts;
+pub use graph::{build_plan, BuiltPlan, GroupType, PlanInput, PlanParams, PlanStats};
+pub use readiness::{core_blockers, evaluate_all, Readiness, WordFacts};
 pub use registry::{JobRegistry, Lane};
 pub use rule::{JobPayload, JobSpec, Rule, Scope, Snapshot};
-pub use rules::{default_rules, ExtractTokensRule, StubRule, STUBBED_KINDS};
+pub use rules::default_rules;
+pub use sources::SourceSet;
+pub use stages::SweepStats;
 pub use text::{Lemmatizer, LowercaseLemmatizer, SimpleTokenizer, TextPipeline, Tokenizer};

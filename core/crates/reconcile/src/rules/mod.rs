@@ -1,74 +1,44 @@
-//! Desired-state rules.
+//! Desired-state rules for external work.
 //!
-//! Wave 1 implements `ExtractTokens` end to end as the pattern every later
-//! rule follows. The remaining kinds are registered as stubs that derive
-//! nothing, so the loop, the dispatcher and `GET /api/jobs` already exercise
-//! the complete shape without inventing external-source behavior.
+//! Each rule answers one question of the form "what does the world still owe
+//! this word?", and answers it from the shared [`Facts`](crate::facts::Facts)
+//! snapshot rather than by querying per word.
+//!
+//! The fallback chains are all expressed the same way: a fallback rule derives
+//! nothing until its primary is *exhausted*, where exhausted means tried and
+//! empty, dead, waived, or never configured at all. That is the single
+//! mechanism behind "Wiktionary 被豁免 → Morfessor 上" and "三个图库全部标记/
+//! 死信/豁免 → SDXL 上" (README Part 4 §"任务生命周期").
 
+mod definitions;
+mod etymology;
+mod examples;
 mod extract_tokens;
+mod images;
+mod tts;
 
-use morpho_domain::job::JobKind;
-use morpho_store::error::Result;
+use std::sync::Arc;
 
-use crate::rule::{JobSpec, Rule, Snapshot};
-use crate::text::TextPipeline;
-
+pub use definitions::FetchDefinitionsRule;
+pub use etymology::{FetchEtymologyRule, SegmentMorphologyRule};
+pub use examples::FetchExamplesRule;
 pub use extract_tokens::ExtractTokensRule;
+pub use images::{FetchImagesRule, GenImageSdxlRule};
+pub use tts::SynthTtsRule;
 
-/// A registered but not-yet-implemented rule. Derives nothing.
-pub struct StubRule {
-    name: &'static str,
-    kind: JobKind,
-}
+use crate::engine::EngineContext;
+use crate::rule::Rule;
 
-impl StubRule {
-    pub fn new(kind: JobKind) -> Self {
-        Self {
-            name: kind.as_str(),
-            kind,
-        }
-    }
-
-    pub fn kind(&self) -> JobKind {
-        self.kind
-    }
-}
-
-impl Rule for StubRule {
-    fn name(&self) -> &'static str {
-        self.name
-    }
-
-    fn derive(&self, _snapshot: &Snapshot<'_>) -> Result<Vec<JobSpec>> {
-        Ok(Vec::new())
-    }
-}
-
-/// Job kinds whose rules are still stubs in wave 1.
-pub const STUBBED_KINDS: &[JobKind] = &[
-    JobKind::ScoreCandidates,
-    JobKind::AutoSelect,
-    JobKind::SyncOosQueue,
-    JobKind::SyncAuxLiveness,
-    JobKind::RecomputeReadiness,
-    JobKind::BindDistractors,
-    JobKind::BuildPlan,
-    JobKind::GcMedia,
-    JobKind::FetchDefinitions,
-    JobKind::FetchExamples,
-    JobKind::FetchEtymology,
-    JobKind::FetchImages,
-    JobKind::GenImageSdxl,
-    JobKind::RewriteDefinition,
-    JobKind::SynthTts,
-];
-
-/// The full wave-1 rule set, in derivation order.
-pub fn default_rules(pipeline: TextPipeline) -> Vec<std::sync::Arc<dyn Rule>> {
-    let mut rules: Vec<std::sync::Arc<dyn Rule>> =
-        vec![std::sync::Arc::new(ExtractTokensRule::new(pipeline))];
-    for kind in STUBBED_KINDS {
-        rules.push(std::sync::Arc::new(StubRule::new(*kind)));
-    }
-    rules
+/// The full rule set, in derivation order.
+pub fn default_rules(context: Arc<EngineContext>) -> Vec<Arc<dyn Rule>> {
+    vec![
+        Arc::new(ExtractTokensRule::new(context.pipeline.clone())),
+        Arc::new(FetchDefinitionsRule::new(context.clone())),
+        Arc::new(FetchExamplesRule::new(context.clone())),
+        Arc::new(FetchEtymologyRule::new(context.clone())),
+        Arc::new(SegmentMorphologyRule::new(context.clone())),
+        Arc::new(FetchImagesRule::new(context.clone())),
+        Arc::new(GenImageSdxlRule::new(context.clone())),
+        Arc::new(SynthTtsRule::new(context)),
+    ]
 }

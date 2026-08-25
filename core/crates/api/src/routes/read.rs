@@ -13,7 +13,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
 use morpho_domain::event::EventRecord;
-use morpho_domain::job::{JobView, JobsSnapshot, Priority};
+use morpho_domain::job::{JobStatus, JobView, JobsSnapshot, SubjectType};
 use morpho_domain::types::MediaKind;
 use morpho_store::queries::job_states;
 
@@ -22,8 +22,17 @@ use crate::error::{ApiError, ApiResult};
 use crate::queries;
 use crate::state::AppState;
 
+/// SSE coalescing window (wave-2 ruling #7).
+const SSE_COALESCE: Duration = Duration::from_millis(250);
+/// SSE keep-alive comment interval (wave-2 ruling #7).
+const SSE_PING: Duration = Duration::from_secs(30);
+
 pub async fn dashboard(State(state): State<AppState>) -> ApiResult<Json<Dashboard>> {
-    let body = state.store.read(queries::dashboard).await?;
+    let tts = state.tts.clone();
+    let body = state
+        .store
+        .read(move |conn| queries::dashboard(conn, &tts))
+        .await?;
     Ok(Json(body))
 }
 
@@ -41,10 +50,11 @@ pub async fn events(
 pub async fn words(
     State(state): State<AppState>,
     Query(query): Query<WordListQuery>,
-) -> ApiResult<Json<Page<WordRollup>>> {
+) -> ApiResult<Json<Page<WordListItem>>> {
+    let tts = state.tts.clone();
     let body = state
         .store
-        .read(move |conn| queries::word_list(conn, &query))
+        .read(move |conn| queries::word_list(conn, &query, &tts))
         .await?;
     Ok(Json(body))
 }
@@ -53,53 +63,92 @@ pub async fn word_detail(
     State(state): State<AppState>,
     Path(word_id): Path<i64>,
 ) -> ApiResult<Json<WordDetail>> {
-    let body = state
-        .store
-        .read(move |conn| queries::word_detail(conn, word_id))
-        .await?;
-    Ok(Json(body))
+    Ok(Json(
+        crate::routes::write::load_word(&state, word_id).await?,
+    ))
 }
 
 pub async fn jobs(State(state): State<AppState>) -> ApiResult<Json<JobsSnapshot>> {
     // In-flight work lives only in memory; `job_state` holds the persisted
     // failure rows (backoff / dead / waived).
-    let backoff: Vec<JobView> = state
+    let (backoff, labels) = state
         .store
         .read(|conn| {
-            Ok(job_states(conn)?
+            let labels = queries::job_labels(conn)?;
+            let rows = job_states(conn)?
                 .into_iter()
-                .map(|row| JobView {
-                    kind: row.key.kind,
-                    subject_type: row.key.subject.subject_type,
-                    subject_id: row.key.subject.subject_id,
-                    rate_key: row.rate_key,
-                    // Priority is a derivation-time property and is not
-                    // persisted; report the backlog band.
-                    priority: Priority::P2,
-                    state: row.status.as_str().to_string(),
-                    attempts: Some(row.attempts),
-                    next_retry_at: row.next_retry_at,
-                    last_error: row.last_error,
+                .filter(|row| row.status == JobStatus::Backoff)
+                .map(|row| {
+                    let subject = queries::resolve_subject(
+                        conn,
+                        row.key.subject.subject_type.as_str(),
+                        &row.key.subject.subject_id,
+                    );
+                    JobView {
+                        kind: row.key.kind.as_str().to_string(),
+                        subject_type: row.key.subject.subject_type,
+                        subject_id: row.key.subject.subject_id,
+                        rate_key: row.rate_key.as_str().to_string(),
+                        status: Some(row.status),
+                        attempts: row.attempts,
+                        next_retry_at: row.next_retry_at,
+                        last_error: row.last_error,
+                        subject_label: Some(subject.label),
+                    }
                 })
-                .collect())
+                .collect::<Vec<_>>();
+            Ok((rows, labels))
         })
         .await?;
-    Ok(Json(state.jobs.snapshot(backoff)))
+    Ok(Json(state.jobs.snapshot(backoff, &labels)))
 }
 
-/// `GET /api/stream` — server-sent `ChangeEvent`s straight off the change bus.
+/// `GET /api/stream` — server-sent `ChangeEvent`s off the change bus.
+///
+/// Wave-2 ruling #7: `event: change`, one JSON object per frame, coalesced over
+/// 250 ms, `: ping` comment every 30 s so a proxy does not drop an idle
+/// connection.
 pub async fn stream(
     State(state): State<AppState>,
 ) -> Sse<impl Stream<Item = Result<SseEvent, Infallible>>> {
-    let stream = BroadcastStream::new(state.store.subscribe()).filter_map(|item| match item {
-        Ok(change) => Some(Ok(SseEvent::default()
-            .event("change")
-            .json_data(&change)
-            .unwrap_or_else(|_| SseEvent::default().comment("serialization failed")))),
-        // Lagged subscribers just miss a nudge; the periodic full pass covers it.
-        Err(_) => None,
+    let raw = BroadcastStream::new(state.store.subscribe()).filter_map(|item| item.ok());
+    let coalesced = tokio_stream::StreamExt::chunks_timeout(raw, 256, SSE_COALESCE);
+
+    let stream = coalesced.filter_map(|batch: Vec<morpho_domain::ChangeEvent>| {
+        if batch.is_empty() {
+            return None;
+        }
+        // Merge the window into one frame per entity type.
+        let mut merged: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for change in batch {
+            let bucket = merged
+                .entry(change.entity_type.as_str().to_string())
+                .or_default();
+            for id in change.entity_ids {
+                if !bucket.contains(&id) {
+                    bucket.push(id);
+                }
+            }
+        }
+        let frames: Vec<SseEvent> = merged
+            .into_iter()
+            .filter_map(|(entity_type, entity_ids)| {
+                SseEvent::default()
+                    .event("change")
+                    .json_data(serde_json::json!({
+                        "entity_type": entity_type,
+                        "entity_ids": entity_ids,
+                    }))
+                    .ok()
+            })
+            .collect();
+        // One SSE frame per poll; extra entity types in the same window follow
+        // on the next one, which is still inside the coalescing budget.
+        frames.into_iter().next().map(Ok)
     });
-    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(SSE_PING).text(""))
 }
 
 /// `GET /api/media/{file_hash}` — serve content-addressed bytes.
@@ -144,3 +193,96 @@ pub async fn media(
     )
         .into_response())
 }
+
+// ---------------------------------------------------------------------------
+// OOV queue
+// ---------------------------------------------------------------------------
+
+pub async fn oov(
+    State(state): State<AppState>,
+    Query(query): Query<OovQuery>,
+) -> ApiResult<Json<Page<OovQueueEntry>>> {
+    let body = state
+        .store
+        .read(move |conn| queries::oov_page(conn, &query))
+        .await?;
+    Ok(Json(body))
+}
+
+// ---------------------------------------------------------------------------
+// Dead letters
+// ---------------------------------------------------------------------------
+
+pub async fn dead_letters(
+    State(state): State<AppState>,
+    Query(query): Query<PageQuery>,
+) -> ApiResult<Json<Page<DeadLetter>>> {
+    let page = query.pagination();
+    let body = state
+        .store
+        .read(move |conn| queries::dead_letters(conn, page))
+        .await?;
+    Ok(Json(body))
+}
+
+// ---------------------------------------------------------------------------
+// Plan
+// ---------------------------------------------------------------------------
+
+pub async fn plan(State(state): State<AppState>) -> ApiResult<Json<PlanSummary>> {
+    state
+        .store
+        .read(queries::plan_summary)
+        .await?
+        .map(Json)
+        .ok_or_else(|| ApiError::not_found("no plan has been built yet"))
+}
+
+pub async fn plan_group(
+    State(state): State<AppState>,
+    Path(group_seq): Path<i64>,
+) -> ApiResult<Json<PlanGroupDetail>> {
+    state
+        .store
+        .read(move |conn| queries::plan_group(conn, group_seq))
+        .await?
+        .map(Json)
+        .ok_or_else(|| ApiError::not_found(format!("group {group_seq} is not in the current plan")))
+}
+
+// ---------------------------------------------------------------------------
+// Releases
+// ---------------------------------------------------------------------------
+
+pub async fn releases(
+    State(state): State<AppState>,
+    Query(query): Query<PageQuery>,
+) -> ApiResult<Json<Page<Release>>> {
+    let page = query.pagination();
+    let body = state
+        .store
+        .read(move |conn| queries::releases(conn, page))
+        .await?;
+    Ok(Json(body))
+}
+
+pub async fn release_preview(
+    State(state): State<AppState>,
+) -> ApiResult<Json<morpho_export::HoldbackReport>> {
+    match morpho_export::preview(&state.store, &state.export).await {
+        Ok(report) => Ok(Json(report)),
+        Err(morpho_export::ExportError::NoPlan) => {
+            Err(ApiError::not_found("no plan has been built yet"))
+        }
+        Err(err) => Err(ApiError::internal(err.to_string())),
+    }
+}
+
+/// Subject types the resolver knows about; kept so the compiler notices if the
+/// vocabulary ever grows.
+const _: [SubjectType; 4] = [
+    SubjectType::Word,
+    SubjectType::DefCandidate,
+    SubjectType::TtsInput,
+    SubjectType::Global,
+];

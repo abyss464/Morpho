@@ -10,13 +10,22 @@ use morpho_store::Store;
 use crate::config::Config;
 
 pub async fn serve(config: Config, store: Store) -> Result<()> {
-    let reconciler = Reconciler::new(store.clone(), config.reconciler_config());
+    let context = config
+        .engine_context()
+        .context("resolving content sources")?;
+    let reconciler = Reconciler::new(store.clone(), context, config.reconciler_config());
     let registry = reconciler.registry();
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     let engine = tokio::spawn(reconciler.run(shutdown_rx));
 
-    let state = AppState::new(store, Arc::clone(&registry), config.data_dir.clone());
+    let state = AppState::new(
+        store,
+        Arc::clone(&registry),
+        config.data_dir.clone(),
+        config.export_settings(),
+    )
+    .with_releases_dir(config.releases_dir.clone());
     let admin_ui = config.admin_ui_dist.clone();
     let router = build_router(state, Some(admin_ui.as_path()));
 

@@ -171,6 +171,59 @@ string_enum!(
     }
 );
 
+string_enum!(
+    /// `words.etymology_source`
+    EtymologySource, "etymology_source", {
+        Wiktionary => "wiktionary",
+        Morfessor => "morfessor",
+        Manual => "manual",
+    }
+);
+
+string_enum!(
+    /// `*_candidates.pos`. The column is open TEXT, but `admin-ui/src/api/types.ts`
+    /// pins the vocabulary the console can render, so morphod normalizes every
+    /// external label into this closed set.
+    Pos, "pos", {
+        Noun => "noun",
+        Verb => "verb",
+        Adj => "adj",
+        Adv => "adv",
+        Prep => "prep",
+        Conj => "conj",
+        Interj => "interj",
+        Phrase => "phrase",
+    }
+);
+
+impl Pos {
+    /// Map a part-of-speech label from an external source onto the contract
+    /// vocabulary.
+    ///
+    /// Closed-class labels with no slot of their own (pronoun, determiner,
+    /// article, numeral, particle, affixes) fold into `phrase`, which is the
+    /// vocabulary's catch-all. Folding is lossy but honest — the original label
+    /// is preserved in the candidate's `source_ref`.
+    pub fn normalize(raw: &str) -> Self {
+        let key: String = raw
+            .trim()
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_ascii_alphabetic())
+            .collect();
+        match key.as_str() {
+            "noun" | "propernoun" | "nouns" | "n" => Self::Noun,
+            "verb" | "verbs" | "auxiliaryverb" | "v" => Self::Verb,
+            "adjective" | "adj" | "adjectives" | "a" | "s" => Self::Adj,
+            "adverb" | "adv" | "adverbs" | "r" => Self::Adv,
+            "preposition" | "prep" | "postposition" | "adposition" => Self::Prep,
+            "conjunction" | "conj" => Self::Conj,
+            "interjection" | "interj" | "exclamation" => Self::Interj,
+            _ => Self::Phrase,
+        }
+    }
+}
+
 impl MediaKind {
     /// File extension used by the content-addressed store.
     pub const fn extension(self) -> &'static str {
@@ -315,6 +368,41 @@ pub struct ExtractedToken {
     pub lemma: String,
 }
 
+/// A definition candidate as fetched from an external source, before it has an
+/// id. `text` is canonicalized by the store on insert.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchedDefinition {
+    pub pos: Pos,
+    pub text: String,
+    /// Provenance detail: the source's own label / entry id.
+    pub source_ref: Option<String>,
+}
+
+/// An example candidate as fetched from the exam corpus.
+///
+/// Highlight offsets are UTF-8 byte offsets **into the canonicalized text**
+/// (working-db.sql `example_candidates.hl_start`), so producers must
+/// canonicalize before locating the target word.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchedExample {
+    pub text: String,
+    pub hl_start: i64,
+    pub hl_end: i64,
+    pub source_ref: Option<String>,
+}
+
+/// An image candidate whose bytes are already in the content-addressed store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchedImage {
+    pub file_hash: String,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub source: ImageSource,
+    pub source_ref: Option<String>,
+    pub license: Option<String>,
+    pub query_used: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -362,6 +450,29 @@ mod tests {
         assert!(!w.is_active());
         w.aux_status = Some(AuxStatus::Active);
         assert!(w.is_active());
+    }
+
+    #[test]
+    fn pos_normalization_folds_external_labels() {
+        assert_eq!(Pos::normalize("adjective"), Pos::Adj);
+        assert_eq!(Pos::normalize("Adjective"), Pos::Adj);
+        assert_eq!(Pos::normalize("adverb"), Pos::Adv);
+        assert_eq!(Pos::normalize("preposition"), Pos::Prep);
+        assert_eq!(Pos::normalize("exclamation"), Pos::Interj);
+        assert_eq!(Pos::normalize("noun"), Pos::Noun);
+        // Closed classes with no slot of their own fall into the catch-all.
+        assert_eq!(Pos::normalize("pronoun"), Pos::Phrase);
+        assert_eq!(Pos::normalize("determiner"), Pos::Phrase);
+        assert_eq!(Pos::normalize("prefix"), Pos::Phrase);
+        assert_eq!(Pos::normalize(""), Pos::Phrase);
+    }
+
+    #[test]
+    fn pos_round_trips_through_the_contract_vocabulary() {
+        for pos in Pos::ALL {
+            assert_eq!(Pos::from_str(pos.as_str()).unwrap(), *pos);
+            assert_eq!(Pos::normalize(pos.as_str()), *pos);
+        }
     }
 
     #[test]

@@ -1,0 +1,550 @@
+//! The adapter subprocess protocol (`docs/contracts/adapter-protocol.md`).
+//!
+//! One process per job (per *batch* for Morfessor): morphod writes a single
+//! JSON request to stdin, closes it, reads one JSON response from stdout, and
+//! kills the child at the contractual timeout. stderr is captured verbatim into
+//! `job_state.last_error`, which is where a traceback ends up when a dependency
+//! is missing.
+//!
+//! Ruling #1: the invocation is `uv run --project adapters/<name> <name>-adapter`
+//! from the repository root, and morphod owns the `out_path` staging directory.
+//! Ruling #3: exit code 2 is a protocol crash; **any** non-zero exit maps to
+//! `Transient`.
+
+use std::path::Path;
+use std::process::Stdio;
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use tokio::io::AsyncWriteExt;
+
+use morpho_domain::error::TaskError;
+
+use crate::config::AdapterConfig;
+
+/// Contractual timeouts (adapter-protocol.md §Timeouts).
+pub const TTS_TIMEOUT: Duration = Duration::from_secs(60);
+pub const MORFESSOR_TIMEOUT: Duration = Duration::from_secs(120);
+pub const SDXL_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// stderr kept for `last_error`. Enough for a traceback, bounded so one broken
+/// adapter cannot bloat the database.
+const MAX_STDERR: usize = 4_000;
+
+/// `{"op": ..., "params": {...}}`
+#[derive(Debug, Serialize)]
+struct Request<'a, P: Serialize> {
+    op: &'a str,
+    params: P,
+}
+
+#[derive(Debug, Deserialize)]
+struct Envelope<R> {
+    #[serde(default)]
+    ok: bool,
+    // No `#[serde(default)]`: that would demand `R: Default`, and `Option<R>`
+    // already defaults to `None` when the key is absent.
+    result: Option<R>,
+    error: Option<AdapterError>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdapterError {
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    message: String,
+    #[serde(default)]
+    retry_after_ms: u64,
+}
+
+impl AdapterError {
+    fn into_task_error(self) -> TaskError {
+        match self.kind.as_str() {
+            "permanent" => TaskError::permanent(self.message),
+            "rate_limited" => {
+                // The contract says retry_after_ms is always present and 0 when
+                // upstream named no cooldown; 60 s is the documented default.
+                let ms = if self.retry_after_ms == 0 {
+                    60_000
+                } else {
+                    self.retry_after_ms
+                };
+                TaskError::rate_limited_ms(ms)
+            }
+            // "transient" and anything unrecognized: back off.
+            _ => TaskError::transient(self.message),
+        }
+    }
+}
+
+/// Run one adapter op and decode its result.
+pub async fn call<P: Serialize, R: serde::de::DeserializeOwned>(
+    config: &AdapterConfig,
+    adapter: &str,
+    op: &str,
+    params: P,
+    timeout: Duration,
+) -> Result<R, TaskError> {
+    let payload = serde_json::to_vec(&Request { op, params })
+        .map_err(|err| TaskError::permanent(format!("cannot serialize {op} request: {err}")))?;
+    let (stdout, stderr) = spawn(config, adapter, &payload, timeout).await?;
+
+    let envelope: Envelope<R> = serde_json::from_slice(&stdout).map_err(|err| {
+        // Ruling #3: a broken envelope is a protocol crash, and morphod maps
+        // those to Transient so a flaky dependency still gets its retries.
+        TaskError::transient(format!(
+            "{adapter} produced an unreadable response ({err}); stderr: {}",
+            truncate(&stderr)
+        ))
+    })?;
+
+    if envelope.ok {
+        return envelope.result.ok_or_else(|| {
+            TaskError::transient(format!("{adapter} reported ok with no result payload"))
+        });
+    }
+    Err(envelope
+        .error
+        .map(AdapterError::into_task_error)
+        .unwrap_or_else(|| {
+            TaskError::transient(format!(
+                "{adapter} reported failure with no error payload; stderr: {}",
+                truncate(&stderr)
+            ))
+        }))
+}
+
+/// Spawn the adapter, feed it `payload`, and collect `(stdout, stderr)`.
+async fn spawn(
+    config: &AdapterConfig,
+    adapter: &str,
+    payload: &[u8],
+    timeout: Duration,
+) -> Result<(Vec<u8>, String), TaskError> {
+    let (program, args) = config.command(adapter);
+    let mut command = tokio::process::Command::new(&program);
+    command
+        .args(&args)
+        .current_dir(&config.repo_root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        // A timed-out adapter must not outlive the job that asked for it.
+        .kill_on_drop(true);
+
+    let mut child = command.spawn().map_err(|err| {
+        // A launcher that is not installed will not install itself on a retry.
+        TaskError::permanent(format!(
+            "cannot launch `{program}` for the {adapter} adapter from {}: {err}",
+            config.repo_root.display()
+        ))
+    })?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let payload = payload.to_vec();
+        // Write and close before waiting: the adapter reads one request to EOF.
+        if let Err(err) = stdin.write_all(&payload).await {
+            return Err(TaskError::transient(format!(
+                "{adapter} closed stdin early: {err}"
+            )));
+        }
+        let _ = stdin.shutdown().await;
+        drop(stdin);
+    }
+
+    let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(err)) => {
+            return Err(TaskError::transient(format!(
+                "{adapter} could not be collected: {err}"
+            )))
+        }
+        Err(_) => {
+            return Err(TaskError::transient(format!(
+                "{adapter} exceeded its {}s budget",
+                timeout.as_secs()
+            )))
+        }
+    };
+
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !output.status.success() {
+        // Ruling #3: every non-zero exit is Transient, including the exit-2
+        // protocol crash.
+        return Err(TaskError::transient(format!(
+            "{adapter} exited with {}; stderr: {}",
+            output.status,
+            truncate(&stderr)
+        )));
+    }
+    Ok((output.stdout, stderr))
+}
+
+fn truncate(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.len() <= MAX_STDERR {
+        return trimmed.to_string();
+    }
+    let mut end = MAX_STDERR;
+    while end > 0 && !trimmed.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}… (truncated)", &trimmed[..end])
+}
+
+// --- Typed op wrappers -------------------------------------------------------
+
+/// `tts.synthesize` request.
+#[derive(Debug, Serialize)]
+pub struct TtsRequest<'a> {
+    pub text: &'a str,
+    pub voice: &'a str,
+    pub rate: &'a str,
+    pub pitch: &'a str,
+    pub volume: &'a str,
+    pub format: &'static str,
+    pub bitrate_kbps: u32,
+    pub out_path: String,
+}
+
+/// `tts.synthesize` result.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TtsResult {
+    #[serde(default)]
+    pub duration_ms: Option<i64>,
+    #[serde(default)]
+    pub engine_ver: String,
+}
+
+pub async fn tts_synthesize(
+    config: &AdapterConfig,
+    request: TtsRequest<'_>,
+) -> Result<TtsResult, TaskError> {
+    call(config, "tts", "tts.synthesize", request, TTS_TIMEOUT).await
+}
+
+/// `morfessor.segment` result.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SegmentResult {
+    #[serde(default)]
+    pub segments: std::collections::BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub model_ver: String,
+}
+
+pub async fn morfessor_segment(
+    config: &AdapterConfig,
+    words: &[String],
+) -> Result<SegmentResult, TaskError> {
+    #[derive(Serialize)]
+    struct Params<'a> {
+        words: &'a [String],
+    }
+    call(
+        config,
+        "morfessor",
+        "morfessor.segment",
+        Params { words },
+        MORFESSOR_TIMEOUT,
+    )
+    .await
+}
+
+/// `sdxl.generate` request.
+#[derive(Debug, Serialize)]
+pub struct SdxlRequest<'a> {
+    pub prompt: &'a str,
+    pub negative_prompt: &'a str,
+    pub seed: u64,
+    pub width: u32,
+    pub height: u32,
+    pub out_path: String,
+}
+
+/// `sdxl.generate` result.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SdxlResult {
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub seed: u64,
+}
+
+pub async fn sdxl_generate(
+    config: &AdapterConfig,
+    request: SdxlRequest<'_>,
+) -> Result<SdxlResult, TaskError> {
+    call(config, "sdxl", "sdxl.generate", request, SDXL_TIMEOUT).await
+}
+
+/// Is the launcher for a given adapter present at all?
+///
+/// Used at startup to log an honest "adapter unavailable" instead of
+/// discovering it eight retries later.
+pub fn launcher_available(config: &AdapterConfig) -> bool {
+    which(config.runner()).is_some()
+}
+
+fn which(program: &str) -> Option<std::path::PathBuf> {
+    if program.contains('/') {
+        let path = Path::new(program);
+        return path.is_file().then(|| path.to_path_buf());
+    }
+    let paths = std::env::var_os("PATH")?;
+    std::env::split_paths(&paths)
+        .map(|dir| dir.join(program))
+        .find(|candidate| candidate.is_file())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use morpho_domain::error::ErrorKind;
+
+    /// Build a config that runs a shell snippet instead of a real adapter, so
+    /// the protocol can be exercised without uv or a network.
+    ///
+    /// The snippet is passed to `sh -c`, never written to disk as an
+    /// executable: writing and immediately exec-ing a file races with other
+    /// threads' `fork` calls and intermittently fails with `ETXTBSY`.
+    fn fake_adapter(script: &str) -> (tempfile::TempDir, AdapterConfig) {
+        let dir = tempfile::tempdir().unwrap();
+        let config = AdapterConfig {
+            repo_root: dir.path().to_path_buf(),
+            command: vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                script.to_string(),
+                "fake-{adapter}".to_string(),
+            ],
+            ..AdapterConfig::default()
+        };
+        (dir, config)
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct Echo {
+        value: String,
+    }
+
+    #[tokio::test]
+    async fn decodes_a_successful_envelope() {
+        let (_dir, config) = fake_adapter(r#"echo '{"ok":true,"result":{"value":"hi"}}'"#);
+        let result: Echo = call(
+            &config,
+            "tts",
+            "tts.synthesize",
+            serde_json::json!({}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.value, "hi");
+    }
+
+    #[tokio::test]
+    async fn the_request_reaches_the_adapter_on_stdin() {
+        let (_dir, config) = fake_adapter(
+            r#"payload=$(cat); printf '{"ok":true,"result":{"value":%s}}' "\"$(echo "$payload" | tr -d '\n' | sed 's/"/\\"/g')\"""#,
+        );
+        let result: Echo = call(
+            &config,
+            "morfessor",
+            "morfessor.segment",
+            serde_json::json!({"words": ["a"]}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+        assert!(result.value.contains("morfessor.segment"), "{result:?}");
+        assert!(result.value.contains("words"), "{result:?}");
+    }
+
+    #[tokio::test]
+    async fn a_permanent_error_response_is_permanent() {
+        let (_dir, config) = fake_adapter(
+            r#"cat >/dev/null; echo '{"ok":false,"error":{"kind":"permanent","message":"sdxl backend not configured","retry_after_ms":0}}'"#,
+        );
+        let err = call::<_, Echo>(
+            &config,
+            "sdxl",
+            "sdxl.generate",
+            serde_json::json!({}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Permanent);
+        assert_eq!(err.message(), "sdxl backend not configured");
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_response_parks_the_lane() {
+        let (_dir, config) = fake_adapter(
+            r#"cat >/dev/null; echo '{"ok":false,"error":{"kind":"rate_limited","message":"slow down","retry_after_ms":4500}}'"#,
+        );
+        let err = call::<_, Echo>(
+            &config,
+            "tts",
+            "tts.synthesize",
+            serde_json::json!({}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::RateLimited);
+        assert!(err.message().contains("4500"));
+        assert!(!err.counts_as_attempt());
+    }
+
+    #[tokio::test]
+    async fn rate_limited_without_a_cooldown_uses_the_documented_default() {
+        let (_dir, config) = fake_adapter(
+            r#"cat >/dev/null; echo '{"ok":false,"error":{"kind":"rate_limited","message":"x","retry_after_ms":0}}'"#,
+        );
+        let err = call::<_, Echo>(
+            &config,
+            "tts",
+            "tts.synthesize",
+            serde_json::json!({}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.message().contains("60000"));
+    }
+
+    #[tokio::test]
+    async fn a_protocol_crash_maps_to_transient() {
+        // Ruling #3: exit 2, empty stdout, explanation on stderr.
+        let (_dir, config) =
+            fake_adapter(r#"cat >/dev/null; echo "stdin was not JSON" >&2; exit 2"#);
+        let err = call::<_, Echo>(
+            &config,
+            "morfessor",
+            "morfessor.segment",
+            serde_json::json!({}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Transient);
+        assert!(err.message().contains("stdin was not JSON"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn any_non_zero_exit_maps_to_transient() {
+        let (_dir, config) = fake_adapter(r#"cat >/dev/null; exit 137"#);
+        let err = call::<_, Echo>(
+            &config,
+            "tts",
+            "tts.synthesize",
+            serde_json::json!({}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Transient);
+    }
+
+    #[tokio::test]
+    async fn unreadable_stdout_is_transient() {
+        let (_dir, config) = fake_adapter(r#"cat >/dev/null; echo 'not json'"#);
+        let err = call::<_, Echo>(
+            &config,
+            "tts",
+            "tts.synthesize",
+            serde_json::json!({}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Transient);
+    }
+
+    #[tokio::test]
+    async fn a_hung_adapter_is_killed_at_the_timeout() {
+        let (_dir, config) = fake_adapter(r#"cat >/dev/null; sleep 30"#);
+        let started = std::time::Instant::now();
+        let err = call::<_, Echo>(
+            &config,
+            "sdxl",
+            "sdxl.generate",
+            serde_json::json!({}),
+            Duration::from_millis(300),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Transient);
+        assert!(err.message().contains("budget"));
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "kill was not prompt"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_missing_launcher_is_permanent() {
+        let config = AdapterConfig {
+            command: vec!["definitely-not-installed-morpho-runner".to_string()],
+            ..AdapterConfig::default()
+        };
+        let err = call::<_, Echo>(
+            &config,
+            "tts",
+            "tts.synthesize",
+            serde_json::json!({}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Permanent);
+        assert!(err.message().contains("cannot launch"));
+    }
+
+    #[tokio::test]
+    async fn ok_without_a_result_is_transient_rather_than_a_panic() {
+        let (_dir, config) = fake_adapter(r#"cat >/dev/null; echo '{"ok":true}'"#);
+        let err = call::<_, Echo>(
+            &config,
+            "tts",
+            "tts.synthesize",
+            serde_json::json!({}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Transient);
+    }
+
+    #[test]
+    fn stderr_is_bounded() {
+        let long = "x".repeat(MAX_STDERR * 2);
+        let truncated = truncate(&long);
+        assert!(truncated.len() < long.len());
+        assert!(truncated.ends_with("(truncated)"));
+        assert_eq!(truncate("  short  "), "short");
+    }
+
+    #[test]
+    fn contract_timeouts_match_the_protocol_document() {
+        assert_eq!(TTS_TIMEOUT.as_secs(), 60);
+        assert_eq!(MORFESSOR_TIMEOUT.as_secs(), 120);
+        assert_eq!(SDXL_TIMEOUT.as_secs(), 600);
+    }
+
+    #[test]
+    fn launcher_detection_finds_a_real_binary() {
+        let config = AdapterConfig {
+            command: vec!["sh".to_string()],
+            ..AdapterConfig::default()
+        };
+        assert!(launcher_available(&config));
+        let missing = AdapterConfig {
+            command: vec!["definitely-not-installed-morpho-runner".to_string()],
+            ..AdapterConfig::default()
+        };
+        assert!(!launcher_available(&missing));
+    }
+}

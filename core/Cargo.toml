@@ -4,6 +4,7 @@ members = [
     "crates/domain",
     "crates/store",
     "crates/reconcile",
+    "crates/export",
     "crates/api",
     "crates/morphod",
 ]
@@ -19,6 +20,7 @@ license = "MIT"
 morpho-domain = { path = "crates/domain" }
 morpho-store = { path = "crates/store" }
 morpho-reconcile = { path = "crates/reconcile" }
+morpho-export = { path = "crates/export" }
 morpho-api = { path = "crates/api" }
 
 # Runtime
@@ -47,6 +49,10 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Media
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
+webp = { version = "0.3", default-features = false }
+
 # Domain support
 blake3 = "1"
 unicode-normalization = "0.1"
@@ -56,6 +62,7 @@ clap = { version = "4", features = ["derive"] }
 
 # Dev
 tempfile = "3"
+http = "1"
 
 [profile.release]
 lto = "thin"

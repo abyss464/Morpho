@@ -5,6 +5,7 @@
 //! here is pure and unit-testable, which matters because the hashing rules are
 //! the foundation of the whole staleness model (README Part 3).
 
+pub mod blocker;
 pub mod canon;
 pub mod change;
 pub mod error;
@@ -12,9 +13,11 @@ pub mod event;
 pub mod hash;
 pub mod job;
 pub mod time;
+pub mod tts;
 pub mod types;
 pub mod version;
 
+pub use blocker::{parse_blockers, BlockerCode, BlockerSet};
 pub use canon::{canonicalize, fold_lemma};
 pub use change::{ChangeEvent, ChangeSet, EntityType};
 pub use error::{ErrorKind, TaskError};
@@ -27,9 +30,11 @@ pub use job::{
     SubjectType,
 };
 pub use time::{format_ts, now_ts, parse_ts};
+pub use tts::{DesiredTts, TtsConfig};
 pub use types::{
     AuxStatus, CandidateKind, CandidateStatus, CreatedBy, DefinitionCandidate, DefinitionSelection,
-    DefinitionSource, ExampleSource, ExtractedToken, ImageSource, MediaKind, OosStatus,
-    ParseEnumError, Role, SelectedBy, SlotRef, TtsKind, Word, WordImport,
+    DefinitionSource, EtymologySource, ExampleSource, ExtractedToken, FetchedDefinition,
+    FetchedExample, FetchedImage, ImageSource, MediaKind, OosStatus, ParseEnumError, Pos, Role,
+    SelectedBy, SlotRef, TtsKind, Word, WordImport,
 };
 pub use version::SCHEMA_USER_VERSION;

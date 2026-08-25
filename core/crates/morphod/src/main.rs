@@ -5,6 +5,7 @@
 //! (README Part 2).
 
 mod config;
+mod export;
 mod import;
 mod serve;
 mod status;
@@ -66,6 +67,21 @@ enum Command {
     },
     /// Print working-database counts and exit.
     Status,
+    /// Build a release bundle from the current working state.
+    Export {
+        /// Bundle directory. Defaults to <releases_dir>/export-<timestamp>.
+        #[arg(long, value_name = "DIR")]
+        out: Option<PathBuf>,
+        /// Report the holdback without writing anything.
+        #[arg(long)]
+        preview: bool,
+        /// Recorded in `releases.exported_by`.
+        #[arg(long, value_name = "USER", default_value = "cli")]
+        actor: String,
+        /// Free-text note stored with the release.
+        #[arg(long, value_name = "TEXT")]
+        notes: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -123,12 +139,21 @@ async fn main() -> Result<()> {
         }
         Command::Status => {
             let store = open_store(&config)?;
-            let report = status::collect(&store).await?;
+            let report = status::collect(&store, &config.tts).await?;
             print!(
                 "{}",
-                report.render(&config.working_db().display().to_string())
+                report.render(&config.working_db().display().to_string(), &config.sources)
             );
             Ok(())
+        }
+        Command::Export {
+            out,
+            preview,
+            actor,
+            notes,
+        } => {
+            let store = open_store(&config)?;
+            export::run(&config, &store, out, &actor, notes, preview).await
         }
     }
 }

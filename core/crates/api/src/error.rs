@@ -20,6 +20,9 @@ pub struct ErrorBody {
 #[derive(Debug, Serialize)]
 pub struct ErrorEnvelope {
     pub error: ErrorBody,
+    /// `ExportConflictBody` carries the failed gates alongside the envelope.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failures: Option<Vec<morpho_export::GateFailure>>,
 }
 
 #[derive(Debug)]
@@ -27,6 +30,8 @@ pub struct ApiError {
     pub status: StatusCode,
     pub code: &'static str,
     pub message: String,
+    /// Structured payload for `POST /releases/export`'s 409.
+    pub failures: Option<Vec<morpho_export::GateFailure>>,
 }
 
 impl ApiError {
@@ -35,6 +40,27 @@ impl ApiError {
             status,
             code,
             message: message.into(),
+            failures: None,
+        }
+    }
+
+    /// `409` from `POST /releases/export`, with the failed gates in the body.
+    pub fn export_conflict(failures: Vec<morpho_export::GateFailure>) -> Self {
+        let message = failures
+            .iter()
+            .map(|failure| format!("{}: {}", failure.gate, failure.message))
+            .take(5)
+            .collect::<Vec<_>>()
+            .join("; ");
+        Self {
+            status: StatusCode::CONFLICT,
+            code: "export_gates_failed",
+            message: if message.is_empty() {
+                "export validation failed".to_string()
+            } else {
+                message
+            },
+            failures: Some(failures),
         }
     }
 
@@ -80,6 +106,7 @@ impl IntoResponse for ApiError {
                     code: self.code.to_string(),
                     message: self.message,
                 },
+                failures: self.failures,
             }),
         )
             .into_response()

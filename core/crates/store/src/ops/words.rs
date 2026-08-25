@@ -5,7 +5,7 @@ use rusqlite::OptionalExtension;
 use morpho_domain::canon::canonicalize;
 use morpho_domain::change::EntityType;
 use morpho_domain::event::{Action, EventDraft};
-use morpho_domain::types::{AuxStatus, CreatedBy, Role, WordImport};
+use morpho_domain::types::{AuxStatus, CreatedBy, EtymologySource, Role, WordImport};
 
 use super::{OpCtx, WriteResult};
 use crate::error::{Result, StoreError};
@@ -162,6 +162,140 @@ pub(super) fn import_words(req: ImportWords, ctx: &mut OpCtx<'_, '_>) -> Result<
     }
 
     Ok(WriteResult::Import(stats))
+}
+
+/// Write a word's etymology and its provenance.
+#[derive(Debug, Clone)]
+pub struct SetEtymology {
+    pub word_id: i64,
+    /// `None` records "this source had nothing" without clobbering a better
+    /// answer that is already there.
+    pub etymology: Option<String>,
+    pub source: EtymologySource,
+}
+
+pub(super) fn set_etymology(req: SetEtymology, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResult> {
+    let text = req
+        .etymology
+        .as_deref()
+        .map(canonicalize)
+        .filter(|s| !s.is_empty());
+
+    let existing: Option<(Option<String>, Option<String>)> = ctx
+        .tx
+        .query_row(
+            "SELECT etymology, etymology_source FROM words WHERE word_id = ?1",
+            rusqlite::params![req.word_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((current, current_source)) = existing else {
+        return Err(StoreError::not_found(format!("word {}", req.word_id)));
+    };
+
+    let Some(text) = text else {
+        return Ok(WriteResult::Unit);
+    };
+    // Provenance ranking: a hand-written etymology outranks Wiktionary, which
+    // outranks a Morfessor segmentation. A weaker source never overwrites a
+    // stronger one that is already recorded.
+    let incoming_rank = source_rank(req.source);
+    let current_rank = current_source
+        .as_deref()
+        .and_then(|raw| raw.parse::<EtymologySource>().ok())
+        .map(source_rank)
+        .unwrap_or(0);
+    if current.is_some() && current_rank > incoming_rank {
+        return Ok(WriteResult::Unit);
+    }
+    if current.as_deref() == Some(text.as_str()) && current_rank == incoming_rank {
+        return Ok(WriteResult::Unit);
+    }
+
+    ctx.tx.execute(
+        "UPDATE words SET etymology = ?2, etymology_source = ?3 WHERE word_id = ?1",
+        rusqlite::params![req.word_id, text, req.source.as_str()],
+    )?;
+    ctx.event(
+        EventDraft::new(
+            EntityType::Word,
+            req.word_id.to_string(),
+            Action::EtymologySet,
+        )
+        .detail(serde_json::json!({
+            "word_id": req.word_id,
+            "source": req.source.as_str(),
+            "previous_source": current_source,
+        })),
+    )?;
+    ctx.touch(EntityType::Word, req.word_id.to_string());
+    Ok(WriteResult::Unit)
+}
+
+const fn source_rank(source: EtymologySource) -> u8 {
+    match source {
+        EtymologySource::Morfessor => 1,
+        EtymologySource::Wiktionary => 2,
+        EtymologySource::Manual => 3,
+    }
+}
+
+/// Flip an auxiliary word between `active` and `retired`.
+///
+/// Retirement is fully reversible and destroys nothing: the word simply leaves
+/// `active_words`, and with it the plan, the TTS desired set and the release
+/// (README Part 3 §"辅助词生命周期").
+#[derive(Debug, Clone)]
+pub struct SetAuxStatus {
+    pub word_id: i64,
+    pub status: AuxStatus,
+    /// Free-text explanation stored in the audit detail.
+    pub reason: &'static str,
+}
+
+pub(super) fn set_aux_status(req: SetAuxStatus, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResult> {
+    let row: Option<(String, Option<String>, String)> = ctx
+        .tx
+        .query_row(
+            "SELECT role, aux_status, lemma FROM words WHERE word_id = ?1",
+            rusqlite::params![req.word_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?;
+    let Some((role, current, lemma)) = row else {
+        return Err(StoreError::not_found(format!("word {}", req.word_id)));
+    };
+    if role != Role::Auxiliary.as_str() {
+        return Err(StoreError::conflict(format!(
+            "word {} is {role}, not auxiliary",
+            req.word_id
+        )));
+    }
+    if current.as_deref() == Some(req.status.as_str()) {
+        return Ok(WriteResult::Unit);
+    }
+
+    ctx.tx.execute(
+        "UPDATE words SET aux_status = ?2 WHERE word_id = ?1",
+        rusqlite::params![req.word_id, req.status.as_str()],
+    )?;
+    let action = match req.status {
+        AuxStatus::Active => Action::AuxPromoted,
+        AuxStatus::Retired => Action::AuxRetired,
+    };
+    ctx.event(
+        EventDraft::new(EntityType::Word, req.word_id.to_string(), action).detail(
+            serde_json::json!({
+                "word_id": req.word_id,
+                "lemma": lemma,
+                "from": current,
+                "to": req.status.as_str(),
+                "reason": req.reason,
+            }),
+        ),
+    )?;
+    ctx.touch(EntityType::Word, req.word_id.to_string());
+    Ok(WriteResult::Unit)
 }
 
 pub(super) fn create_word(req: CreateWord, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResult> {

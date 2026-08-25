@@ -31,6 +31,72 @@ pub enum OovResolution {
     },
 }
 
+/// Reconcile `oos_queue` against the `oos_occurrences` view.
+///
+/// Sync rule (README Part 3 §"派生 · 分词与依赖"): a lemma the view reports but
+/// the queue does not have is inserted `open`; a queue row that is still `open`
+/// but has left the view is `auto_closed` (its definition was rewritten, or the
+/// lemma got promoted). Resolved rows are never reopened — coming back into the
+/// view after a rewrite was undone inserts nothing, because the row exists.
+#[derive(Debug, Clone)]
+pub struct SyncOosQueue {
+    /// Every lemma currently visible in `oos_occurrences`, folded.
+    pub present: Vec<String>,
+}
+
+pub(super) fn sync_oos_queue(req: SyncOosQueue, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResult> {
+    let present: std::collections::BTreeSet<String> =
+        req.present.iter().map(|l| fold_lemma(l)).collect();
+
+    let known: Vec<(String, String)> = {
+        let mut stmt = ctx.tx.prepare("SELECT oos_lemma, status FROM oos_queue")?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    };
+    let known_lemmas: std::collections::BTreeSet<String> =
+        known.iter().map(|(lemma, _)| fold_lemma(lemma)).collect();
+
+    let mut opened = 0usize;
+    for lemma in present.difference(&known_lemmas) {
+        ctx.tx.execute(
+            "INSERT INTO oos_queue (oos_lemma, status, first_seen) VALUES (?1, 'open', ?2)
+             ON CONFLICT (oos_lemma) DO NOTHING",
+            rusqlite::params![lemma, ctx.now],
+        )?;
+        ctx.event(
+            EventDraft::new(EntityType::OosQueue, lemma.clone(), Action::OosOpened)
+                .detail(serde_json::json!({ "lemma": lemma })),
+        )?;
+        ctx.touch(EntityType::OosQueue, lemma.clone());
+        opened += 1;
+    }
+
+    let mut closed = 0usize;
+    for (lemma, status) in &known {
+        if status != OosStatus::Open.as_str() {
+            continue;
+        }
+        if present.contains(&fold_lemma(lemma)) {
+            continue;
+        }
+        ctx.tx.execute(
+            "UPDATE oos_queue SET status = 'auto_closed', resolved_at = ?2, resolved_by = 'reconciler'
+             WHERE oos_lemma = ?1",
+            rusqlite::params![lemma, ctx.now],
+        )?;
+        ctx.event(
+            EventDraft::new(EntityType::OosQueue, lemma.clone(), Action::OosAutoClosed)
+                .detail(serde_json::json!({ "lemma": lemma })),
+        )?;
+        ctx.touch(EntityType::OosQueue, lemma.clone());
+        closed += 1;
+    }
+
+    Ok(WriteResult::OosSync { opened, closed })
+}
+
 pub(super) fn resolve_oov(
     lemma: &str,
     resolution: OovResolution,
