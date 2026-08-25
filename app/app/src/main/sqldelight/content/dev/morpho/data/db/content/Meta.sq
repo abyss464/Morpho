@@ -1,0 +1,14 @@
+-- Mirrors docs/contracts/release-db.sql :: meta
+CREATE TABLE meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+selectAll:
+SELECT * FROM meta;
+
+selectValue:
+SELECT value FROM meta WHERE key = ?;
+
+upsert:
+INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?);

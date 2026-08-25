@@ -1,0 +1,23 @@
+-- Mirrors docs/contracts/user-db.sql :: daily_stats
+CREATE TABLE daily_stats (
+    date         TEXT PRIMARY KEY,
+    new_learned  INTEGER NOT NULL DEFAULT 0,
+    reviewed     INTEGER NOT NULL DEFAULT 0,
+    correct_rate REAL
+);
+
+selectAll:
+SELECT * FROM daily_stats ORDER BY date DESC;
+
+selectByDate:
+SELECT * FROM daily_stats WHERE date = ?;
+
+selectRecent:
+SELECT * FROM daily_stats ORDER BY date DESC LIMIT ?;
+
+upsert:
+INSERT OR REPLACE INTO daily_stats (date, new_learned, reviewed, correct_rate)
+VALUES (?, ?, ?, ?);
+
+deleteAll:
+DELETE FROM daily_stats;

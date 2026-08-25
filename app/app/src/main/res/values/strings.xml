@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  All user-facing copy lives here from day one (docs/contracts/conventions.md).
+  The product is English immersion, so there is exactly one locale and it is English.
+-->
+<resources>
+    <string name="app_name">Morpho</string>
+
+    <!-- Navigation / common -->
+    <string name="action_start">Start</string>
+    <string name="action_continue">Continue</string>
+    <string name="action_got_it">Got it</string>
+    <string name="action_next">Next</string>
+    <string name="action_done">Done</string>
+    <string name="action_check">Check</string>
+    <string name="action_skip">Skip</string>
+    <string name="action_close">Close</string>
+    <string name="action_back">Back</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_end_session">End session</string>
+    <string name="action_replay_audio">Play again</string>
+    <string name="action_show_details">Word details</string>
+    <string name="action_retry">Try again</string>
+
+    <!-- Home -->
+    <string name="home_title">Morpho</string>
+    <string name="home_ring_caption">of %1$s learned</string>
+    <string name="home_today_title">Today</string>
+    <string name="home_today_new">%1$d new words</string>
+    <string name="home_today_reviews">%1$d reviews due</string>
+    <string name="home_today_all_done">Everything is done for today.</string>
+    <string name="home_today_goal_progress">%1$d of %2$d new words</string>
+    <string name="home_start_learning">Start learning</string>
+    <string name="home_start_review">Start review</string>
+    <string name="home_stat_learned">learned</string>
+    <string name="home_stat_in_progress">in progress</string>
+    <string name="home_stat_remaining">remaining</string>
+    <string name="home_streak">day streak</string>
+    <string name="home_empty">No content installed yet.</string>
+
+    <!-- Learn -->
+    <string name="learn_title">Learning</string>
+    <string name="learn_round">Round %1$d of %2$d</string>
+    <string name="learn_group">Group %1$d</string>
+    <string name="learn_mode_1_prompt">Which picture fits the sentence?</string>
+    <string name="learn_mode_2_prompt">Which picture and meaning fit this word?</string>
+    <string name="learn_mode_3_prompt">Which meaning fits this word?</string>
+    <string name="learn_wrong_hint">Not this one. Read the meaning, then pick again.</string>
+    <string name="learn_must_retry">Choose the right one to continue.</string>
+    <string name="learn_promoted">Level up</string>
+    <string name="learn_word_learned">Learned</string>
+    <string name="learn_group_complete">Group complete</string>
+    <string name="learn_exit_confirm">End this session? Your progress is already saved.</string>
+
+    <!-- Review -->
+    <string name="review_title">Review</string>
+    <string name="review_definition_prompt">Which word means this?</string>
+    <string name="review_spell_prompt">Listen, then spell the word.</string>
+    <string name="review_spell_hint">Tap to hear it again.</string>
+    <string name="review_progress">%1$d of %2$d</string>
+    <string name="review_correct">Correct</string>
+    <string name="review_wrong">The word was %1$s</string>
+    <string name="review_none_due">Nothing is due for review.</string>
+
+    <!-- Session summary -->
+    <string name="summary_title">Session complete</string>
+    <string name="summary_learning_headline">Nice work</string>
+    <string name="summary_review_headline">Review done</string>
+    <string name="summary_new_words">new words</string>
+    <string name="summary_reviewed">reviewed</string>
+    <string name="summary_accuracy">first-try accuracy</string>
+    <string name="summary_streak_kept">Streak kept: %1$d days</string>
+    <string name="summary_back_home">Back to home</string>
+    <string name="summary_keep_going">Keep going</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_learning">Learning</string>
+    <string name="settings_daily_goal">Daily new words</string>
+    <string name="settings_daily_goal_summary">%1$d words per day</string>
+    <string name="settings_section_feedback">Sound and feel</string>
+    <string name="settings_sound">Sound effects</string>
+    <string name="settings_sound_summary">Taps, answers and celebrations</string>
+    <string name="settings_sfx_volume">Effect volume</string>
+    <string name="settings_haptics">Haptics</string>
+    <string name="settings_haptics_summary">Vibration paired with every answer</string>
+    <string name="settings_reduced_motion">Reduce motion</string>
+    <string name="settings_reduced_motion_summary">Replace movement with fades</string>
+    <string name="settings_section_data">Progress data</string>
+    <string name="settings_export">Export progress</string>
+    <string name="settings_export_summary">Save a copy of your progress file</string>
+    <string name="settings_import">Import progress</string>
+    <string name="settings_import_summary">Restore progress from a saved file</string>
+    <string name="settings_section_about">About</string>
+    <string name="settings_content_version">Content version</string>
+    <string name="settings_app_version">App version</string>
+    <string name="settings_word_count">Words in this release</string>
+    <string name="settings_stub_notice">Coming in a later release.</string>
+
+    <!-- Accessibility -->
+    <string name="cd_play_word">Play the pronunciation of %1$s</string>
+    <string name="cd_play_definition">Play this definition</string>
+    <string name="cd_play_sentence">Play the example sentence</string>
+    <string name="cd_option">Option %1$d of %2$d</string>
+    <string name="cd_progress_ring">%1$d of %2$d words learned</string>
+</resources>

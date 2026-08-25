@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android Auto Backup, API 26-30. Same policy as data_extraction_rules.xml:
+  user.db only, checkpointed on every onStop so the snapshot is self-contained.
+-->
+<full-backup-content>
+    <include domain="database" path="user.db" />
+</full-backup-content>

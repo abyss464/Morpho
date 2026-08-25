@@ -1,0 +1,19 @@
+-- Mirrors docs/contracts/user-db.sql :: meta
+-- Keys in use: content_version, schema_ver, daily_goal,
+-- plus app-owned preference keys (sound_enabled, haptics_enabled, sfx_volume).
+CREATE TABLE meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+selectAll:
+SELECT * FROM meta;
+
+selectValue:
+SELECT value FROM meta WHERE key = ?;
+
+upsert:
+INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?);
+
+deleteAll:
+DELETE FROM meta;

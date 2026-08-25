@@ -1,0 +1,34 @@
+-- Mirrors docs/contracts/release-db.sql :: senses
+CREATE TABLE senses (
+    sense_id       INTEGER PRIMARY KEY,
+    word_id        INTEGER NOT NULL REFERENCES words(word_id),
+    pos            TEXT NOT NULL,
+    definition     TEXT NOT NULL,
+    is_primary     INTEGER NOT NULL,
+    def_audio_file TEXT NOT NULL
+);
+CREATE INDEX ix_senses_word ON senses(word_id);
+
+selectForWord:
+SELECT * FROM senses WHERE word_id = ? ORDER BY is_primary DESC, sense_id;
+
+selectForWords:
+SELECT * FROM senses WHERE word_id IN ? ORDER BY word_id, is_primary DESC, sense_id;
+
+selectPrimaryForWords:
+SELECT * FROM senses WHERE word_id IN ? AND is_primary = 1;
+
+countAll:
+SELECT count(*) FROM senses;
+
+-- Debug-only integrity assertion: exactly one primary sense per word.
+selectWordsWithBadPrimaryCount:
+SELECT word_id, count(*) AS primary_count
+FROM senses
+WHERE is_primary = 1
+GROUP BY word_id
+HAVING count(*) <> 1;
+
+insert:
+INSERT INTO senses (sense_id, word_id, pos, definition, is_primary, def_audio_file)
+VALUES (?, ?, ?, ?, ?, ?);

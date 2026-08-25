@@ -1,0 +1,34 @@
+-- Mirrors docs/contracts/release-db.sql :: distractors
+CREATE TABLE distractors (
+    word_id            INTEGER NOT NULL REFERENCES words(word_id),
+    rank               INTEGER NOT NULL CHECK (rank IN (1,2,3)),
+    distractor_word_id INTEGER NOT NULL REFERENCES words(word_id),
+    PRIMARY KEY (word_id, rank)
+);
+
+selectForWord:
+SELECT * FROM distractors WHERE word_id = ? ORDER BY rank;
+
+selectForWords:
+SELECT * FROM distractors WHERE word_id IN ? ORDER BY word_id, rank;
+
+countAll:
+SELECT count(*) FROM distractors;
+
+-- Debug-only integrity assertion (README Part 6 "distractor guarantee"):
+-- every word must have exactly three bound distractors that resolve to shipped words.
+selectWordsWithBadDistractorCount:
+SELECT w.word_id, count(d.rank) AS bound
+FROM words w
+LEFT JOIN distractors d ON d.word_id = w.word_id
+GROUP BY w.word_id
+HAVING count(d.rank) <> 3;
+
+selectDanglingDistractors:
+SELECT d.word_id, d.rank, d.distractor_word_id
+FROM distractors d
+LEFT JOIN words w ON w.word_id = d.distractor_word_id
+WHERE w.word_id IS NULL;
+
+insert:
+INSERT INTO distractors (word_id, rank, distractor_word_id) VALUES (?, ?, ?);

@@ -1,0 +1,24 @@
+-- Mirrors docs/contracts/release-db.sql :: examples
+CREATE TABLE examples (
+    example_id    INTEGER PRIMARY KEY,
+    word_id       INTEGER NOT NULL REFERENCES words(word_id),
+    display_order INTEGER NOT NULL,
+    sentence      TEXT NOT NULL,
+    hl_start      INTEGER NOT NULL,
+    hl_end        INTEGER NOT NULL,
+    ex_audio_file TEXT NOT NULL
+);
+CREATE INDEX ix_examples_word ON examples(word_id);
+
+selectForWord:
+SELECT * FROM examples WHERE word_id = ? ORDER BY display_order;
+
+selectForWords:
+SELECT * FROM examples WHERE word_id IN ? ORDER BY word_id, display_order;
+
+countAll:
+SELECT count(*) FROM examples;
+
+insert:
+INSERT INTO examples (example_id, word_id, display_order, sentence, hl_start, hl_end, ex_audio_file)
+VALUES (?, ?, ?, ?, ?, ?, ?);

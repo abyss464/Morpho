@@ -1,0 +1,36 @@
+-- Mirrors docs/contracts/user-db.sql :: learning_progress
+-- Progress is per-word ONLY. Rows are never deleted.
+CREATE TABLE learning_progress (
+    word_id       INTEGER PRIMARY KEY,
+    current_mode  INTEGER NOT NULL DEFAULT 1 CHECK (current_mode IN (1,2,3)),
+    rounds_passed INTEGER NOT NULL DEFAULT 0,
+    status        TEXT NOT NULL DEFAULT 'learning' CHECK (status IN ('learning','learned'))
+);
+
+selectAll:
+SELECT * FROM learning_progress;
+
+selectByIds:
+SELECT * FROM learning_progress WHERE word_id IN ?;
+
+selectById:
+SELECT * FROM learning_progress WHERE word_id = ?;
+
+selectLearnedIds:
+SELECT word_id FROM learning_progress WHERE status = 'learned';
+
+selectInFlight:
+SELECT * FROM learning_progress WHERE status = 'learning' AND rounds_passed > 0;
+
+countLearned:
+SELECT count(*) FROM learning_progress WHERE status = 'learned';
+
+countLearning:
+SELECT count(*) FROM learning_progress WHERE status = 'learning';
+
+upsert:
+INSERT OR REPLACE INTO learning_progress (word_id, current_mode, rounds_passed, status)
+VALUES (?, ?, ?, ?);
+
+deleteAll:
+DELETE FROM learning_progress;

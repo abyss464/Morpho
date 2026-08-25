@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors MorphoLightColorScheme.background -->
+    <color name="morpho_window_background">#FAFBFD</color>
+    <color name="morpho_primary">#2461FF</color>
+    <color name="morpho_icon_background">#12151C</color>
+</resources>

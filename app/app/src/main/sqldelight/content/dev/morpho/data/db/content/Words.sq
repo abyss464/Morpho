@@ -1,0 +1,38 @@
+-- Mirrors docs/contracts/release-db.sql :: words
+CREATE TABLE words (
+    word_id         INTEGER PRIMARY KEY,
+    word            TEXT NOT NULL,
+    phonetic        TEXT,
+    frequency_rank  INTEGER,
+    role            TEXT NOT NULL CHECK (role IN ('target','auxiliary')),
+    group_id        INTEGER NOT NULL REFERENCES groups(group_id),
+    learning_order  INTEGER NOT NULL,
+    etymology       TEXT,
+    image_file      TEXT NOT NULL,
+    word_audio_file TEXT NOT NULL
+);
+CREATE INDEX ix_words_order ON words(learning_order);
+CREATE INDEX ix_words_group ON words(group_id);
+
+selectAllOrdered:
+SELECT * FROM words ORDER BY learning_order;
+
+selectById:
+SELECT * FROM words WHERE word_id = ?;
+
+selectByIds:
+SELECT * FROM words WHERE word_id IN ? ORDER BY learning_order;
+
+selectPlanSlice:
+SELECT word_id, group_id, learning_order
+FROM words
+ORDER BY learning_order;
+
+countAll:
+SELECT count(*) FROM words;
+
+insert:
+INSERT INTO words (
+    word_id, word, phonetic, frequency_rank, role,
+    group_id, learning_order, etymology, image_file, word_audio_file
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);

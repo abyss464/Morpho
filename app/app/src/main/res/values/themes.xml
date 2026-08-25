@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash/pre-Compose window theme. Compose owns everything after first frame. -->
+    <style name="Theme.Morpho" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/morpho_window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

@@ -1,0 +1,18 @@
+-- Mirrors docs/contracts/release-db.sql :: groups
+CREATE TABLE groups (
+    group_id    INTEGER PRIMARY KEY,
+    group_order INTEGER NOT NULL,
+    group_type  TEXT NOT NULL CHECK (group_type IN ('scc','root','semantic','fill'))
+);
+
+selectAll:
+SELECT * FROM groups ORDER BY group_order;
+
+selectById:
+SELECT * FROM groups WHERE group_id = ?;
+
+countAll:
+SELECT count(*) FROM groups;
+
+insert:
+INSERT INTO groups (group_id, group_order, group_type) VALUES (?, ?, ?);
