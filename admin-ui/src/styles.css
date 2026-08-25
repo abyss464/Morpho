@@ -1,0 +1,83 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Keyboard-first tables: the focused row is unmistakable and Enter opens it. */
+.morpho-row {
+  cursor: pointer;
+}
+
+.morpho-row:focus-visible {
+  outline: 2px solid var(--morpho-focus, #3b6fd4);
+  outline-offset: -2px;
+}
+
+.morpho-mono {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.morpho-hl {
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 600;
+  background: rgba(59, 111, 212, 0.18);
+}
+
+[data-theme='dark'] .morpho-hl {
+  background: rgba(105, 155, 255, 0.26);
+}
+
+.morpho-oos-hl {
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 600;
+  background: rgba(212, 68, 59, 0.2);
+  text-decoration: underline wavy rgba(212, 68, 59, 0.7);
+}
+
+.morpho-scroll {
+  overflow: auto;
+}
+
+.morpho-candidate {
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.morpho-candidate--selected {
+  border-color: var(--morpho-focus, #3b6fd4) !important;
+  box-shadow: 0 0 0 1px rgba(59, 111, 212, 0.35);
+}
+
+.morpho-image-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: rgba(127, 127, 127, 0.1);
+}
+
+.morpho-dropzone {
+  border: 1px dashed rgba(127, 127, 127, 0.5);
+  border-radius: 8px;
+  padding: 22px;
+  text-align: center;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.morpho-dropzone--active {
+  border-color: #3b6fd4;
+  background: rgba(59, 111, 212, 0.08);
+}
