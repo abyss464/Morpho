@@ -9,6 +9,17 @@
 -- Media referenced by content-addressed filename: img/{hash}.webp, audio/{hash}.ogg
 -- Export determinism: page_size=4096, journal_mode=DELETE, inserts ordered by
 -- primary key, VACUUM at end, no timestamps in rows.
+--
+-- Wave-3 normative rulings (conductor, 2026-08-26):
+--  * Media bundle layout is <bundle>/{img,audio}/ with the extensions above;
+--    these are NORMATIVE — the app may rely on them. (README "media/{hash}"
+--    wording is superseded.)
+--  * meta.exported_at holds a DATE (YYYY-MM-DD), preserving byte determinism
+--    within a UTC day.
+--  * words.etymology_segments added below (app's EtymologyChips data source);
+--    the wave-1 prefix-encoding shim in the app is to be removed.
+--  * The export MUST set PRAGMA user_version = <schema_ver> so SQLDelight
+--    treats the DB as created.
 -- ============================================================================
 
 CREATE TABLE words (
@@ -19,7 +30,8 @@ CREATE TABLE words (
     role            TEXT NOT NULL CHECK (role IN ('target','auxiliary')),
     group_id        INTEGER NOT NULL REFERENCES groups(group_id),
     learning_order  INTEGER NOT NULL,
-    etymology       TEXT,
+    etymology       TEXT,                  -- prose etymology
+    etymology_segments TEXT,               -- JSON array of morph segments, e.g. ["bene","vol","ent"]
     image_file      TEXT NOT NULL,         -- img/{hash}.webp
     word_audio_file TEXT NOT NULL          -- audio/{hash}.ogg
 );

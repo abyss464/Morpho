@@ -27,10 +27,12 @@ CREATE TABLE fsrs_cards (
 );
 
 CREATE TABLE daily_stats (
-    date         TEXT PRIMARY KEY,   -- YYYY-MM-DD local
-    new_learned  INTEGER NOT NULL DEFAULT 0,
-    reviewed     INTEGER NOT NULL DEFAULT 0,
-    correct_rate REAL
+    date          TEXT PRIMARY KEY,   -- YYYY-MM-DD local
+    new_learned   INTEGER NOT NULL DEFAULT 0,
+    reviewed      INTEGER NOT NULL DEFAULT 0,
+    -- Exact counts, not a rate: multi-session same-day merges stay lossless.
+    correct_count INTEGER NOT NULL DEFAULT 0,
+    answer_count  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE meta (

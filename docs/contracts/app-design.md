@@ -46,7 +46,7 @@ M3 motion system; standard easing `CubicBezier(0.2, 0, 0, 1)`.
 | Progress ring | animated sweep 600 ms decelerate, on home resume |
 | Detail sheet | M3 modal bottom sheet default motion |
 
-Respect reduced-motion: scale/shake replaced by opacity when `LocalAccessibilityManager` signals.
+Respect reduced-motion: scale/shake replaced by opacity when the system animator duration scale is 0 (`Settings.Global.ANIMATOR_DURATION_SCALE` — Compose exposes no first-class signal), plus a manual override in Settings.
 
 ## Sound design
 
