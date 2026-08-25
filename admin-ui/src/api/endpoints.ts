@@ -37,6 +37,7 @@ import type {
   OovQueueEntry,
   OovResolveBody,
   OverrideSelectionBody,
+  PageParams,
   Paginated,
   PlanGroupDetail,
   PlanSummary,
@@ -224,9 +225,16 @@ export async function resolveOov(lemma: string, body: OovResolveBody): Promise<O
 /* Dead letters                                                        */
 /* ------------------------------------------------------------------ */
 
-/** GET /dead-letters */
-export async function listDeadLetters(signal?: AbortSignal): Promise<Paginated<DeadLetter>> {
-  const raw = await request<unknown>('/dead-letters', { signal });
+/**
+ * GET /dead-letters?page=&page_size= — paginated per wave-2 ruling #9. Morphod
+ * defaults to 50 rows and clamps at 200, so an unpaged read silently truncates
+ * the box; the console always asks for a page explicitly.
+ */
+export async function listDeadLetters(
+  query: PageParams = {},
+  signal?: AbortSignal,
+): Promise<Paginated<DeadLetter>> {
+  const raw = await request<unknown>('/dead-letters', { query: toQuery(query), signal });
   return mapPaginated(raw, mapDeadLetter);
 }
 

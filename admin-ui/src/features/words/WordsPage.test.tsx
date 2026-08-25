@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderPage } from '../../test/renderWithProviders';
 import { WordsPage } from './WordsPage';
 import type { WordsSearch } from './wordsSearch';
@@ -34,5 +35,35 @@ describe('WordsPage', () => {
     const rows = screen.getAllByRole('row').filter((row) => row.getAttribute('tabindex') === '0');
     expect(rows.length).toBeGreaterThan(0);
     expect(rows[0]?.getAttribute('aria-label')).toMatch(/ready|blocked/);
+  });
+
+  it('offers the awaiting-approval presets', async () => {
+    renderPage(<Harness />);
+    await waitFor(() => expect(screen.getByText('abandon')).toBeInTheDocument());
+
+    const presets = screen.getByLabelText('Approval worklist preset');
+    for (const label of ['All words', 'Awaiting sense', 'Awaiting example', 'Awaiting image']) {
+      expect(within(presets).getByText(label)).toBeInTheDocument();
+    }
+  });
+
+  it('reveals the bulk-approve bar once a row is ticked', async () => {
+    const user = userEvent.setup();
+    renderPage(<Harness />);
+    await waitFor(() => expect(screen.getByText('abandon')).toBeInTheDocument());
+
+    expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    // The first checkbox is the header "select this page" control.
+    await user.click(checkboxes[1] as HTMLElement);
+
+    await waitFor(() => expect(screen.getByText('1 selected')).toBeInTheDocument());
+    expect(screen.getByText('Approve primary sense')).toBeInTheDocument();
+    expect(screen.getByText('Approve example slot 1')).toBeInTheDocument();
+    expect(screen.getByText('Approve image')).toBeInTheDocument();
+
+    // Ticking a row must not navigate away from the list.
+    expect(screen.queryByTestId('stub-/words/$wordId')).not.toBeInTheDocument();
   });
 });

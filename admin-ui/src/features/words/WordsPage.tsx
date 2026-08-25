@@ -1,11 +1,13 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
+  App,
   Button,
   Card,
   Empty,
   Flex,
   Input,
+  Segmented,
   Select,
   Space,
   Table,
@@ -14,12 +16,15 @@ import {
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ClearOutlined, ReloadOutlined } from '@ant-design/icons';
+import { CheckOutlined, ClearOutlined, ReloadOutlined } from '@ant-design/icons';
 import { BlockerTags, ReadyBadge, RoleTag, WordAssetChips } from '../../components/StatusChips';
 import { errorMessage } from '../../lib/errors';
 import { usePlan, useWordList } from '../../hooks/queries';
+import { collectMatchingWords, useBulkApprove } from '../../hooks/useBulkApprove';
+import { BULK_ACTIONS, type BulkApproveKind } from './bulkApprove';
+import { BulkApproveModal } from './BulkApproveModal';
 import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE, type WordsSearch } from './wordsSearch';
-import type { BlockerCode, WordListItem, WordRole } from '../../api/types';
+import type { BlockerCode, WordListItem, WordRole, WordsQuery } from '../../api/types';
 
 const ROLE_OPTIONS = [
   { value: 'target', label: 'target' },
@@ -49,6 +54,22 @@ const BLOCKER_OPTIONS: BlockerCode[] = [
   'distractor_3_not_ready',
 ];
 
+/**
+ * "Awaiting approval" presets. Each maps to exactly one `?blocker=` value,
+ * because that blocker *is* the statement "this slot is filled but nobody has
+ * signed off on it" — which is precisely the worklist the matching bulk action
+ * clears. Server-side filtering keeps it honest at syllabus scale.
+ */
+const APPROVAL_PRESETS = [
+  { value: 'all', label: 'All words', blocker: undefined },
+  { value: 'sense_not_approved', label: 'Awaiting sense', blocker: 'sense_not_approved' },
+  { value: 'example_not_approved', label: 'Awaiting example', blocker: 'example_not_approved' },
+  { value: 'image_not_approved', label: 'Awaiting image', blocker: 'image_not_approved' },
+] as const;
+
+const PRESET_HINT =
+  'Filters to the words whose slot is selected but unapproved — the queue the bulk actions clear.';
+
 export interface WordsPageProps {
   search: WordsSearch;
   onSearchChange: (next: WordsSearch) => void;
@@ -56,12 +77,13 @@ export interface WordsPageProps {
 
 export function WordsPage({ search, onSearchChange }: WordsPageProps) {
   const navigate = useNavigate();
+  const { message } = App.useApp();
   const plan = usePlan();
 
   const page = search.page ?? DEFAULT_PAGE;
   const pageSize = search.page_size ?? DEFAULT_PAGE_SIZE;
 
-  const query = useWordList({
+  const listQuery: WordsQuery = {
     page,
     page_size: pageSize,
     role: search.role,
@@ -69,7 +91,59 @@ export function WordsPage({ search, onSearchChange }: WordsPageProps) {
     blocker: search.blocker,
     group: search.group,
     q: search.q,
-  });
+  };
+
+  const query = useWordList(listQuery);
+
+  /* ---- selection ---- */
+  // Keyed by word_id and kept in this component rather than in the table, so a
+  // selection made on page 1 survives paging, filtering and a live refetch.
+  const [selected, setSelected] = useState<Map<number, string>>(() => new Map());
+  const [pendingKind, setPendingKind] = useState<BulkApproveKind | null>(null);
+  const [selectingAll, setSelectingAll] = useState(false);
+  const selectAllAbort = useRef<AbortController | null>(null);
+  const bulk = useBulkApprove();
+
+  useEffect(() => () => selectAllAbort.current?.abort(), []);
+
+  const selectedKeys = useMemo(() => [...selected.keys()], [selected]);
+  const selectedWords = useMemo(
+    () => [...selected.entries()].map(([word_id, lemma]) => ({ word_id, lemma })),
+    [selected],
+  );
+
+  const toggleRows = useCallback((rows: readonly WordListItem[], next: boolean) => {
+    setSelected((current) => {
+      const updated = new Map(current);
+      for (const row of rows) {
+        if (next) updated.set(row.word_id, row.lemma);
+        else updated.delete(row.word_id);
+      }
+      return updated;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelected(new Map()), []);
+
+  const selectAllMatching = async () => {
+    selectAllAbort.current?.abort();
+    const controller = new AbortController();
+    selectAllAbort.current = controller;
+    setSelectingAll(true);
+    try {
+      const rows = await collectMatchingWords(
+        { ...listQuery, page: undefined, page_size: undefined },
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      setSelected(new Map(rows.map((row) => [row.word_id, row.lemma])));
+      message.success(`Selected ${rows.length} word${rows.length === 1 ? '' : 's'}.`);
+    } catch (error) {
+      if (!controller.signal.aborted) message.error(errorMessage(error));
+    } finally {
+      setSelectingAll(false);
+    }
+  };
 
   const patch = (partial: Partial<WordsSearch>) =>
     onSearchChange({ ...search, ...partial, page: partial.page ?? DEFAULT_PAGE });
@@ -145,6 +219,14 @@ export function WordsPage({ search, onSearchChange }: WordsPageProps) {
     search.role || search.ready || search.blocker || search.group || search.q,
   );
 
+  const activePreset =
+    APPROVAL_PRESETS.find((preset) => preset.blocker === search.blocker)?.value ?? 'all';
+
+  const total = query.data?.total ?? 0;
+  const pageRows = query.data?.items ?? [];
+  const allOnPageSelected =
+    pageRows.length > 0 && pageRows.every((row) => selected.has(row.word_id));
+
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Flex justify="space-between" align="flex-end" wrap gap={12}>
@@ -170,6 +252,23 @@ export function WordsPage({ search, onSearchChange }: WordsPageProps) {
 
       <Card size="small" styles={{ body: { padding: 12 } }}>
         <Flex gap={10} wrap align="center">
+          <Tooltip title={PRESET_HINT}>
+            <Segmented
+              value={activePreset}
+              options={APPROVAL_PRESETS.map((preset) => ({
+                value: preset.value,
+                label: preset.label,
+              }))}
+              onChange={(value) => {
+                const preset = APPROVAL_PRESETS.find((entry) => entry.value === value);
+                patch({
+                  blocker: preset?.blocker,
+                  ready: preset?.blocker ? 'false' : search.ready,
+                });
+              }}
+              aria-label="Approval worklist preset"
+            />
+          </Tooltip>
           <Input.Search
             allowClear
             placeholder="Search lemma"
@@ -229,12 +328,65 @@ export function WordsPage({ search, onSearchChange }: WordsPageProps) {
         </Flex>
       </Card>
 
+      {selected.size > 0 && (
+        <Card
+          size="small"
+          styles={{ body: { padding: '10px 12px' } }}
+          style={{ borderColor: '#4a90d9' }}
+        >
+          <Flex gap={12} wrap align="center" justify="space-between">
+            <Space size={10} wrap>
+              <Tag color="processing" style={{ margin: 0 }}>
+                {selected.size} selected
+              </Tag>
+              {allOnPageSelected && selected.size < total && (
+                <Button type="link" size="small" loading={selectingAll} onClick={selectAllMatching}>
+                  Select all {total} matching this filter
+                </Button>
+              )}
+              <Button size="small" icon={<ClearOutlined />} onClick={clearSelection}>
+                Clear
+              </Button>
+            </Space>
+            <Space size={8} wrap>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Bulk approve:
+              </Typography.Text>
+              {BULK_ACTIONS.map((action) => (
+                <Tooltip key={action.kind} title={action.description}>
+                  <Button
+                    size="small"
+                    icon={<CheckOutlined />}
+                    onClick={() => setPendingKind(action.kind)}
+                  >
+                    {action.label}
+                  </Button>
+                </Tooltip>
+              ))}
+            </Space>
+          </Flex>
+        </Card>
+      )}
+
+      <BulkApproveModal
+        kind={pendingKind}
+        words={selectedWords}
+        controller={bulk}
+        onClose={() => setPendingKind(null)}
+      />
+
       <Card size="small" styles={{ body: { padding: 0 } }}>
         <Table<WordListItem>
           rowKey="word_id"
           size="middle"
           columns={columns}
-          dataSource={query.data?.items ?? []}
+          dataSource={pageRows}
+          rowSelection={{
+            selectedRowKeys: selectedKeys,
+            columnWidth: 44,
+            onSelect: (row, checked) => toggleRows([row], checked),
+            onSelectAll: (checked, _rows, changed) => toggleRows(changed, checked),
+          }}
           loading={query.isPending}
           scroll={{ x: 1080 }}
           locale={{
@@ -263,7 +415,13 @@ export function WordsPage({ search, onSearchChange }: WordsPageProps) {
             className: 'morpho-row',
             tabIndex: 0,
             'aria-label': `${row.lemma}, ${row.ready ? 'ready' : 'blocked'}`,
-            onClick: () => openWord(row.word_id),
+            onClick: (event: React.MouseEvent<HTMLElement>) => {
+              // The checkbox column lives inside the row; a click there is a
+              // selection, never a navigation.
+              const target = event.target as HTMLElement;
+              if (target.closest('.ant-table-selection-column, .ant-checkbox-wrapper')) return;
+              openWord(row.word_id);
+            },
             onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
@@ -272,18 +430,19 @@ export function WordsPage({ search, onSearchChange }: WordsPageProps) {
             },
           })}
           summary={() =>
-            query.data && query.data.items.length > 0 ? (
+            pageRows.length > 0 ? (
               <Table.Summary fixed="bottom">
                 <Table.Summary.Row>
-                  <Table.Summary.Cell index={0} colSpan={6}>
+                  <Table.Summary.Cell index={0} colSpan={7}>
                     <Space size={10}>
                       <Tooltip title="Rows on this page that pass every readiness gate">
                         <Tag color="success" style={{ margin: 0 }}>
-                          {query.data.items.filter((item) => item.ready).length} ready on page
+                          {pageRows.filter((item) => item.ready).length} ready on page
                         </Tag>
                       </Tooltip>
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        Click a row or press Enter to open its detail page.
+                        Click a row to open its detail page; tick the checkbox to queue it for a
+                        bulk approval.
                       </Typography.Text>
                     </Space>
                   </Table.Summary.Cell>

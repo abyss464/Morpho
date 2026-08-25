@@ -5,6 +5,7 @@ import { RouterProvider, createRouter } from '@tanstack/react-router';
 
 import { routeTree } from './routeTree.gen';
 import { createQueryClient } from './app/queryClient';
+import { LiveStreamProvider } from './app/liveStream';
 import { ThemeProvider } from './app/theme';
 import './styles.css';
 
@@ -34,9 +35,11 @@ void enableMocking().then(() => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <RouterProvider router={router} />
-        </ThemeProvider>
+        <LiveStreamProvider>
+          <ThemeProvider>
+            <RouterProvider router={router} />
+          </ThemeProvider>
+        </LiveStreamProvider>
       </QueryClientProvider>
     </React.StrictMode>,
   );

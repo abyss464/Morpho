@@ -2,8 +2,14 @@ import type { ApiErrorEnvelope, ExportGateFailure } from './types';
 
 export const API_BASE = '/api';
 
-/** Identity sent on mutations so the server can stamp `events.actor = admin:<user>`. */
-export const ADMIN_USER = (import.meta.env.VITE_ADMIN_USER as string | undefined) ?? 'admin';
+/**
+ * Header carrying the operator identity, so morphod can stamp
+ * `events.actor = admin:<user>` (admin-api.md wave-2 ruling #3).
+ */
+export const USER_HEADER = 'X-Morpho-User';
+
+/** Identity sent on mutations. Matches morphod's own default actor. */
+export const MORPHO_USER = (import.meta.env.VITE_MORPHO_USER as string | undefined) ?? 'local';
 
 /**
  * Typed failure for every non-2xx response. Carries the decoded error envelope
@@ -112,7 +118,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(json);
   }
-  if (method !== 'GET') headers['X-Admin-User'] = ADMIN_USER;
+  if (method !== 'GET') headers[USER_HEADER] = MORPHO_USER;
 
   const response = await fetch(`${API_BASE}${path}${buildQuery(query)}`, {
     method,

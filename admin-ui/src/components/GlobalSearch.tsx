@@ -23,9 +23,9 @@ export function GlobalSearch() {
   const [term, setTerm] = useState('');
   const debounced = useDebounced(term.trim(), 200);
 
-  const query = useWordList(
-    debounced.length >= 1 ? { q: debounced, page: 1, page_size: 8 } : { page: 1, page_size: 0 },
-  );
+  // An empty box asks for nothing: `page_size: 0` still round-trips to morphod,
+  // which clamps it to 1 and answers with a row nobody reads.
+  const query = useWordList({ q: debounced, page: 1, page_size: 8 }, debounced.length > 0);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

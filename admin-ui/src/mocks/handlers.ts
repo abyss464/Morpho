@@ -67,7 +67,7 @@ const BASE = '/api';
 const LATENCY_MS = 180;
 
 function actorOf(request: Request): string {
-  return `admin:${request.headers.get('X-Admin-User') ?? 'admin'}`;
+  return `admin:${request.headers.get('X-Morpho-User') ?? 'local'}`;
 }
 
 function errorResponse(
@@ -84,11 +84,18 @@ function paginate<T>(items: T[], page: number, pageSize: number) {
   return { items: items.slice(start, start + pageSize), total: items.length };
 }
 
+/** Morphod's `Pagination` defaults (core/crates/api/src/dto.rs). */
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 200;
+
 function readPage(url: URL): { page: number; pageSize: number } {
   const page = Math.max(1, Number(url.searchParams.get('page') ?? '1') || 1);
   const pageSize = Math.min(
-    200,
-    Math.max(1, Number(url.searchParams.get('page_size') ?? '50') || 50),
+    MAX_PAGE_SIZE,
+    Math.max(
+      1,
+      Number(url.searchParams.get('page_size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE,
+    ),
   );
   return { page, pageSize };
 }
@@ -782,24 +789,9 @@ export const handlers = [
 
   /* ---------------- Dead letters ---------------- */
 
-  http.get(`${BASE}/dead-letters`, async () => {
+  http.get(`${BASE}/dead-letters`, async ({ request }) => {
     await delay(LATENCY_MS);
-    const s = db();
-    const rows = s.jobs
-      .filter((job) => job.status === 'dead')
-      .map<DeadLetter>((job) => {
-        const word = s.words.find((w) => String(w.word_id) === job.subject_id);
-        return {
-          ...job,
-          subject: {
-            word_id: word?.word_id ?? null,
-            lemma: word?.lemma ?? null,
-            label: word ? `${word.lemma} (${word.role})` : `${job.subject_type} ${job.subject_id}`,
-          },
-        };
-      })
-      .sort((a, b) => a.rate_key.localeCompare(b.rate_key) || a.kind.localeCompare(b.kind));
-    return HttpResponse.json({ items: rows, total: rows.length });
+    return listDeadLetters(new URL(request.url));
   }),
 
   http.post(`${BASE}/dead-letters/retry`, async ({ request }) => {
@@ -1026,9 +1018,9 @@ export const handlers = [
   }),
 ];
 
-function listDeadLetters() {
+function deadLetterRows(): DeadLetter[] {
   const s = db();
-  const rows = s.jobs
+  return s.jobs
     .filter((job) => job.status === 'dead')
     .map<DeadLetter>((job) => {
       const word = s.words.find((w) => String(w.word_id) === job.subject_id);
@@ -1042,5 +1034,15 @@ function listDeadLetters() {
       };
     })
     .sort((a, b) => a.rate_key.localeCompare(b.rate_key) || a.kind.localeCompare(b.kind));
-  return HttpResponse.json({ items: rows, total: rows.length });
+}
+
+/**
+ * Wave-2 ruling #9: `?page&page_size` is optional, the `{items,total}` envelope
+ * is not. Morphod defaults to 50 rows and clamps at 200; the mock matches, so a
+ * page that forgets to paginate truncates here exactly as it would live.
+ */
+function listDeadLetters(url?: URL) {
+  const rows = deadLetterRows();
+  const { page, pageSize } = url ? readPage(url) : { page: 1, pageSize: DEFAULT_PAGE_SIZE };
+  return HttpResponse.json(paginate(rows, page, pageSize));
 }

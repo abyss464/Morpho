@@ -53,12 +53,21 @@ function GateFailureList({ failures }: { failures: ExportGateFailure[] }) {
   );
 }
 
-function ExportButton({ gatesPass, blockingCount }: { gatesPass: boolean; blockingCount: number }) {
+function ExportButton({
+  gatesPass,
+  blockingCount,
+  exportableCount,
+}: {
+  gatesPass: boolean;
+  blockingCount: number;
+  exportableCount: number;
+}) {
   const exportRelease = useExportRelease();
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState('');
   const [failures, setFailures] = useState<ExportGateFailure[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const empty = exportableCount === 0;
 
   return (
     <>
@@ -121,6 +130,15 @@ function ExportButton({ gatesPass, blockingCount }: { gatesPass: boolean; blocki
               icon={<WarningOutlined />}
               message={`${blockingCount} gate(s) are failing right now`}
               description="Running the export will return 409 and write nothing. The failures will be listed here."
+            />
+          )}
+          {gatesPass && empty && (
+            <Alert
+              type="warning"
+              showIcon
+              icon={<WarningOutlined />}
+              message="The closed subset is empty"
+              description="Every gate passes, but no word survives the dependency closure, so this bundle would ship zero words. Clear the top of the holdback report first."
             />
           )}
           <Input.TextArea
@@ -246,6 +264,7 @@ function HoldbackReportCard() {
                   <ExportButton
                     gatesPass={report.gates_pass}
                     blockingCount={report.gate_failures.length}
+                    exportableCount={report.exportable_count}
                   />
                 </Flex>
               </Card>

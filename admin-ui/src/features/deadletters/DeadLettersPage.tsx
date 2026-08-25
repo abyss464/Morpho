@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Alert,
   Button,
@@ -5,6 +6,7 @@ import {
   Col,
   Empty,
   Flex,
+  Pagination,
   Popconfirm,
   Row,
   Space,
@@ -34,8 +36,14 @@ const LANE_HINT: Record<string, string> = {
   cpu: 'Local compute lane: extraction, scoring, distractor binding.',
 };
 
+const DEFAULT_PAGE_SIZE = 50;
+
 export function DeadLettersPage() {
-  const query = useDeadLetters();
+  // Morphod caps `page_size` at 200 and defaults to 50, so a real incident —
+  // a whole lane dying at once — arrives as several pages, not one list.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const query = useDeadLetters({ page, page_size: pageSize });
   const { retry, waive } = useDeadLetterActions();
 
   const columns: ColumnsType<DeadLetter> = [
@@ -116,13 +124,17 @@ export function DeadLettersPage() {
           subject_type: row.subject_type,
           subject_id: row.subject_id,
         };
+        // Spinners belong on the row being written, not on all 134 of them.
+        const isTarget = (variables: typeof key | undefined) =>
+          variables?.kind === key.kind && variables.subject_id === key.subject_id;
+
         return (
           <Space size={6}>
             <Tooltip title="Delete the job_state row; the demand is re-derived on the next pass.">
               <Button
                 size="small"
                 icon={<RedoOutlined />}
-                loading={retry.isPending}
+                loading={retry.isPending && isTarget(retry.variables)}
                 onClick={() => retry.mutate(key)}
               >
                 Retry
@@ -134,7 +146,12 @@ export function DeadLettersPage() {
               okText="Waive"
               onConfirm={() => waive.mutate(key)}
             >
-              <Button size="small" danger icon={<StopOutlined />} loading={waive.isPending}>
+              <Button
+                size="small"
+                danger
+                icon={<StopOutlined />}
+                loading={waive.isPending && isTarget(waive.variables)}
+              >
                 Waive
               </Button>
             </Popconfirm>
@@ -176,15 +193,39 @@ export function DeadLettersPage() {
             return acc;
           }, {});
           const lanes = Object.entries(byLane).sort((a, b) => b[1].length - a[1].length);
+          const partial = data.items.length < data.total;
+          const from = (page - 1) * pageSize + 1;
+          const to = from + data.items.length - 1;
 
           return (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               <Alert
                 type="warning"
                 showIcon
-                message={`${data.total} job${data.total === 1 ? '' : 's'} in the dead-letter box across ${lanes.length} lane${lanes.length === 1 ? '' : 's'}`}
+                message={`${data.total} job${data.total === 1 ? '' : 's'} in the dead-letter box`}
                 description="Dead jobs are excluded from derivation, so the words behind them stay blocked indefinitely until a human retries or waives."
               />
+
+              <Flex align="center" justify="space-between" gap={12} wrap>
+                <Typography.Text type="secondary">
+                  {partial
+                    ? `Showing ${from}–${to} of ${data.total}; the lane breakdown below covers this page.`
+                    : `All ${data.total} row${data.total === 1 ? '' : 's'} across ${lanes.length} lane${lanes.length === 1 ? '' : 's'}.`}
+                </Typography.Text>
+                <Pagination
+                  size="small"
+                  current={page}
+                  pageSize={pageSize}
+                  total={data.total}
+                  showSizeChanger
+                  pageSizeOptions={[25, 50, 100, 200]}
+                  showTotal={(count, range) => `${range[0]}–${range[1]} of ${count}`}
+                  onChange={(nextPage, nextSize) => {
+                    setPage(nextPage);
+                    setPageSize(nextSize);
+                  }}
+                />
+              </Flex>
 
               <Row gutter={[12, 12]}>
                 {lanes.map(([lane, rows]) => (
@@ -197,6 +238,13 @@ export function DeadLettersPage() {
                           </Tooltip>
                         }
                         value={rows.length}
+                        suffix={
+                          partial ? (
+                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                              on this page
+                            </Typography.Text>
+                          ) : undefined
+                        }
                         valueStyle={{ fontSize: 22 }}
                       />
                     </Card>

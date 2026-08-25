@@ -12,11 +12,49 @@ import {
   ReadOutlined,
   RocketOutlined,
 } from '@ant-design/icons';
+import { useLiveStream } from '../app/liveStreamContext';
 import { useThemeMode } from '../app/theme';
 import { useDashboard } from '../hooks/queries';
 import { GlobalSearch } from './GlobalSearch';
 
 const { Header, Sider, Content } = Layout;
+
+/**
+ * Health of `GET /api/stream`. It is the only thing keeping the console current
+ * once polling is gone, so its state has to be visible rather than assumed.
+ */
+function StreamIndicator() {
+  const { status, enabled } = useLiveStream();
+  if (!enabled) return null;
+
+  const presentation = {
+    open: { status: 'success' as const, label: 'live', hint: 'Change stream connected.' },
+    connecting: {
+      status: 'processing' as const,
+      label: 'connecting',
+      hint: 'Opening the change stream…',
+    },
+    reconnecting: {
+      status: 'warning' as const,
+      label: 'reconnecting',
+      hint: 'Change stream dropped; retrying with backoff. The dashboard is polling meanwhile.',
+    },
+    closed: { status: 'default' as const, label: 'offline', hint: 'Change stream closed.' },
+  }[status];
+
+  return (
+    <Tooltip title={presentation.hint}>
+      <Badge
+        status={presentation.status}
+        text={
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {presentation.label}
+          </Typography.Text>
+        }
+      />
+    </Tooltip>
+  );
+}
 
 interface NavItem {
   key: string;
@@ -140,6 +178,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <GlobalSearch />
           </Space>
           <Space size={10}>
+            <StreamIndicator />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               {import.meta.env.VITE_API_MOCK === '1' ? 'mock data' : 'live morphod'}
             </Typography.Text>

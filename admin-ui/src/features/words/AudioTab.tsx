@@ -1,4 +1,5 @@
 import { Alert, Card, Empty, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { ExclamationCircleFilled } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { AudioButton } from '../../components/AudioButton';
 import type { TtsStatusView, WordDetail } from '../../api/types';
@@ -18,7 +19,20 @@ function refLabel(view: TtsStatusView): string {
 
 export function AudioTab({ detail }: { detail: WordDetail }) {
   const failed = detail.tts.filter((view) => view.status === 'failed');
-  const missing = detail.tts.filter((view) => view.status === 'missing');
+  /*
+   * Ruling #6 keys `missing` purely on the absence of a `tts_assets` row for the
+   * current voice/params, so a synthesis that ran and blew up reports `missing`
+   * too — while the word itself carries a `tts_failed` blocker. `last_error` is
+   * what separates the two, and saying "the engine will pick it up next pass"
+   * about a dead-lettered job would be a lie.
+   */
+  const errored = detail.tts.filter(
+    (view) => view.status === 'missing' && view.last_error !== null,
+  );
+  const pending = detail.tts.filter(
+    (view) => view.status === 'missing' && view.last_error === null,
+  );
+  const broken = [...failed, ...errored];
 
   const columns: ColumnsType<TtsStatusView> = [
     {
@@ -52,9 +66,17 @@ export function AudioTab({ detail }: { detail: WordDetail }) {
       width: 110,
       render: (status: TtsStatusView['status'], view) => (
         <Tooltip title={view.last_error ?? undefined}>
-          <Tag color={STATUS_COLOR[status]} style={{ margin: 0 }}>
-            {status}
-          </Tag>
+          <Space size={4}>
+            <Tag color={STATUS_COLOR[status]} style={{ margin: 0 }}>
+              {status}
+            </Tag>
+            {status !== 'failed' && view.last_error !== null && (
+              <ExclamationCircleFilled
+                style={{ color: '#cf3d3d' }}
+                aria-label="last attempt errored"
+              />
+            )}
+          </Space>
         </Tooltip>
       ),
     },
@@ -94,19 +116,29 @@ export function AudioTab({ detail }: { detail: WordDetail }) {
         description="input_hash = blake3(canonical(text) ‖ voice ‖ engine ‖ engine_ver ‖ params). Switching a selection back and forth costs nothing; rejecting a candidate never invalidates audio."
       />
 
-      {failed.length > 0 && (
+      {broken.length > 0 && (
         <Alert
           type="error"
           showIcon
-          message={`${failed.length} synthesis${failed.length === 1 ? '' : 'es'} failed`}
-          description={failed[0]?.last_error ?? 'See the dead letters screen to retry or waive.'}
+          message={`${broken.length} synthesis attempt${broken.length === 1 ? '' : 's'} failed`}
+          description={
+            <Space direction="vertical" size={2}>
+              <Typography.Text type="secondary">
+                {broken[0]?.last_error ?? 'The adapter reported no detail.'}
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                Retry or waive the job on the dead letters screen; the engine will not attempt these
+                again on its own.
+              </Typography.Text>
+            </Space>
+          }
         />
       )}
-      {missing.length > 0 && failed.length === 0 && (
+      {pending.length > 0 && (
         <Alert
           type="warning"
           showIcon
-          message={`${missing.length} desired text${missing.length === 1 ? '' : 's'} not synthesized yet`}
+          message={`${pending.length} desired text${pending.length === 1 ? '' : 's'} not synthesized yet`}
           description="These rows exist in tts_desired but not in tts_assets; the engine will pick them up on the next pass."
         />
       )}

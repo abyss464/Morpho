@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { App } from 'antd';
 import * as api from '../api/endpoints';
 import { qk } from '../api/queryKeys';
+import { useLiveStream } from '../app/liveStreamContext';
 import { errorMessage } from '../lib/errors';
 import type {
   AssetKind,
@@ -13,6 +14,7 @@ import type {
   MintExampleBody,
   OovQuery,
   OovResolveBody,
+  PageParams,
   Pos,
   WordDetail,
   WordsQuery,
@@ -22,19 +24,28 @@ import type {
 /* Reads                                                               */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The change stream drives every refresh while it is connected. The interval is
+ * a fallback for the window where it is not: mock mode (nothing ever changes
+ * behind our back) leaves it off entirely, and a live console falls back to a
+ * slow poll only while reconnecting.
+ */
 export function useDashboard() {
+  const live = useLiveStream();
+  const fallbackPolling = live.enabled && live.status !== 'open';
   return useQuery({
     queryKey: qk.dashboard(),
     queryFn: ({ signal }) => api.getDashboard(signal),
-    refetchInterval: 30_000,
+    refetchInterval: fallbackPolling ? 30_000 : false,
   });
 }
 
-export function useWordList(query: WordsQuery) {
+export function useWordList(query: WordsQuery, enabled = true) {
   return useQuery({
     queryKey: qk.wordList(query),
     queryFn: ({ signal }) => api.listWords(query, signal),
     placeholderData: (previous) => previous,
+    enabled,
   });
 }
 
@@ -54,10 +65,11 @@ export function useOovList(query: OovQuery) {
   });
 }
 
-export function useDeadLetters() {
+export function useDeadLetters(query: PageParams = {}) {
   return useQuery({
-    queryKey: qk.deadLetters(),
-    queryFn: ({ signal }) => api.listDeadLetters(signal),
+    queryKey: qk.deadLetterList(query),
+    queryFn: ({ signal }) => api.listDeadLetters(query, signal),
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -311,10 +323,12 @@ export function useDeadLetterActions() {
     void client.invalidateQueries({ queryKey: qk.releases() });
   };
 
+  // The write endpoints answer with the *first* page of the box. Seeding that
+  // into the cache would replace whatever page the operator is on, so the
+  // response is discarded and the list refetches for the page in view.
   const retry = useMutation({
     mutationFn: (body: JobKeyBody) => api.retryDeadLetter(body),
-    onSuccess: (data) => {
-      client.setQueryData(qk.deadLetters(), data);
+    onSuccess: () => {
       invalidate();
       message.success('job_state row deleted; the demand re-derives on the next pass.');
     },
@@ -323,8 +337,7 @@ export function useDeadLetterActions() {
 
   const waive = useMutation({
     mutationFn: (body: JobKeyBody) => api.waiveDeadLetter(body),
-    onSuccess: (data) => {
-      client.setQueryData(qk.deadLetters(), data);
+    onSuccess: () => {
       invalidate();
       message.success('Waived — the fallback rule for this lane is now armed.');
     },
