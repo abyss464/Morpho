@@ -1,0 +1,13 @@
+# uv-managed virtualenvs (one per adapter project)
+.venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+
+# Build output
+dist/
+build/
+*.egg-info/

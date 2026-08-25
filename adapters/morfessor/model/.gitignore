@@ -1,0 +1,5 @@
+# Trained model artifacts are built, not committed.
+*.bin
+*.model
+*.gz
+VERSION

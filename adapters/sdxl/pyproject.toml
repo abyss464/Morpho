@@ -1,0 +1,38 @@
+[project]
+name = "morpho-sdxl-adapter"
+version = "0.1.0"
+description = "Morpho SDXL adapter: local ComfyUI txt2img client writing WebP"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "morpho-adapter-common",
+    "pillow>=10.4,<12",
+]
+
+[project.scripts]
+sdxl-adapter = "morpho_sdxl.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/morpho_sdxl"]
+
+[tool.uv.sources]
+morpho-adapter-common = { path = "../common", editable = true }
+
+[dependency-groups]
+dev = ["pytest>=8.3", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
