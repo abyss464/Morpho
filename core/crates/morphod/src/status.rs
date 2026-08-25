@@ -4,10 +4,11 @@
 use anyhow::Result;
 
 use morpho_domain::tts::TtsConfig;
-use morpho_reconcile::SourcesConfig;
+use morpho_reconcile::{probe_adapters, AdapterConfig, SourcesConfig};
 use morpho_store::queries::{
-    asset_counts, current_plan, dead_letter_count, oos_open_count, tts_assets, tts_desired,
-    word_counts, AssetCounts, AssetRollup, PlanSummary, WordCounts,
+    abandoned_tts_inputs, asset_counts, current_plan, dead_letter_count, oos_open_count,
+    tts_assets, tts_desired, tts_given_up, word_counts, AssetCounts, AssetRollup, PlanSummary,
+    WordCounts,
 };
 use morpho_store::Store;
 
@@ -44,11 +45,15 @@ pub async fn collect(store: &Store, tts: &TtsConfig) -> Result<StatusReport> {
 }
 
 /// TTS coverage of the whole desired set against the configured voice.
+///
+/// Buckets by the shared ruling-#13 rule, so the CLI, the dashboard and each
+/// word's detail view all count the same clip the same way.
 fn tts_rollup(
     conn: &rusqlite::Connection,
     config: &TtsConfig,
 ) -> morpho_store::Result<AssetRollup> {
     let assets = tts_assets(conn)?;
+    let abandoned = abandoned_tts_inputs(conn)?;
     let mut out = AssetRollup::default();
     let mut seen = std::collections::HashSet::new();
     for (kind, text) in tts_desired(conn)? {
@@ -56,10 +61,12 @@ fn tts_rollup(
         if !seen.insert(hash.clone()) {
             continue;
         }
-        match assets.get(&hash).map(|asset| asset.status.as_str()) {
-            Some("ready") => out.ready += 1,
-            Some("failed") => out.failed += 1,
-            _ => out.missing += 1,
+        if assets.get(&hash).is_some_and(|a| a.status == "ready") {
+            out.ready += 1;
+        } else if tts_given_up(&hash, &assets, &abandoned) {
+            out.failed += 1;
+        } else {
+            out.missing += 1;
         }
     }
     Ok(out)
@@ -82,7 +89,12 @@ fn blocker_histogram(conn: &rusqlite::Connection) -> morpho_store::Result<Vec<(S
 }
 
 impl StatusReport {
-    pub fn render(&self, db_path: &str, sources: &SourcesConfig) -> String {
+    pub fn render(
+        &self,
+        db_path: &str,
+        sources: &SourcesConfig,
+        adapters: &AdapterConfig,
+    ) -> String {
         let rollup = |label: &str, rollup: AssetRollup| {
             format!(
                 "{label:<15} {} ready, {} missing, {} exhausted\n",
@@ -137,6 +149,19 @@ impl StatusReport {
         for (name, state) in sources.describe() {
             out.push_str(&format!("  {name:<14}{state}\n"));
         }
+
+        // Ruling #17: the probe is part of the report, and an unavailable
+        // adapter names the jobs it takes with it.
+        out.push_str(&format!("adapters        {}\n", adapters.root().display()));
+        for probe in probe_adapters(adapters) {
+            out.push_str(&format!("  {:<14}{}\n", probe.adapter, probe.state()));
+            if !probe.available() {
+                out.push_str(&format!(
+                    "                will dead-letter: {}\n",
+                    probe.dead_letters
+                ));
+            }
+        }
         out
     }
 }
@@ -158,9 +183,28 @@ mod tests {
         }
     }
 
+    fn render(adapters: &AdapterConfig) -> String {
+        empty_report().render("db", &SourcesConfig::default(), adapters)
+    }
+
+    /// A tree that looks like the repository: `adapters/<name>/pyproject.toml`.
+    fn adapters_tree() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for (adapter, _) in morpho_reconcile::ADAPTERS {
+            let project = dir.path().join("adapters").join(adapter);
+            std::fs::create_dir_all(&project).unwrap();
+            std::fs::write(project.join("pyproject.toml"), b"[project]\n").unwrap();
+        }
+        dir
+    }
+
     #[test]
     fn the_report_names_every_section() {
-        let text = empty_report().render("data/working.db", &SourcesConfig::default());
+        let text = empty_report().render(
+            "data/working.db",
+            &SourcesConfig::default(),
+            &AdapterConfig::default(),
+        );
         for expected in [
             "database",
             "words",
@@ -175,6 +219,7 @@ mod tests {
             "releases",
             "blockers",
             "sources",
+            "adapters",
         ] {
             assert!(text.contains(expected), "missing {expected} in:\n{text}");
         }
@@ -182,14 +227,51 @@ mod tests {
 
     #[test]
     fn unconfigured_sources_are_reported_as_disabled() {
-        let text = empty_report().render("db", &SourcesConfig::default());
+        let text = render(&AdapterConfig::default());
         assert!(text.contains("wordnet"));
         assert!(text.contains("disabled"), "{text}");
     }
 
     #[test]
     fn the_blocker_histogram_is_rendered() {
-        let text = empty_report().render("db", &SourcesConfig::default());
+        let text = render(&AdapterConfig::default());
         assert!(text.contains("25  missing_image"), "{text}");
+    }
+
+    /// Ruling #17: every adapter gets its own line, rooted at `adapters_root`.
+    #[test]
+    fn status_reports_each_adapter_against_the_configured_root() {
+        let dir = adapters_tree();
+        let config = AdapterConfig {
+            adapters_root: Some(dir.path().to_path_buf()),
+            // `sh` always exists, so the launcher half of the probe passes and
+            // the test is really about the project half.
+            command: vec!["sh".into(), "--project".into(), "adapters/{adapter}".into()],
+            ..AdapterConfig::default()
+        };
+        let text = render(&config);
+        assert!(text.contains(&dir.path().display().to_string()), "{text}");
+        for (adapter, _) in morpho_reconcile::ADAPTERS {
+            assert!(text.contains(adapter), "missing {adapter} in:\n{text}");
+        }
+        assert!(!text.contains("UNAVAILABLE"), "{text}");
+        assert!(!text.contains("will dead-letter"), "{text}");
+    }
+
+    /// A missing adapter names exactly what it takes down.
+    #[test]
+    fn a_missing_adapter_is_reported_with_its_damage() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = AdapterConfig {
+            adapters_root: Some(dir.path().to_path_buf()),
+            command: vec!["sh".into(), "--project".into(), "adapters/{adapter}".into()],
+            ..AdapterConfig::default()
+        };
+        let text = render(&config);
+        assert!(text.contains("UNAVAILABLE"), "{text}");
+        assert!(text.contains("no pyproject.toml"), "{text}");
+        assert!(text.contains("synth_tts"), "{text}");
+        assert!(text.contains("segment_morphology"), "{text}");
+        assert!(text.contains("gen_image_sdxl"), "{text}");
     }
 }

@@ -565,7 +565,7 @@ pub async fn waive_dead_letter(
 async fn dead_letter_page(state: &AppState) -> ApiResult<Json<Page<DeadLetter>>> {
     let body = state
         .store
-        .read(move |conn| queries::dead_letters(conn, Pagination::default()))
+        .read(move |conn| queries::dead_letters(conn, Pagination::default(), None))
         .await?;
     Ok(Json(body))
 }

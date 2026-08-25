@@ -606,6 +606,84 @@ async fn a_release_pins_its_media_against_gc() {
     assert_eq!(releases, 1);
 }
 
+/// Ruling #15: the exporter writes `releases.word_count`; nothing has to
+/// reconstruct it from the audit log afterwards.
+#[tokio::test]
+async fn the_release_row_records_its_word_count() {
+    let f = fixture();
+    four_complete_words(&f).await;
+    let out = f.dir.path().join("release-1");
+    let (written, _) = morpho_export::export(&f.store, &f.settings(), &out, "abyss", None)
+        .await
+        .unwrap();
+    assert_eq!(written.word_count, 4);
+
+    let stored: i64 = f
+        .store
+        .read(|conn| Ok(conn.query_row("SELECT word_count FROM releases", [], |row| row.get(0))?))
+        .await
+        .unwrap();
+    assert_eq!(stored as usize, written.word_count);
+}
+
+/// Ruling #13: the word's `tts_failed` blocker and the per-text
+/// `TtsStatusView.status` are one verdict, computed once.
+#[tokio::test]
+async fn a_dead_tts_job_agrees_across_the_blocker_and_the_view() {
+    use morpho_domain::job::{JobKey, JobKind, JobStatus, RateKey, SubjectRef};
+    use morpho_store::ops::UpsertJobState;
+
+    let f = fixture();
+    let word = f.word("serene", Role::Target, 4_602).await;
+    let config = TtsConfig::default();
+    // No `tts_assets` row at all: the dead job is the only record of failure.
+    let input_hash = config.input_hash(TtsKind::Word, "serene");
+    f.store
+        .write(
+            Actor::Worker(JobKind::SynthTts),
+            WriteOp::UpsertJobState(UpsertJobState {
+                key: JobKey::new(JobKind::SynthTts, SubjectRef::tts_input(input_hash.clone())),
+                rate_key: RateKey::EdgeTts,
+                status: JobStatus::Dead,
+                attempts: 5,
+                next_retry_at: None,
+                last_error: Some("edge-tts rejected the voice".into()),
+            }),
+        )
+        .await
+        .unwrap();
+
+    f.converge().await;
+
+    let probe = input_hash.clone();
+    let (blockers, statuses) = f
+        .store
+        .read(move |conn| {
+            let raw: String = conn.query_row(
+                "SELECT blockers FROM words WHERE word_id = ?1",
+                rusqlite::params![word],
+                |row| row.get(0),
+            )?;
+            let detail = morpho_api::queries::word_detail(conn, word, &TtsConfig::default())?;
+            let statuses: Vec<String> = detail
+                .tts
+                .iter()
+                .filter(|view| view.input_hash == probe)
+                .map(|view| view.status.clone())
+                .collect();
+            Ok((morpho_domain::blocker::parse_blockers(&raw), statuses))
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(statuses, vec!["failed".to_string()]);
+    assert!(blockers.contains(&"tts_failed".to_string()), "{blockers:?}");
+    assert!(
+        !blockers.contains(&"tts_missing".to_string()),
+        "the lemma is the only desired clip, and it failed: {blockers:?}"
+    );
+}
+
 #[tokio::test]
 async fn a_broken_word_pulls_its_dependents_out_and_the_report_says_why() {
     let f = fixture();

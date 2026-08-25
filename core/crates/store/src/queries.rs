@@ -202,6 +202,41 @@ pub fn tts_assets(conn: &Connection) -> Result<HashMap<String, TtsAssetRow>> {
     Ok(out)
 }
 
+/// TTS inputs the engine has stopped working on, by `input_hash`.
+///
+/// Admin-api.md wave-3 ruling #13: one definition of "given up" for both the
+/// per-text `TtsStatusView.status` and the word's `tts_failed` blocker, so the
+/// console can never show a `missing` clip on a word it also calls failed.
+/// `dead` is the retry budget running out; `waived` is an operator saying the
+/// need is satisfied some other way. Neither will produce audio without a
+/// human, so both read as `failed`.
+pub fn abandoned_tts_inputs(conn: &Connection) -> Result<std::collections::HashSet<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT subject_id FROM job_state
+         WHERE kind = 'synth_tts' AND subject_type = 'tts_input'
+           AND status IN ('dead','waived')",
+    )?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<std::collections::HashSet<_>>>()?;
+    Ok(rows)
+}
+
+/// Has the engine given up on this TTS input?
+///
+/// The asset row and the job row are two independent records of the same
+/// verdict; either one is enough.
+pub fn tts_given_up(
+    input_hash: &str,
+    assets: &HashMap<String, TtsAssetRow>,
+    abandoned: &std::collections::HashSet<String>,
+) -> bool {
+    abandoned.contains(input_hash)
+        || assets
+            .get(input_hash)
+            .is_some_and(|asset| asset.status == "failed")
+}
+
 /// Count of open out-of-scope queue rows.
 pub fn oos_open_count(conn: &Connection) -> Result<i64> {
     Ok(conn.query_row(

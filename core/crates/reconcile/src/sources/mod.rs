@@ -98,15 +98,25 @@ impl SourceSet {
     }
 
     /// Log one line per source so an operator can see at a glance what is live.
+    ///
+    /// Wave-3 ruling #17: adapters are reported one by one, and a missing one
+    /// warns with the jobs it takes down rather than a generic "unavailable".
     pub fn log_availability(&self) {
         for (name, state) in self.config.describe() {
             tracing::info!(source = name, state = %state, "content source");
         }
-        if !proc::launcher_available(&self.adapters) {
-            tracing::warn!(
-                runner = %self.adapters.runner(),
-                "adapter launcher not found on PATH; tts, morfessor and sdxl jobs will dead-letter"
-            );
+        tracing::info!(root = %self.adapters.root().display(), "adapters root");
+        for probe in proc::probe_adapters(&self.adapters) {
+            if probe.available() {
+                tracing::info!(adapter = probe.adapter, state = %probe.state(), "adapter");
+            } else {
+                tracing::warn!(
+                    adapter = probe.adapter,
+                    state = %probe.state(),
+                    dead_letters = probe.dead_letters,
+                    "adapter unavailable"
+                );
+            }
         }
     }
 }

@@ -10,7 +10,6 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::Connection;
 
 use morpho_domain::event::Actor;
-use morpho_domain::job::{JobKind, JobStatus};
 use morpho_domain::tts::TtsConfig;
 use morpho_domain::types::TtsKind;
 use morpho_store::error::Result;
@@ -220,15 +219,12 @@ struct TtsState {
 ///
 /// A desired text with no asset is `missing` while its job is still alive, and
 /// `failed` once the job is dead or waived — a distinction the console needs
-/// and `tts_assets` alone cannot make.
+/// and `tts_assets` alone cannot make. Wave-3 ruling #13 makes that verdict
+/// shared: `TtsStatusView.status` buckets by the same helper, so a word
+/// carrying `tts_failed` can never list a `missing` clip.
 fn tts_state(conn: &Connection, config: &TtsConfig) -> Result<HashMap<i64, TtsState>> {
     let assets = queries::tts_assets(conn)?;
-    let dead: HashSet<String> = queries::job_states(conn)?
-        .into_iter()
-        .filter(|row| matches!(row.status, JobStatus::Dead | JobStatus::Waived))
-        .filter(|row| row.key.kind == JobKind::SynthTts)
-        .map(|row| row.key.subject.subject_id)
-        .collect();
+    let abandoned = queries::abandoned_tts_inputs(conn)?;
 
     let mut stmt = conn.prepare(
         "SELECT word_id, kind, text FROM (
@@ -269,11 +265,7 @@ fn tts_state(conn: &Connection, config: &TtsConfig) -> Result<HashMap<i64, TtsSt
             continue;
         }
         let entry = out.entry(word_id).or_default();
-        let given_up = dead.contains(&input_hash)
-            || assets
-                .get(&input_hash)
-                .is_some_and(|asset| asset.status == "failed");
-        if given_up {
+        if queries::tts_given_up(&input_hash, &assets, &abandoned) {
             entry.failed += 1;
         } else {
             entry.missing += 1;

@@ -23,6 +23,7 @@ use morpho_store::{Store, StoreConfig, WriteOp};
 
 struct Harness {
     _dir: tempfile::TempDir,
+    data_dir: std::path::PathBuf,
     store: Store,
     router: axum::Router,
 }
@@ -41,12 +42,13 @@ fn harness() -> Harness {
     let state = AppState::new(
         store.clone(),
         Arc::new(JobRegistry::new()),
-        data_dir,
+        data_dir.clone(),
         export,
     );
     let router = build_router(state, None);
     Harness {
         _dir: dir,
+        data_dir,
         store,
         router,
     }
@@ -347,6 +349,105 @@ async fn word_detail_matches_the_wire_shape() {
 
     assert!(body["distractors"].is_array());
     assert!(body["recent_events"].is_array());
+}
+
+/// Seed a `synth_tts` job_state row for one desired text.
+async fn seed_tts_job(
+    h: &Harness,
+    kind: morpho_domain::types::TtsKind,
+    text: &str,
+    status: morpho_domain::job::JobStatus,
+) -> String {
+    use morpho_domain::job::{JobKey, JobKind, RateKey, SubjectRef};
+    use morpho_store::ops::UpsertJobState;
+
+    let input_hash = TtsConfig::default().input_hash(kind, text);
+    h.store
+        .write(
+            Actor::Worker(JobKind::SynthTts),
+            WriteOp::UpsertJobState(UpsertJobState {
+                key: JobKey::new(JobKind::SynthTts, SubjectRef::tts_input(input_hash.clone())),
+                rate_key: RateKey::EdgeTts,
+                status,
+                attempts: 5,
+                next_retry_at: None,
+                last_error: Some("edge-tts rejected the voice".into()),
+            }),
+        )
+        .await
+        .unwrap();
+    input_hash
+}
+
+/// Ruling #13: a dead `synth_tts` row is `failed`, with or without an asset row.
+#[tokio::test]
+async fn a_dead_tts_job_makes_that_text_failed() {
+    use morpho_domain::job::JobStatus;
+    use morpho_domain::types::TtsKind;
+
+    let h = harness();
+    let word = seeded_word(&h).await;
+    let hash = seed_tts_job(&h, TtsKind::Word, "benevolent", JobStatus::Dead).await;
+
+    let (_, body) = get(&h.router, &format!("/api/words/{word}")).await;
+    let tts = body["tts"].as_array().unwrap();
+    let lemma = tts.iter().find(|e| e["input_hash"] == hash).unwrap();
+    assert_eq!(lemma["status"], "failed", "no tts_assets row exists");
+    assert_eq!(lemma["last_error"], "edge-tts rejected the voice");
+    // The sense clip was never attempted, so it is still honestly `missing`.
+    let sense = tts.iter().find(|e| e["kind"] == "definition").unwrap();
+    assert_eq!(sense["status"], "missing");
+
+    // And the dashboard rollup buckets it the same way.
+    let (_, dashboard) = get(&h.router, "/api/dashboard").await;
+    assert_eq!(dashboard["assets"]["tts"]["failed"], 1);
+    assert_eq!(dashboard["assets"]["tts"]["missing"], 1);
+}
+
+/// Ruling #13: `missing` strictly means "not attempted, or still retrying".
+#[tokio::test]
+async fn a_tts_job_still_in_backoff_stays_missing() {
+    use morpho_domain::job::JobStatus;
+    use morpho_domain::types::TtsKind;
+
+    let h = harness();
+    let word = seeded_word(&h).await;
+    let hash = seed_tts_job(&h, TtsKind::Word, "benevolent", JobStatus::Backoff).await;
+
+    let (_, body) = get(&h.router, &format!("/api/words/{word}")).await;
+    let entry = body["tts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["input_hash"] == hash)
+        .unwrap()
+        .clone();
+    assert_eq!(entry["status"], "missing", "retries have not run out");
+
+    let (_, dashboard) = get(&h.router, "/api/dashboard").await;
+    assert_eq!(dashboard["assets"]["tts"]["failed"], 0);
+}
+
+/// A waived clip is the operator saying "no audio, on purpose" — also `failed`,
+/// because that is what the word's blocker says.
+#[tokio::test]
+async fn a_waived_tts_job_is_failed_too() {
+    use morpho_domain::job::JobStatus;
+    use morpho_domain::types::TtsKind;
+
+    let h = harness();
+    let word = seeded_word(&h).await;
+    let hash = seed_tts_job(&h, TtsKind::Word, "benevolent", JobStatus::Waived).await;
+
+    let (_, body) = get(&h.router, &format!("/api/words/{word}")).await;
+    let entry = body["tts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["input_hash"] == hash)
+        .unwrap()
+        .clone();
+    assert_eq!(entry["status"], "failed");
 }
 
 #[tokio::test]
@@ -765,6 +866,73 @@ async fn dead_letters_paginate() {
     assert_eq!(body["items"].as_array().unwrap().len(), 2);
 }
 
+/// Ruling #14: an optional lane filter, with unknown values handled gracefully.
+#[tokio::test]
+async fn dead_letters_filter_by_rate_key() {
+    use morpho_domain::job::{JobKey, JobKind, JobStatus, RateKey, SubjectRef};
+    use morpho_store::ops::UpsertJobState;
+
+    let h = harness();
+    let word = seed_word(&h.store, "serene", Role::Target, Some(4602)).await;
+    seed_dead_letter(&h, word).await; // unsplash lane
+    h.store
+        .write(
+            Actor::Worker(JobKind::SynthTts),
+            WriteOp::UpsertJobState(UpsertJobState {
+                key: JobKey::new(JobKind::SynthTts, SubjectRef::tts_input("abc")),
+                rate_key: RateKey::EdgeTts,
+                status: JobStatus::Dead,
+                attempts: 5,
+                next_retry_at: None,
+                last_error: Some("voice not available".into()),
+            }),
+        )
+        .await
+        .unwrap();
+
+    let (status, all) = get(&h.router, "/api/dead-letters").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(all["total"], 2);
+
+    let (status, lane) = get(&h.router, "/api/dead-letters?rate_key=edge_tts").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(lane["total"], 1);
+    assert_eq!(lane["items"][0]["rate_key"], "edge_tts");
+    assert_eq!(lane["items"][0]["kind"], "synth_tts");
+
+    // A real lane with nothing dead in it.
+    let (status, empty) = get(&h.router, "/api/dead-letters?rate_key=pexels").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(empty["total"], 0);
+
+    // An unknown value matches nothing rather than erroring or widening.
+    let (status, unknown) = get(&h.router, "/api/dead-letters?rate_key=not-a-lane").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(unknown["total"], 0);
+    assert!(unknown["items"].as_array().unwrap().is_empty());
+
+    // A blank value is no filter at all.
+    let (status, blank) = get(&h.router, "/api/dead-letters?rate_key=").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(blank["total"], 2);
+}
+
+#[tokio::test]
+async fn the_rate_key_filter_composes_with_pagination() {
+    let h = harness();
+    for lemma in ["serene", "tranquil", "lucid"] {
+        let word = seed_word(&h.store, lemma, Role::Target, Some(1000)).await;
+        seed_dead_letter(&h, word).await;
+    }
+    let (_, body) = get(
+        &h.router,
+        "/api/dead-letters?rate_key=unsplash&page=2&page_size=2",
+    )
+    .await;
+    assert_eq!(body["total"], 3);
+    assert_eq!(body["items"].as_array().unwrap().len(), 1);
+}
+
 #[tokio::test]
 async fn retry_deletes_the_row_and_waive_flips_it() {
     let h = harness();
@@ -973,6 +1141,63 @@ async fn exporting_an_empty_cut_succeeds_and_records_a_release() {
     assert_eq!(history["total"], 1);
     assert_eq!(history["items"][0]["word_count"], 0);
     assert_eq!(history["items"][0]["exported_by"], "abyss");
+}
+
+/// Ruling #15: `Release.word_count` is a column of `releases`, so the history
+/// survives an audit log that no longer carries the export event.
+#[tokio::test]
+async fn release_history_reads_the_word_count_column() {
+    use morpho_store::ops::RecordRelease;
+
+    let h = harness();
+    seed_plan(&h).await;
+    let plan_id: i64 = h
+        .store
+        .read(|conn| {
+            Ok(conn.query_row(
+                "SELECT plan_id FROM plan_artifacts WHERE is_current = 1",
+                [],
+                |row| row.get(0),
+            )?)
+        })
+        .await
+        .unwrap();
+    h.store
+        .write(
+            Actor::Cli,
+            WriteOp::RecordRelease(RecordRelease {
+                version: "2026.08.26+deadbeef".into(),
+                plan_id,
+                input_hash: "input-1".into(),
+                db_file_hash: "db-1".into(),
+                exported_by: "abyss".into(),
+                notes: None,
+                media_hashes: Vec::new(),
+                word_count: 42,
+            }),
+        )
+        .await
+        .unwrap();
+
+    let stored: i64 = h
+        .store
+        .read(|conn| Ok(conn.query_row("SELECT word_count FROM releases", [], |row| row.get(0))?))
+        .await
+        .unwrap();
+    assert_eq!(stored, 42, "the exporter writes the column");
+
+    // Erase the export event: the old implementation reconstructed the count
+    // from it, so this is what makes the assertion below meaningful.
+    let conn = rusqlite::Connection::open(h.data_dir.join("working.db")).unwrap();
+    conn.execute("DELETE FROM events WHERE entity_type = 'release'", [])
+        .unwrap();
+    drop(conn);
+
+    let (status, body) = get(&h.router, "/api/releases").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["items"][0]["word_count"], 42);
+    assert_eq!(body["items"][0]["media_count"], 0);
 }
 
 #[tokio::test]

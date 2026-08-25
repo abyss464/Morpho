@@ -39,4 +39,20 @@ pub const RELEASE_SCHEMA_VER: &str = "1";
 ///
 /// * 1 — wave-1 shape.
 /// * 2 — wave-2: `words.core_ready`, normative `rate_limits` seeds.
-pub const SCHEMA_USER_VERSION: i32 = 2;
+/// * 3 — wave-3: `releases.word_count` (admin-api.md ruling #15).
+pub const SCHEMA_USER_VERSION: i32 = 3;
+
+/// Version the embedded `docs/contracts/working-db.sql` describes.
+///
+/// The contract file is normative but only the conductor edits it, so it may
+/// legitimately trail the code between a ruling and its contract sync. A
+/// freshly created database is therefore stamped at *this* version and then
+/// walked forward by the same migration ladder an existing database uses:
+/// equal to [`SCHEMA_USER_VERSION`] (the settled state) the ladder runs
+/// nothing, and behind it the ladder closes the gap. Either way "created from
+/// the contract" and "migrated from wave 1" end up the same schema.
+///
+/// Raise it when the contract file gains what a migration already added. It may
+/// never exceed [`SCHEMA_USER_VERSION`]; `store::schema` asserts that at compile
+/// time.
+pub const CONTRACT_SCHEMA_VERSION: i32 = 3;

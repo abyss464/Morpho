@@ -5,6 +5,11 @@
 //! normally launched from the repository root where `data/`, `adapters/` and
 //! `admin-ui/dist/` live.
 //!
+//! The adapters are the exception (admin-api.md wave-3 ruling #17): their root
+//! is resolved once at load time, from `adapters.adapters_root` or from the
+//! config file's own location, so a subprocess spawn does not depend on where
+//! the daemon was started.
+//!
 //! Secrets are the one place environment beats the file: API keys do not belong
 //! in a checked-in config, so `UNSPLASH_ACCESS_KEY` and friends override it.
 
@@ -16,7 +21,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use morpho_domain::tts::TtsConfig;
-use morpho_reconcile::{AdapterConfig, PlanParams, SourcesConfig};
+use morpho_reconcile::{AdapterConfig, PlanParams, SourcesConfig, ADAPTERS_DIR};
 
 /// Config file consulted when `--config` is not given.
 pub const DEFAULT_CONFIG_FILE: &str = "morphod.toml";
@@ -120,7 +125,37 @@ impl Config {
         };
 
         config.apply_env()?;
+        config.resolve_adapters_root(path.as_deref());
         Ok(config)
+    }
+
+    /// Pin the directory adapter subprocesses run from (ruling #17).
+    ///
+    /// An explicit `adapters_root` wins, resolved against the config file's
+    /// directory when it is relative. Otherwise the repository root is found by
+    /// walking up from the config file — and then from the working directory —
+    /// looking for an `adapters/` directory. When neither search finds one, the
+    /// working directory stands, and the startup probe is what reports the
+    /// resulting damage.
+    fn resolve_adapters_root(&mut self, config_path: Option<&Path>) {
+        let config_dir = config_path
+            .and_then(Path::parent)
+            .filter(|dir| !dir.as_os_str().is_empty())
+            .map(Path::to_path_buf);
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+        if let Some(configured) = self.adapters.adapters_root.clone() {
+            let base = config_dir.unwrap_or_else(|| cwd.clone());
+            self.adapters.adapters_root = Some(base.join(configured));
+            return;
+        }
+
+        let resolved = config_dir
+            .as_deref()
+            .and_then(repo_root_above)
+            .or_else(|| repo_root_above(&cwd))
+            .unwrap_or(cwd);
+        self.adapters.adapters_root = Some(resolved);
     }
 
     fn apply_env(&mut self) -> Result<()> {
@@ -137,6 +172,9 @@ impl Config {
         }
         if let Some(value) = std::env::var_os("MORPHOD_RELEASES_DIR") {
             self.releases_dir = PathBuf::from(value);
+        }
+        if let Some(value) = std::env::var_os("MORPHOD_ADAPTERS_ROOT") {
+            self.adapters.adapters_root = Some(PathBuf::from(value));
         }
         self.sources.apply_env();
         Ok(())
@@ -195,6 +233,15 @@ impl Config {
             exporter: format!("morphod/{}", env!("CARGO_PKG_VERSION")),
         }
     }
+}
+
+/// Nearest ancestor of `start` (inclusive) that contains an `adapters/`
+/// directory.
+fn repo_root_above(start: &Path) -> Option<PathBuf> {
+    start
+        .ancestors()
+        .find(|dir| dir.join(ADAPTERS_DIR).is_dir())
+        .map(Path::to_path_buf)
 }
 
 #[cfg(test)]
@@ -282,6 +329,73 @@ mod tests {
         let raw = include_str!("../../../morphod.example.toml");
         let config: Config = toml::from_str(raw).expect("example config must parse");
         assert_eq!(config.data_dir, PathBuf::from("data"));
+    }
+
+    /// A fake checkout: a directory that owns an `adapters/` tree.
+    fn fake_repo() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(ADAPTERS_DIR)).unwrap();
+        dir
+    }
+
+    /// Ruling #17: the root comes from the config file, not the working
+    /// directory, and the search walks up to the checkout.
+    #[test]
+    fn the_adapters_root_is_found_above_the_config_file() {
+        let repo = fake_repo();
+        let nested = repo.path().join("deploy").join("etc");
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let mut config = Config::default();
+        config.resolve_adapters_root(Some(&nested.join("morphod.toml")));
+        assert_eq!(config.adapters.root(), repo.path());
+    }
+
+    #[test]
+    fn loading_a_config_pins_the_adapters_root() {
+        let repo = fake_repo();
+        let path = repo.path().join("morphod.toml");
+        std::fs::write(&path, b"data_dir = \"data\"\n").unwrap();
+
+        let config = Config::load(Some(&path)).unwrap();
+        assert_eq!(config.adapters.root(), repo.path());
+    }
+
+    #[test]
+    fn an_explicit_relative_adapters_root_resolves_against_the_config_file() {
+        let repo = fake_repo();
+        let mut config = Config::default();
+        config.adapters.adapters_root = Some(PathBuf::from("checkout"));
+        config.resolve_adapters_root(Some(&repo.path().join("morphod.toml")));
+        assert_eq!(config.adapters.root(), repo.path().join("checkout"));
+    }
+
+    #[test]
+    fn an_absolute_adapters_root_is_taken_verbatim() {
+        let repo = fake_repo();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.adapters.adapters_root = Some(elsewhere.path().to_path_buf());
+        config.resolve_adapters_root(Some(&repo.path().join("morphod.toml")));
+        assert_eq!(config.adapters.root(), elsewhere.path());
+    }
+
+    #[test]
+    fn a_config_outside_any_checkout_falls_back_to_the_working_directory() {
+        let orphan = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.resolve_adapters_root(Some(&orphan.path().join("morphod.toml")));
+
+        let root = config.adapters.root().to_path_buf();
+        assert_ne!(root, orphan.path());
+        // Whatever it settled on is either a real checkout or the working
+        // directory — never a directory that plainly has no adapters.
+        assert!(
+            root.join(ADAPTERS_DIR).is_dir()
+                || Some(&root) == std::env::current_dir().ok().as_ref(),
+            "{}",
+            root.display()
+        );
     }
 
     #[test]

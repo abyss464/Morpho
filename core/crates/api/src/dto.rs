@@ -666,6 +666,28 @@ impl PageQuery {
     }
 }
 
+/// `GET /dead-letters?rate_key=&page=&page_size=` (wave-3 ruling #14).
+#[derive(Debug, Default, Deserialize)]
+pub struct DeadLetterQuery {
+    /// Dispatcher lane to narrow to. Anything unrecognized matches nothing
+    /// rather than failing the request.
+    #[serde(default)]
+    pub rate_key: Option<String>,
+    #[serde(default)]
+    pub page: Option<i64>,
+    #[serde(default)]
+    pub page_size: Option<i64>,
+}
+
+impl DeadLetterQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination {
+            page: self.page,
+            page_size: self.page_size,
+        }
+    }
+}
+
 /// Decode a TEXT column holding JSON into a value the console can read.
 pub fn decode_json(raw: Option<String>) -> Option<serde_json::Value> {
     raw.as_deref()

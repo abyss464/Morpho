@@ -360,6 +360,7 @@ CREATE TABLE releases (
     plan_id      INTEGER NOT NULL REFERENCES plan_artifacts(plan_id),
     input_hash   TEXT NOT NULL,
     db_file_hash TEXT NOT NULL,
+    word_count   INTEGER NOT NULL DEFAULT 0, -- words in the exported cut (ruling 15)
     exported_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     exported_by  TEXT NOT NULL,
     notes        TEXT

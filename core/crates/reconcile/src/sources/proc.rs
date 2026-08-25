@@ -10,8 +10,13 @@
 //! from the repository root, and morphod owns the `out_path` staging directory.
 //! Ruling #3: exit code 2 is a protocol crash; **any** non-zero exit maps to
 //! `Transient`.
+//!
+//! admin-api.md wave-3 ruling #17: that repository root comes from
+//! `adapters.adapters_root`, never from the process working directory, so
+//! `morphod` reaches the same adapters whether it was started from the repo, a
+//! systemd unit or `/`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -20,7 +25,7 @@ use tokio::io::AsyncWriteExt;
 
 use morpho_domain::error::TaskError;
 
-use crate::config::AdapterConfig;
+use crate::config::{AdapterConfig, ADAPTERS};
 
 /// Contractual timeouts (adapter-protocol.md §Timeouts).
 pub const TTS_TIMEOUT: Duration = Duration::from_secs(60);
@@ -126,7 +131,7 @@ async fn spawn(
     let mut command = tokio::process::Command::new(&program);
     command
         .args(&args)
-        .current_dir(&config.repo_root)
+        .current_dir(config.root())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -137,7 +142,7 @@ async fn spawn(
         // A launcher that is not installed will not install itself on a retry.
         TaskError::permanent(format!(
             "cannot launch `{program}` for the {adapter} adapter from {}: {err}",
-            config.repo_root.display()
+            config.root().display()
         ))
     })?;
 
@@ -286,6 +291,76 @@ pub fn launcher_available(config: &AdapterConfig) -> bool {
     which(config.runner()).is_some()
 }
 
+/// What a startup probe found for one adapter (wave-3 ruling #17).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdapterProbe {
+    /// `tts`, `morfessor` or `sdxl`.
+    pub adapter: &'static str,
+    /// Launcher binary resolved on `PATH` (or at an absolute path).
+    pub launcher: String,
+    pub launcher_found: bool,
+    /// Project directory the command template points at, when it names one.
+    pub project: Option<PathBuf>,
+    /// The project directory exists and holds a `pyproject.toml`. Always true
+    /// when the template names no project — there is nothing to check.
+    pub project_found: bool,
+    /// Jobs that dead-letter while this adapter is unavailable.
+    pub dead_letters: &'static str,
+}
+
+impl AdapterProbe {
+    pub fn available(&self) -> bool {
+        self.launcher_found && self.project_found
+    }
+
+    /// One line for `morphod status` and the startup log.
+    pub fn state(&self) -> String {
+        if self.available() {
+            return match &self.project {
+                Some(project) => format!("ready ({})", project.display()),
+                None => format!("ready (`{}`)", self.launcher),
+            };
+        }
+        let mut reasons = Vec::new();
+        if !self.launcher_found {
+            reasons.push(format!("`{}` is not on PATH", self.launcher));
+        }
+        if !self.project_found {
+            match &self.project {
+                Some(project) => {
+                    reasons.push(format!("no pyproject.toml under {}", project.display()))
+                }
+                None => reasons.push("project directory is unknown".to_string()),
+            }
+        }
+        format!("UNAVAILABLE ({})", reasons.join("; "))
+    }
+}
+
+/// Probe every adapter: is its project on disk, and is the launcher runnable?
+pub fn probe_adapters(config: &AdapterConfig) -> Vec<AdapterProbe> {
+    let launcher = config.runner().to_string();
+    let launcher_found = which(&launcher).is_some();
+    ADAPTERS
+        .iter()
+        .map(|(adapter, dead_letters)| {
+            let project = config.project_dir(adapter);
+            let project_found = match &project {
+                Some(dir) => dir.join("pyproject.toml").is_file(),
+                None => true,
+            };
+            AdapterProbe {
+                adapter,
+                launcher: launcher.clone(),
+                launcher_found,
+                project,
+                project_found,
+                dead_letters,
+            }
+        })
+        .collect()
+}
+
 fn which(program: &str) -> Option<std::path::PathBuf> {
     if program.contains('/') {
         let path = Path::new(program);
@@ -311,7 +386,7 @@ mod tests {
     fn fake_adapter(script: &str) -> (tempfile::TempDir, AdapterConfig) {
         let dir = tempfile::tempdir().unwrap();
         let config = AdapterConfig {
-            repo_root: dir.path().to_path_buf(),
+            adapters_root: Some(dir.path().to_path_buf()),
             command: vec![
                 "sh".to_string(),
                 "-c".to_string(),
@@ -532,6 +607,112 @@ mod tests {
         assert_eq!(TTS_TIMEOUT.as_secs(), 60);
         assert_eq!(MORFESSOR_TIMEOUT.as_secs(), 120);
         assert_eq!(SDXL_TIMEOUT.as_secs(), 600);
+    }
+
+    /// Ruling #17: the adapter runs from `adapters_root`, whatever the process
+    /// working directory happens to be.
+    #[tokio::test]
+    async fn the_adapter_runs_from_the_configured_root() {
+        let (dir, config) = fake_adapter(
+            r#"cat >/dev/null; printf '{"ok":true,"result":{"value":"%s"}}' "$(pwd)""#,
+        );
+        let result: Echo = call(
+            &config,
+            "tts",
+            "tts.synthesize",
+            serde_json::json!({}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+        let expected = std::fs::canonicalize(dir.path()).unwrap();
+        assert_eq!(std::path::Path::new(&result.value), expected);
+    }
+
+    /// The probe reads the project layout back out of the command template.
+    #[test]
+    fn the_project_directory_comes_from_the_command_template() {
+        let config = AdapterConfig {
+            adapters_root: Some(std::path::PathBuf::from("/srv/morpho")),
+            ..AdapterConfig::default()
+        };
+        assert_eq!(
+            config.project_dir("tts"),
+            Some(std::path::PathBuf::from("/srv/morpho/adapters/tts"))
+        );
+
+        let vendored = AdapterConfig {
+            command: vec!["python".into(), "-m".into(), "morpho_{adapter}".into()],
+            ..AdapterConfig::default()
+        };
+        assert_eq!(
+            vendored.project_dir("tts"),
+            None,
+            "a template with no project has no directory to probe"
+        );
+    }
+
+    /// A checkout with all three adapter projects on disk.
+    fn adapters_tree() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for (adapter, _) in ADAPTERS {
+            let project = dir.path().join("adapters").join(adapter);
+            std::fs::create_dir_all(&project).unwrap();
+            std::fs::write(project.join("pyproject.toml"), b"[project]\n").unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn a_complete_checkout_probes_as_available() {
+        let dir = adapters_tree();
+        let config = AdapterConfig {
+            adapters_root: Some(dir.path().to_path_buf()),
+            command: vec!["sh".into(), "--project".into(), "adapters/{adapter}".into()],
+            ..AdapterConfig::default()
+        };
+        let probes = probe_adapters(&config);
+        assert_eq!(probes.len(), ADAPTERS.len());
+        for probe in &probes {
+            assert!(probe.available(), "{probe:?}");
+            assert!(probe.state().starts_with("ready"), "{}", probe.state());
+        }
+    }
+
+    #[test]
+    fn a_missing_project_directory_names_what_dead_letters() {
+        let dir = adapters_tree();
+        std::fs::remove_file(dir.path().join("adapters/tts/pyproject.toml")).unwrap();
+        let config = AdapterConfig {
+            adapters_root: Some(dir.path().to_path_buf()),
+            command: vec!["sh".into(), "--project".into(), "adapters/{adapter}".into()],
+            ..AdapterConfig::default()
+        };
+        let probes = probe_adapters(&config);
+        let tts = probes.iter().find(|p| p.adapter == "tts").unwrap();
+        assert!(!tts.available());
+        assert!(tts.state().contains("no pyproject.toml"), "{}", tts.state());
+        assert!(tts.dead_letters.contains("synth_tts"));
+        assert!(probes.iter().filter(|p| p.available()).count() == ADAPTERS.len() - 1);
+    }
+
+    #[test]
+    fn a_missing_launcher_takes_every_adapter_down() {
+        let dir = adapters_tree();
+        let config = AdapterConfig {
+            adapters_root: Some(dir.path().to_path_buf()),
+            command: vec![
+                "definitely-not-installed-morpho-runner".into(),
+                "--project".into(),
+                "adapters/{adapter}".into(),
+            ],
+            ..AdapterConfig::default()
+        };
+        for probe in probe_adapters(&config) {
+            assert!(!probe.available(), "{probe:?}");
+            assert!(probe.state().contains("not on PATH"), "{}", probe.state());
+            assert!(!probe.dead_letters.is_empty());
+        }
     }
 
     #[test]

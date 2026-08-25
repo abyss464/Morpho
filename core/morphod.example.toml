@@ -82,8 +82,13 @@ http_timeout_secs = 20
 # Python adapters (docs/contracts/adapter-protocol.md)
 # ---------------------------------------------------------------------------
 [adapters]
-# Repository root; the command below runs from here.
-repo_root = "."
+# Directory the adapter commands run from; adapters/<name> lives under it.
+# Unset (the default) means "find the repository root by walking up from this
+# file, then from the working directory, looking for an adapters/ directory" —
+# which is what makes morphod reach the adapters regardless of where it was
+# started. A relative value here resolves against this file's directory.
+# Environment: MORPHOD_ADAPTERS_ROOT.
+# adapters_root = "."
 # Argument vector template; every {adapter} becomes tts / morfessor / sdxl.
 # Override it if you vendored the virtualenvs, e.g.
 #   command = ["python", "-m", "morpho_{adapter}"]
@@ -128,6 +133,7 @@ group_max = 20
 #   MORPHOD_RELEASES_DIR   overrides releases_dir
 #   MORPHOD_BIND           overrides bind
 #   MORPHOD_ADMIN_UI_DIST  overrides admin_ui_dist
+#   MORPHOD_ADAPTERS_ROOT  overrides adapters.adapters_root
 #   MORPHO_WORDNET_DIR     overrides sources.wordnet_dir
 #   MORPHO_CORPUS_PATH     overrides sources.corpus_path
 #   UNSPLASH_ACCESS_KEY / PEXELS_API_KEY / PIXABAY_API_KEY / COMFYUI_URL

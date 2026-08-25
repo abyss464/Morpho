@@ -142,7 +142,11 @@ async fn main() -> Result<()> {
             let report = status::collect(&store, &config.tts).await?;
             print!(
                 "{}",
-                report.render(&config.working_db().display().to_string(), &config.sources)
+                report.render(
+                    &config.working_db().display().to_string(),
+                    &config.sources,
+                    &config.adapters,
+                )
             );
             Ok(())
         }

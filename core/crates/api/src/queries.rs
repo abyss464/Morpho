@@ -133,8 +133,12 @@ fn rollup(source: shared::AssetRollup) -> AssetRollup {
 }
 
 /// TTS coverage of the whole desired set against the configured voice.
+///
+/// Buckets by the same rule as `TtsStatusView.status` (ruling #13), so the
+/// dashboard headline and the per-word detail cannot disagree.
 fn tts_rollup(conn: &Connection, config: &TtsConfig) -> Result<AssetRollup> {
     let assets = shared::tts_assets(conn)?;
+    let abandoned = shared::abandoned_tts_inputs(conn)?;
     let mut out = AssetRollup::default();
     let mut seen = std::collections::HashSet::new();
     for (kind, text) in shared::tts_desired(conn)? {
@@ -142,10 +146,12 @@ fn tts_rollup(conn: &Connection, config: &TtsConfig) -> Result<AssetRollup> {
         if !seen.insert(hash.clone()) {
             continue;
         }
-        match assets.get(&hash).map(|asset| asset.status.as_str()) {
-            Some("ready") => out.ready += 1,
-            Some("failed") => out.failed += 1,
-            _ => out.missing += 1,
+        if assets.get(&hash).is_some_and(|a| a.status == "ready") {
+            out.ready += 1;
+        } else if shared::tts_given_up(&hash, &assets, &abandoned) {
+            out.failed += 1;
+        } else {
+            out.missing += 1;
         }
     }
     Ok(out)
@@ -584,6 +590,7 @@ fn tts_status(conn: &Connection, word_id: i64, config: &TtsConfig) -> Result<Vec
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     let assets = shared::tts_assets(conn)?;
+    let abandoned = shared::abandoned_tts_inputs(conn)?;
     let errors = tts_errors(conn)?;
 
     let mut out = Vec::with_capacity(rows.len());
@@ -593,11 +600,17 @@ fn tts_status(conn: &Connection, word_id: i64, config: &TtsConfig) -> Result<Vec
         };
         let input_hash = config.input_hash(kind, &text);
         let asset = assets.get(&input_hash);
-        let status = match asset.map(|a| a.status.as_str()) {
-            Some("ready") => "ready",
-            Some("failed") => "failed",
-            // Wave-2 ruling #6: desired but unsynthesized is `missing`.
-            _ => "missing",
+        let status = if asset.is_some_and(|a| a.status == "ready") {
+            "ready"
+        } else if shared::tts_given_up(&input_hash, &assets, &abandoned) {
+            // Wave-3 ruling #13: a dead or waived `synth_tts` row is `failed`,
+            // with or without an asset row, so this agrees with the word's
+            // `tts_failed` blocker.
+            "failed"
+        } else {
+            // Wave-2 ruling #6: desired but not yet synthesized — never
+            // attempted, or still inside its retry budget.
+            "missing"
         };
         out.push(TtsStatusView {
             kind: kind_raw,
@@ -784,38 +797,57 @@ fn oov_occurrences(conn: &Connection, oos_lemma: &str) -> Result<Vec<OovOccurren
 // Dead letters
 // ---------------------------------------------------------------------------
 
-pub fn dead_letters(conn: &Connection, page: Pagination) -> Result<Page<DeadLetter>> {
+/// `GET /api/dead-letters`, optionally narrowed to one dispatcher lane.
+///
+/// Wave-3 ruling #14: `rate_key` is a filter, not a validated enum. A blank
+/// value means "no filter"; a value that names no lane simply matches nothing,
+/// which is a 200 with an empty page rather than an error. Widening the result
+/// on an unrecognized key would make a typo look like a broken filter.
+pub fn dead_letters(
+    conn: &Connection,
+    page: Pagination,
+    rate_key: Option<&str>,
+) -> Result<Page<DeadLetter>> {
+    let rate_key = rate_key.map(str::trim).filter(|value| !value.is_empty());
+    let filter = match rate_key {
+        Some(_) => "AND rate_key = ?1",
+        None => "AND ?1 IS NULL",
+    };
+
     let total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM job_state WHERE status = 'dead'",
-        [],
+        &format!("SELECT COUNT(*) FROM job_state WHERE status = 'dead' {filter}"),
+        rusqlite::params![rate_key],
         |row| row.get(0),
     )?;
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare(&format!(
         "SELECT kind, subject_type, subject_id, rate_key, status, attempts, next_retry_at,
                 last_error, updated_at
-         FROM job_state WHERE status = 'dead'
+         FROM job_state WHERE status = 'dead' {filter}
          ORDER BY updated_at DESC, kind, subject_id
-         LIMIT ?1 OFFSET ?2",
-    )?;
+         LIMIT ?2 OFFSET ?3"
+    ))?;
     let rows = stmt
-        .query_map(rusqlite::params![page.limit(), page.offset()], |row| {
-            Ok(DeadLetter {
-                kind: row.get(0)?,
-                subject_type: row.get(1)?,
-                subject_id: row.get(2)?,
-                rate_key: row.get(3)?,
-                status: row.get(4)?,
-                attempts: row.get(5)?,
-                next_retry_at: row.get(6)?,
-                last_error: row.get(7)?,
-                updated_at: row.get(8)?,
-                subject: DeadLetterSubject {
-                    word_id: None,
-                    lemma: None,
-                    label: String::new(),
-                },
-            })
-        })?
+        .query_map(
+            rusqlite::params![rate_key, page.limit(), page.offset()],
+            |row| {
+                Ok(DeadLetter {
+                    kind: row.get(0)?,
+                    subject_type: row.get(1)?,
+                    subject_id: row.get(2)?,
+                    rate_key: row.get(3)?,
+                    status: row.get(4)?,
+                    attempts: row.get(5)?,
+                    next_retry_at: row.get(6)?,
+                    last_error: row.get(7)?,
+                    updated_at: row.get(8)?,
+                    subject: DeadLetterSubject {
+                        word_id: None,
+                        lemma: None,
+                        label: String::new(),
+                    },
+                })
+            },
+        )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     let items = rows
@@ -1097,9 +1129,11 @@ pub fn plan_group(conn: &Connection, group_seq: i64) -> Result<Option<PlanGroupD
 
 pub fn releases(conn: &Connection, page: Pagination) -> Result<Page<Release>> {
     let total: i64 = conn.query_row("SELECT COUNT(*) FROM releases", [], |row| row.get(0))?;
+    // Ruling #15: `word_count` is a column of `releases`, not something to be
+    // recovered from the audit log.
     let mut stmt = conn.prepare(
         "SELECT r.release_id, r.version, r.plan_id, r.input_hash, r.db_file_hash, r.exported_at,
-                r.exported_by, r.notes,
+                r.exported_by, r.notes, r.word_count,
                 (SELECT COUNT(*) FROM release_manifests m WHERE m.release_id = r.release_id),
                 (SELECT COALESCE(SUM(f.bytes), 0) FROM release_manifests m
                   JOIN media_files f ON f.file_hash = m.file_hash
@@ -1119,40 +1153,14 @@ pub fn releases(conn: &Connection, page: Pagination) -> Result<Page<Release>> {
                 exported_at: row.get(5)?,
                 exported_by: row.get(6)?,
                 notes: row.get(7)?,
-                // The exporter records the word count in the audit event; the
-                // manifest row count is what the history table needs here.
-                word_count: 0,
-                media_count: row.get(8)?,
-                total_bytes: row.get(9)?,
+                word_count: row.get(8)?,
+                media_count: row.get(9)?,
+                total_bytes: row.get(10)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
-    let items = items
-        .into_iter()
-        .map(|mut release| {
-            release.word_count = release_word_count(conn, release.release_id).unwrap_or(0);
-            release
-        })
-        .collect();
     Ok(Page { items, total })
-}
-
-/// Word count of a release, read back from its export event.
-fn release_word_count(conn: &Connection, release_id: i64) -> Option<i64> {
-    let detail: Option<String> = conn
-        .query_row(
-            "SELECT detail FROM events
-             WHERE entity_type = 'release' AND entity_id = ?1 AND action = 'release_exported'
-             ORDER BY event_id DESC LIMIT 1",
-            rusqlite::params![release_id.to_string()],
-            |row| row.get(0),
-        )
-        .optional()
-        .ok()
-        .flatten();
-    let parsed: serde_json::Value = serde_json::from_str(detail.as_deref()?).ok()?;
-    parsed.get("word_count")?.as_i64()
 }
 
 // ---------------------------------------------------------------------------

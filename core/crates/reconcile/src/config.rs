@@ -289,8 +289,14 @@ impl SourcesConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AdapterConfig {
-    /// Repository root: the command below runs from here.
-    pub repo_root: PathBuf,
+    /// Directory the adapter commands run from; `adapters/<name>` lives under
+    /// it (admin-api.md wave-3 ruling #17).
+    ///
+    /// `None` means "not resolved yet" and falls back to the process working
+    /// directory. morphod fills it in from the config file's location at load
+    /// time, which is what makes an adapter spawn independent of where the
+    /// daemon happened to be started.
+    pub adapters_root: Option<PathBuf>,
     /// Argument vector template. Every `{adapter}` is replaced with the adapter
     /// name, so one template serves all three.
     ///
@@ -315,10 +321,32 @@ pub const DEFAULT_ADAPTER_COMMAND: &[&str] = &[
     "{adapter}-adapter",
 ];
 
+/// Directory under `adapters_root` that holds the per-adapter projects.
+pub const ADAPTERS_DIR: &str = "adapters";
+
+/// The three subprocess adapters, and the jobs that dead-letter without each.
+///
+/// Ruling #17 wants a startup warning that names the damage rather than a vague
+/// "adapter unavailable", so the consequence is spelled out next to the name.
+pub const ADAPTERS: &[(&str, &str)] = &[
+    (
+        "tts",
+        "synth_tts jobs — no word, sense or example audio is produced",
+    ),
+    (
+        "morfessor",
+        "segment_morphology jobs — the etymology fallback after Wiktionary is exhausted",
+    ),
+    (
+        "sdxl",
+        "gen_image_sdxl jobs — the image fallback after every stock provider is exhausted",
+    ),
+];
+
 impl Default for AdapterConfig {
     fn default() -> Self {
         Self {
-            repo_root: PathBuf::from("."),
+            adapters_root: None,
             command: DEFAULT_ADAPTER_COMMAND
                 .iter()
                 .map(|part| (*part).to_string())
@@ -330,6 +358,13 @@ impl Default for AdapterConfig {
 }
 
 impl AdapterConfig {
+    /// Directory every adapter spawn uses as its working directory.
+    pub fn root(&self) -> &Path {
+        self.adapters_root
+            .as_deref()
+            .unwrap_or_else(|| Path::new("."))
+    }
+
     /// Command line for one adapter, as `(program, args)`.
     pub fn command(&self, adapter: &str) -> (String, Vec<String>) {
         let mut parts = self
@@ -343,6 +378,28 @@ impl AdapterConfig {
     /// The launcher binary, before any substitution.
     pub fn runner(&self) -> &str {
         self.command.first().map(String::as_str).unwrap_or("uv")
+    }
+
+    /// Absolute project directory of one adapter, when the command template
+    /// names one.
+    ///
+    /// The template owns the layout, so the probe reads it back rather than
+    /// assuming `adapters/<name>`: an operator who replaced the invocation with
+    /// `python -m morpho_{adapter}` has no project directory to check, and
+    /// gets `None` instead of a bogus warning.
+    pub fn project_dir(&self, adapter: &str) -> Option<PathBuf> {
+        let mut parts = self.command.iter();
+        let relative = loop {
+            let part = parts.next()?;
+            if part == "--project" {
+                break parts.next()?.as_str();
+            }
+            if let Some(value) = part.strip_prefix("--project=") {
+                break value;
+            }
+        };
+        let relative = relative.replace("{adapter}", adapter);
+        Some(self.root().join(relative))
     }
 
     pub fn morfessor_batch_max_age(&self) -> std::time::Duration {

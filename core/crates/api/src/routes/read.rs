@@ -215,12 +215,13 @@ pub async fn oov(
 
 pub async fn dead_letters(
     State(state): State<AppState>,
-    Query(query): Query<PageQuery>,
+    Query(query): Query<DeadLetterQuery>,
 ) -> ApiResult<Json<Page<DeadLetter>>> {
     let page = query.pagination();
+    let rate_key = query.rate_key.clone();
     let body = state
         .store
-        .read(move |conn| queries::dead_letters(conn, page))
+        .read(move |conn| queries::dead_letters(conn, page, rate_key.as_deref()))
         .await?;
     Ok(Json(body))
 }

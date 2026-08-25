@@ -46,9 +46,11 @@ pub(super) fn record_release(req: RecordRelease, ctx: &mut OpCtx<'_, '_>) -> Res
         });
     }
 
+    // Ruling #15: the word count is a column of the history table, not
+    // something `GET /releases` has to reconstruct from the audit log.
     ctx.tx.execute(
-        "INSERT INTO releases (version, plan_id, input_hash, db_file_hash, exported_at, exported_by, notes)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO releases (version, plan_id, input_hash, db_file_hash, exported_at, exported_by, notes, word_count)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![
             req.version,
             req.plan_id,
@@ -57,6 +59,7 @@ pub(super) fn record_release(req: RecordRelease, ctx: &mut OpCtx<'_, '_>) -> Res
             ctx.now,
             req.exported_by,
             req.notes,
+            req.word_count as i64,
         ],
     )?;
     let release_id = ctx.tx.last_insert_rowid();
