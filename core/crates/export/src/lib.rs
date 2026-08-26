@@ -32,7 +32,7 @@ use morpho_store::{Store, WriteOp};
 
 pub use cut::{CutNode, CutResult, Holdback, DEPENDENCY_HOLDBACK};
 pub use error::{ExportError, ExportResult};
-pub use model::{ExportPayload, ExportWord, STALE_EXTRACTION};
+pub use model::{ExportPayload, ExportWord, GlossAnchor, STALE_EXTRACTION};
 pub use writer::{Manifest, ManifestEntry, WrittenRelease};
 
 /// One failed hard gate (`ExportGateFailure` in admin-ui/src/api/types.ts).
@@ -380,6 +380,39 @@ pub fn validate(payload: &ExportPayload, cut: &CutResult) -> Vec<GateFailure> {
         }
     }
 
+    // Readability closure (ruling #18a): every token of a shipped definition
+    // resolves to a base word, a shipped word, or a gloss anchor the release
+    // carries. The three gates below are the three ways that can fail; between
+    // them and `dependency_present` further down, nothing a learner can read is
+    // left unexplained.
+    for (word_id, lemma) in &payload.unresolved_tokens {
+        if !exportable.contains(word_id) {
+            continue;
+        }
+        fail(
+            "definition_token_resolves",
+            format!(
+                "{}'s definition uses {lemma}, which is in no lexicon",
+                lemma_of(*word_id).unwrap_or_default()
+            ),
+            Some(*word_id),
+        );
+    }
+    let shipped_anchors: HashSet<i64> = rows_gloss_anchors(payload, cut);
+    for (word_id, anchor) in &payload.anchor_refs {
+        if !exportable.contains(word_id) || shipped_anchors.contains(anchor) {
+            continue;
+        }
+        fail(
+            "gloss_anchor_present",
+            format!(
+                "{} leans on gloss anchor {anchor}, which the release does not carry",
+                lemma_of(*word_id).unwrap_or_default()
+            ),
+            Some(*word_id),
+        );
+    }
+
     // The topological invariant: every dependency is learned earlier, or in
     // the same group (an SCC pack).
     let order: std::collections::HashMap<i64, (i64, i64)> = payload
@@ -422,4 +455,17 @@ pub fn validate(payload: &ExportPayload, cut: &CutResult) -> Vec<GateFailure> {
     }
 
     failures
+}
+
+/// The anchor ids [`writer::rows_for`] will emit for this cut.
+///
+/// Asking the writer rather than recomputing the rule is what makes the gate
+/// meaningful: it fails exactly when the bundle would ship an unexplained
+/// token, not when a second copy of the selection logic disagrees.
+fn rows_gloss_anchors(payload: &ExportPayload, cut: &CutResult) -> HashSet<i64> {
+    writer::rows_for(payload, &cut.exportable)
+        .gloss_anchors
+        .iter()
+        .map(|anchor| anchor.word_id)
+        .collect()
 }

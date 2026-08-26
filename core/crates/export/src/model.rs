@@ -15,6 +15,8 @@ use morpho_domain::types::{Role, TtsKind};
 use morpho_store::error::Result;
 use morpho_store::queries;
 
+pub use morpho_store::queries::GlossAnchor;
+
 /// One word, with everything the release needs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExportWord {
@@ -108,8 +110,19 @@ pub struct ExportPayload {
     pub groups: Vec<ExportGroup>,
     /// `(word_id, rank, distractor_word_id)`
     pub distractors: Vec<(i64, i64, i64)>,
-    /// Dependency edges among active words, `(from, to)`.
+    /// Dependency edges among active words, `(from, to)`. Edges into a gloss
+    /// anchor are already gone: the anchor terminates the chain, so it must not
+    /// drag its dependent out of the cut (admin-api.md ruling #18a).
     pub dependency_edges: Vec<(i64, i64)>,
+    /// Every glossed word in the lexicon, whether referenced or not.
+    pub gloss_anchors: Vec<GlossAnchor>,
+    /// `(word_id, anchor_word_id)` — the edges `dependency_edges` dropped, kept
+    /// so the release can ship exactly the anchors its words actually mention.
+    pub anchor_refs: Vec<(i64, i64)>,
+    /// `(word_id, lemma)` — definition tokens that resolve to no word at all.
+    /// Readiness already blocks on these; the exporter re-checks because a
+    /// shipped word with an unreadable token is a broken product.
+    pub unresolved_tokens: Vec<(i64, String)>,
     /// `file_hash` → `(kind, rel_path, bytes)` for every referenced media file.
     pub media: HashMap<String, MediaEntry>,
 }
@@ -195,6 +208,9 @@ pub fn load(
         groups,
         distractors: queries::distractor_edges(conn)?,
         dependency_edges: queries::dependency_edges(conn)?,
+        gloss_anchors: queries::gloss_anchors(conn)?,
+        anchor_refs: queries::gloss_anchor_refs(conn)?,
+        unresolved_tokens: queries::unresolved_definition_tokens(conn)?,
         media,
     }))
 }

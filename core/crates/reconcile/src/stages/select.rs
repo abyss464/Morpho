@@ -298,7 +298,7 @@ fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
     let mut stmt = conn.prepare(
         "SELECT dc.word_id, dc.pos, dc.def_cand_id, COALESCE(dc.auto_score, 0.0), dc.source
          FROM definition_candidates dc
-         JOIN active_words w ON w.word_id = dc.word_id
+         JOIN active_words w ON w.word_id = dc.word_id AND w.zh_gloss IS NULL
          WHERE dc.status = 'available'
          ORDER BY dc.word_id, dc.pos, dc.def_cand_id",
     )?;
@@ -382,7 +382,7 @@ fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
     let mut stmt = conn.prepare(
         "SELECT ec.word_id, ec.ex_cand_id, COALESCE(ec.auto_score, 0.0)
          FROM example_candidates ec
-         JOIN active_words w ON w.word_id = ec.word_id
+         JOIN active_words w ON w.word_id = ec.word_id AND w.zh_gloss IS NULL
          WHERE ec.status = 'available'
          ORDER BY ec.word_id, ec.ex_cand_id",
     )?;
@@ -436,7 +436,7 @@ fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
     let mut stmt = conn.prepare(
         "SELECT ic.word_id, ic.img_cand_id, COALESCE(ic.auto_score, 0.0)
          FROM image_candidates ic
-         JOIN active_words w ON w.word_id = ic.word_id
+         JOIN active_words w ON w.word_id = ic.word_id AND w.zh_gloss IS NULL
          WHERE ic.status = 'available'
          ORDER BY ic.word_id, ic.img_cand_id",
     )?;

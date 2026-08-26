@@ -14,12 +14,12 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 
 use morpho_domain::types::{
-    CandidateKind, CreatedBy, DefinitionSource, ExampleSource, ImageSource, MediaKind, Role,
-    SelectedBy, SlotRef,
+    CandidateKind, CreatedBy, DefinitionSource, ExampleSource, GlossSource, ImageSource, MediaKind,
+    Role, SelectedBy, SlotRef,
 };
 use morpho_store::ops::{
     CreateWord, MediaRegistration, MintDefinitionCandidate, MintExampleCandidate,
-    MintImageCandidate, OovResolution, SetApproval, SetSelection,
+    MintImageCandidate, OovResolution, SetApproval, SetGloss, SetSelection,
 };
 use morpho_store::WriteOp;
 
@@ -109,6 +109,59 @@ pub async fn create_word(
         .word_id()
         .ok_or_else(|| ApiError::internal("word creation did not return an id"))?;
     Ok((StatusCode::CREATED, Json(load_word(&state, word_id).await?)))
+}
+
+/// `POST /api/words/{id}/gloss`
+///
+/// Anchoring a word is the operator's answer to "this word is referenced but
+/// will never be learnable": the gloss terminates the readability chain, and
+/// the word leaves the curriculum without anything being deleted
+/// (admin-api.md ruling #18a).
+pub async fn set_gloss(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(word_id): Path<i64>,
+    Json(body): Json<SetGlossBody>,
+) -> ApiResult<Json<WordDetail>> {
+    if body.zh_gloss.trim().is_empty() {
+        return Err(ApiError::bad_request("zh_gloss must not be empty"));
+    }
+    let actor = state.actor(&headers);
+    state
+        .store
+        .write(
+            actor,
+            WriteOp::SetGloss(SetGloss {
+                word_id,
+                zh_gloss: Some(body.zh_gloss),
+                // A gloss typed into the console is manual; `cedict` is for a
+                // future bulk import that reads a dictionary file.
+                source: GlossSource::Manual,
+            }),
+        )
+        .await?;
+    word_response(&state, word_id).await
+}
+
+/// `DELETE /api/words/{id}/gloss` — the word resumes normal life.
+pub async fn clear_gloss(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(word_id): Path<i64>,
+) -> ApiResult<Json<WordDetail>> {
+    let actor = state.actor(&headers);
+    state
+        .store
+        .write(
+            actor,
+            WriteOp::SetGloss(SetGloss {
+                word_id,
+                zh_gloss: None,
+                source: GlossSource::Manual,
+            }),
+        )
+        .await?;
+    word_response(&state, word_id).await
 }
 
 // ---------------------------------------------------------------------------
@@ -435,6 +488,18 @@ pub async fn resolve_oov(
             },
             notes,
         ),
+        OovResolveBody::Gloss { zh_gloss, notes } => {
+            if zh_gloss.trim().is_empty() {
+                return Err(ApiError::bad_request("zh_gloss must not be empty"));
+            }
+            (
+                OovResolution::Gloss {
+                    zh_gloss,
+                    source: GlossSource::Manual,
+                },
+                notes,
+            )
+        }
     };
 
     let folded = morpho_domain::fold_lemma(&lemma);

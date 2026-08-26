@@ -71,6 +71,8 @@ pub enum Action {
     JobRetried,
     SourceFetched,
     EtymologySet,
+    GlossSet,
+    GlossCleared,
     MediaGcMarked,
     ReleaseExported,
 }
@@ -101,6 +103,8 @@ impl Action {
             Self::JobRetried => "job_retried",
             Self::SourceFetched => "source_fetched",
             Self::EtymologySet => "etymology_set",
+            Self::GlossSet => "gloss_set",
+            Self::GlossCleared => "gloss_cleared",
             Self::MediaGcMarked => "media_gc_marked",
             Self::ReleaseExported => "release_exported",
         }

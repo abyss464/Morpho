@@ -127,6 +127,8 @@ mod tests {
             frequency_rank: Some(rank),
             etymology: None,
             etymology_source: None,
+            zh_gloss: None,
+            zh_gloss_source: None,
             ready: false,
             core_ready: false,
             blockers: Vec::new(),

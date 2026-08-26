@@ -131,6 +131,11 @@ pub struct Word {
     pub frequency_rank: Option<i64>,
     pub etymology: Option<String>,
     pub etymology_source: Option<String>,
+    /// Non-null makes this word a gloss anchor: it takes no assets, no plan
+    /// slot and no readiness verdict, and every dependency on it is satisfied
+    /// (admin-api.md ruling #18a).
+    pub zh_gloss: Option<String>,
+    pub zh_gloss_source: Option<String>,
     pub ready: bool,
     pub blockers: Vec<String>,
     pub created_by: String,
@@ -553,6 +558,12 @@ pub struct SetEnabledBody {
     pub enabled: bool,
 }
 
+/// `SetGlossBody`
+#[derive(Debug, Deserialize)]
+pub struct SetGlossBody {
+    pub zh_gloss: String,
+}
+
 /// `OovResolveBody`
 #[derive(Debug, Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case")]
@@ -568,6 +579,13 @@ pub enum OovResolveBody {
     Rewrite {
         def_cand_id: i64,
         text: String,
+        #[serde(default)]
+        notes: Option<String>,
+    },
+    /// Ruling #18a: ground the lemma in Chinese instead of teaching it or
+    /// writing it out of the definition.
+    Gloss {
+        zh_gloss: String,
         #[serde(default)]
         notes: Option<String>,
     },

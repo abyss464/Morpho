@@ -374,9 +374,52 @@ async fn four_complete_words(f: &Fixture) -> Vec<i64> {
     ids
 }
 
+/// The same four words, except that the first one's definition leans on
+/// `outsider` — a word that exists in the lexicon and has nothing else.
+///
+/// This is the shape ruling #18a is about: one dead word inside one definition,
+/// dragging four finished words off the boat behind it.
+async fn four_words_leaning_on(f: &Fixture, outsider: &str, role: Role) -> (Vec<i64>, i64) {
+    f.base_words(&["to", "change", "in", "a", "way"]).await;
+    let dead = f.word(outsider, role, 9_000).await;
+
+    let lemmas = ["adapt", "adopt", "adept", "adapter"];
+    let mut ids = Vec::new();
+    for (index, lemma) in lemmas.iter().enumerate() {
+        let id = f.word(lemma, Role::Target, (index as i64 + 1) * 100).await;
+        let subject = if index == 0 { outsider } else { lemma };
+        f.complete(id, lemma, &format!("to change {subject} in a way"))
+            .await;
+        ids.push(id);
+    }
+    for (index, id) in ids.iter().enumerate() {
+        let others: Vec<i64> = ids
+            .iter()
+            .enumerate()
+            .filter(|(other, _)| *other != index)
+            .map(|(_, id)| *id)
+            .collect();
+        f.bind_distractors(*id, [others[0], others[1], others[2]])
+            .await;
+    }
+    f.converge().await;
+    (ids, dead)
+}
+
 fn read_db<T: rusqlite::types::FromSql>(path: &Path, sql: &str) -> T {
     let conn = rusqlite::Connection::open(path).unwrap();
     conn.query_row(sql, [], |row| row.get(0)).unwrap()
+}
+
+fn rows_db(path: &Path, sql: &str) -> Vec<(i64, String, String)> {
+    let conn = rusqlite::Connection::open(path).unwrap();
+    let mut stmt = conn.prepare(sql).unwrap();
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    rows
 }
 
 #[tokio::test]
@@ -931,4 +974,191 @@ async fn a_complete_word_becomes_ready_and_core_ready() {
         .await
         .unwrap();
     assert_eq!((ready, core_ready), (1, 1));
+}
+
+// ---------------------------------------------------------------------------
+// Chinese gloss anchors (admin-api.md ruling #18a)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_dead_dependency_drags_four_finished_words_off_the_boat() {
+    let f = fixture();
+    let (ids, dead) = four_words_leaning_on(&f, "obscure", Role::Auxiliary).await;
+
+    let report = f.preview().await;
+    assert_eq!(
+        report.exportable_count, 0,
+        "one dead word inside one definition empties the release: {report:#?}"
+    );
+    let held = report
+        .excluded
+        .iter()
+        .find(|entry| entry.word_id == ids[0])
+        .unwrap();
+    assert_eq!(held.root_cause, "dependency_holdback");
+    assert_eq!(held.blocking_word_id, Some(dead));
+}
+
+#[tokio::test]
+async fn a_gloss_anchor_frees_the_words_that_lean_on_it() {
+    let f = fixture();
+    let (ids, dead) = four_words_leaning_on(&f, "obscure", Role::Auxiliary).await;
+
+    f.store
+        .write(Actor::admin("abyss"), WriteOp::set_gloss(dead, "模糊的"))
+        .await
+        .unwrap();
+    f.converge().await;
+
+    let report = f.preview().await;
+    assert_eq!(
+        report.exportable_count,
+        ids.len(),
+        "the anchor terminates the chain: {report:#?}"
+    );
+    assert!(report.gates_pass, "{:#?}", report.gate_failures);
+    assert_eq!(
+        report.excluded_count, 0,
+        "and the anchor itself is not a holdback — it was never a candidate"
+    );
+
+    let out = f.dir.path().join("release-gloss");
+    let (written, _) = morpho_export::export(&f.store, &f.settings(), &out, "abyss", None)
+        .await
+        .unwrap();
+    assert_eq!(written.word_count, 4);
+
+    let db = out.join("release.db");
+    assert_eq!(
+        rows_db(
+            &db,
+            "SELECT word_id, word, zh_gloss FROM gloss_anchors ORDER BY word_id"
+        ),
+        vec![(dead, "obscure".to_string(), "模糊的".to_string())]
+    );
+    // The anchor is not a learnable word, and nobody distracts towards it.
+    let learnable: i64 = read_db(&db, "SELECT COUNT(*) FROM words WHERE word = 'obscure'");
+    assert_eq!(learnable, 0);
+    let distractors: i64 = read_db(
+        &db,
+        "SELECT COUNT(*) FROM distractors WHERE distractor_word_id NOT IN (SELECT word_id FROM words)",
+    );
+    assert_eq!(distractors, 0, "a distractor is always a shipped word");
+}
+
+#[tokio::test]
+async fn an_unreferenced_gloss_never_reaches_the_release() {
+    let f = fixture();
+    let (_, dead) = four_words_leaning_on(&f, "obscure", Role::Auxiliary).await;
+    let orphan = f.word("perambulate", Role::Auxiliary, 9_500).await;
+
+    f.store
+        .write(
+            Actor::admin("abyss"),
+            WriteOp::Batch(vec![
+                WriteOp::set_gloss(dead, "模糊的"),
+                WriteOp::set_gloss(orphan, "漫步"),
+            ]),
+        )
+        .await
+        .unwrap();
+    f.converge().await;
+
+    let out = f.dir.path().join("release-orphan");
+    morpho_export::export(&f.store, &f.settings(), &out, "abyss", None)
+        .await
+        .unwrap();
+
+    let anchors = rows_db(
+        &out.join("release.db"),
+        "SELECT word_id, word, zh_gloss FROM gloss_anchors ORDER BY word_id",
+    );
+    let words: Vec<&str> = anchors.iter().map(|(_, word, _)| word.as_str()).collect();
+    assert_eq!(
+        words,
+        vec!["obscure"],
+        "only anchors a shipped definition actually mentions"
+    );
+}
+
+#[tokio::test]
+async fn clearing_a_gloss_puts_the_words_back_where_they_were() {
+    let f = fixture();
+    let (_, dead) = four_words_leaning_on(&f, "obscure", Role::Auxiliary).await;
+
+    f.store
+        .write(Actor::admin("abyss"), WriteOp::set_gloss(dead, "模糊的"))
+        .await
+        .unwrap();
+    f.converge().await;
+    assert_eq!(f.preview().await.exportable_count, 4);
+
+    f.store
+        .write(Actor::admin("abyss"), WriteOp::clear_gloss(dead))
+        .await
+        .unwrap();
+    f.converge().await;
+    assert_eq!(
+        f.preview().await.exportable_count,
+        0,
+        "the word is a live dependency again"
+    );
+}
+
+/// Ruling #18a stops at the readability chain: a distractor still has to be a
+/// real shipped word, so anchoring one that is already bound holds its owner
+/// back rather than quietly shipping a quiz with three options and two answers.
+#[tokio::test]
+async fn anchoring_a_bound_distractor_still_holds_its_owner_back() {
+    let f = fixture();
+    let ids = four_complete_words(&f).await;
+    assert_eq!(f.preview().await.exportable_count, 4);
+
+    f.store
+        .write(Actor::admin("abyss"), WriteOp::set_gloss(ids[3], "适配器"))
+        .await
+        .unwrap();
+    f.converge().await;
+
+    let report = f.preview().await;
+    assert_eq!(
+        report.exportable_count, 0,
+        "the other three all name it as a distractor: {report:#?}"
+    );
+    let held = report
+        .excluded
+        .iter()
+        .find(|entry| entry.word_id == ids[0])
+        .unwrap();
+    assert_eq!(held.root_cause, "dependency_holdback");
+    assert_eq!(held.blocking_word_id, Some(ids[3]));
+}
+
+/// The closure gate: a token that resolves to nothing at all is caught by the
+/// exporter even when the readiness cache has gone stale behind its back.
+#[tokio::test]
+async fn a_definition_token_that_resolves_to_nothing_fails_the_gates() {
+    let f = fixture();
+    four_complete_words(&f).await;
+    assert!(f.preview().await.gates_pass);
+
+    // Pull a base word out from under the finished definitions without letting
+    // the reconciler notice — the damage an offline edit would leave behind.
+    // Hence a connection of its own: the store has no route for this on purpose.
+    let offline = rusqlite::Connection::open(f.dir.path().join("working.db")).unwrap();
+    offline
+        .execute("DELETE FROM words WHERE lemma = 'way'", [])
+        .unwrap();
+    drop(offline);
+
+    let report = f.preview().await;
+    assert!(!report.gates_pass);
+    assert!(
+        report
+            .gate_failures
+            .iter()
+            .any(|failure| failure.gate == "definition_token_resolves"),
+        "{:#?}",
+        report.gate_failures
+    );
 }

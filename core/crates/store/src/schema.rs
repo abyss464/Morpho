@@ -48,14 +48,18 @@ pub type ColumnAdd = (&'static str, &'static str, &'static str);
 /// A table one migration step rebuilds, because the change is one `ALTER TABLE`
 /// cannot express — SQLite has no way to widen a `CHECK` constraint in place.
 ///
-/// The forward shape is never written here: it is read out of the embedded
-/// contract, which is the whole point of the file being normative. Only the
-/// *old* shape needs recording, because nothing else remembers it once the
-/// contract moves on, and the test ladder needs it to fabricate a genuine
-/// historical database.
+/// The forward shape normally comes out of the embedded contract, which is the
+/// whole point of the file being normative. The *old* shape always needs
+/// recording, because nothing else remembers it once the contract moves on, and
+/// the test ladder needs it to fabricate a genuine historical database.
 #[derive(Debug, Clone, Copy)]
 pub struct TableRebuild {
     pub table: &'static str,
+    /// The shape this rung produces, for the window where the contract file
+    /// legitimately trails the code (see [`CONTRACT_SCHEMA_VERSION`]). `None`
+    /// reads it from the contract, which is what a synced rung wants: the
+    /// database ends up matching the normative file by construction.
+    pub next_ddl: Option<&'static str>,
     /// The table's `CREATE TABLE` statement exactly as it stood before this
     /// rung. Used only by [`Migration::revert`].
     pub previous_ddl: &'static str,
@@ -95,6 +99,33 @@ const IMAGE_CANDIDATES_V3: &str = "CREATE TABLE image_candidates (
     created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     UNIQUE (word_id, file_hash)
 )";
+
+/// `oos_queue` as the contract still spells it: before ruling #18a gave the
+/// queue a third way to close a lemma.
+const OOS_QUEUE_V5: &str = "CREATE TABLE oos_queue (
+    oos_lemma  TEXT PRIMARY KEY COLLATE NOCASE,
+    status     TEXT NOT NULL DEFAULT 'open'
+               CHECK (status IN ('open','resolved_rewrite','resolved_promote','auto_closed')),
+    first_seen TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    resolved_by TEXT, resolved_at TEXT, notes TEXT
+)";
+
+impl TableRebuild {
+    /// The shape this rung is aiming at, plus the table's indexes.
+    ///
+    /// The indexes are the contract's either way: no rung so far has changed
+    /// one, and a rung that did would have to carry them alongside its DDL.
+    fn wanted(&self) -> Result<ContractDdl> {
+        let contract = contract_ddl(self.table)?;
+        Ok(match self.next_ddl {
+            None => contract,
+            Some(create) => ContractDdl {
+                create: create.to_string(),
+                indexes: contract.indexes,
+            },
+        })
+    }
+}
 
 /// One rung of the migration ladder: a database at `from` becomes `from + 1`.
 ///
@@ -147,13 +178,43 @@ pub const MIGRATIONS: &[Migration] = &[
         rebuilds: &[
             TableRebuild {
                 table: "example_candidates",
+                next_ddl: None,
                 previous_ddl: EXAMPLE_CANDIDATES_V3,
             },
             TableRebuild {
                 table: "image_candidates",
+                next_ddl: None,
                 previous_ddl: IMAGE_CANDIDATES_V3,
             },
         ],
+    },
+    Migration {
+        from: 4,
+        // Wave 7: the gloss anchor (admin-api.md ruling #18a). A word that is
+        // referenced by definitions but is never going to be learnable carries
+        // a short Chinese gloss, and that gloss terminates the readability
+        // chain exactly like a base word.
+        add_columns: &[
+            ("words", "zh_gloss", "TEXT"),
+            (
+                "words",
+                "zh_gloss_source",
+                "TEXT CHECK (zh_gloss_source IN ('manual','cedict'))",
+            ),
+        ],
+        rebuilds: &[],
+    },
+    Migration {
+        from: 5,
+        // Wave 7, the other half: anchoring a lemma is a third way to close an
+        // out-of-scope queue entry, which widens a `CHECK` and therefore needs
+        // its own rebuild rung.
+        add_columns: &[],
+        rebuilds: &[TableRebuild {
+            table: "oos_queue",
+            next_ddl: None,
+            previous_ddl: OOS_QUEUE_V5,
+        }],
     },
 ];
 
@@ -179,7 +240,7 @@ impl Migration {
             ))?;
         }
         for rebuild in self.rebuilds {
-            let want = contract_ddl(rebuild.table)?;
+            let want = rebuild.wanted()?;
             if same_shape(&live_ddl(tx, rebuild.table)?, &want.create) {
                 tracing::debug!(
                     table = rebuild.table,
@@ -212,8 +273,6 @@ impl Migration {
             if same_shape(&live_ddl(tx, rebuild.table)?, rebuild.previous_ddl) {
                 continue;
             }
-            // The indexes are the contract's either way: no rung so far has
-            // changed one, and a rung that did would carry them in its own DDL.
             let indexes = contract_ddl(rebuild.table)?.indexes;
             rebuild_table(tx, rebuild.table, rebuild.previous_ddl, &indexes)?;
         }
@@ -566,11 +625,14 @@ mod tests {
 
     /// Fabricate a database as it looked at `version`.
     ///
-    /// Built by creating the current contract and then walking the ladder
-    /// *backwards*, one exact inverse per rung. The old approach edited the DDL
-    /// text and broke the moment the contract legitimately grew a column the
-    /// ladder also adds; this cannot, because every rung's inverse is defined
-    /// next to the rung itself and skips what is already absent.
+    /// Built by creating the current contract — which describes
+    /// [`CONTRACT_SCHEMA_VERSION`] — and then walking the ladder to the wanted
+    /// rung: *backwards* for an older shape, one exact inverse per rung, and
+    /// forwards through the window where the contract file trails the code. An
+    /// earlier version of this helper edited the DDL text and broke the moment
+    /// the contract legitimately grew a column the ladder also adds; this
+    /// cannot, because every rung's inverse is defined next to the rung itself
+    /// and skips what is already absent.
     ///
     /// A wave-1 database also predates the normative `rate_limits` seeds, so
     /// those are cleared as well — backfilling them is part of that rung.
@@ -582,6 +644,14 @@ mod tests {
         conn.execute_batch(WORKING_DB_SQL).expect("contract ddl");
 
         conn.pragma_update(None, "foreign_keys", false).unwrap();
+        for step in MIGRATIONS
+            .iter()
+            .filter(|step| step.from >= CONTRACT_SCHEMA_VERSION && step.from < version)
+        {
+            let tx = conn.transaction().unwrap();
+            step.apply(&tx).expect("apply");
+            tx.commit().unwrap();
+        }
         for step in MIGRATIONS.iter().rev() {
             if step.from >= version {
                 let tx = conn.transaction().unwrap();
@@ -713,6 +783,7 @@ mod tests {
         assert!(WORKING_DB_SQL.contains("CREATE TABLE release_manifests"));
         assert!(WORKING_DB_SQL.contains("core_ready"));
         assert!(WORKING_DB_SQL.contains("word_count"));
+        assert!(WORKING_DB_SQL.contains("zh_gloss"));
     }
 
     /// The typed enumerations and the SQL `CHECK` unions are two spellings of
@@ -759,6 +830,7 @@ mod tests {
         bare.execute_batch(WORKING_DB_SQL).unwrap();
         assert!(columns(&bare, "releases").contains(&"word_count".to_string()));
         assert!(columns(&bare, "words").contains(&"core_ready".to_string()));
+        assert!(columns(&bare, "words").contains(&"zh_gloss".to_string()));
 
         let mut conn = Connection::open_in_memory().unwrap();
         assert!(ensure_schema(&mut conn).unwrap());
@@ -838,6 +910,91 @@ mod tests {
             )
             .unwrap();
         assert_eq!(image, "unsplash");
+    }
+
+    /// Can this database close an out-of-scope lemma with that status?
+    fn accepts_oos_status(conn: &Connection, status: &str) -> bool {
+        conn.execute(
+            "INSERT INTO oos_queue (oos_lemma, status) VALUES (?1, ?2)",
+            rusqlite::params![format!("probe-{status}"), status],
+        )
+        .is_ok()
+    }
+
+    /// Ruling #18a, first rung: a wave-4 database gains the gloss columns, and
+    /// the rows it already had come through with them empty.
+    #[test]
+    fn a_wave_four_database_gains_the_gloss_columns() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        legacy(&mut conn, 4);
+        assert!(!columns(&conn, "words").contains(&"zh_gloss".to_string()));
+        conn.execute(
+            "INSERT INTO words (word_id, lemma, role, blockers) VALUES (7,'serene','target','[]')",
+            [],
+        )
+        .unwrap();
+
+        assert!(!ensure_schema(&mut conn).unwrap());
+
+        for column in ["zh_gloss", "zh_gloss_source"] {
+            assert!(
+                columns(&conn, "words").contains(&column.to_string()),
+                "{column}"
+            );
+        }
+        let (lemma, gloss): (String, Option<String>) = conn
+            .query_row("SELECT lemma, zh_gloss FROM words", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!((lemma.as_str(), gloss), ("serene", None));
+
+        // The source column carries the contract's CHECK, not just its type.
+        conn.execute(
+            "UPDATE words SET zh_gloss = '宁静的', zh_gloss_source = 'manual'",
+            [],
+        )
+        .unwrap();
+        assert!(conn
+            .execute("UPDATE words SET zh_gloss_source = 'guesswork'", [])
+            .is_err());
+        // And `active_words` re-expands to see it.
+        let through_view: Option<String> = conn
+            .query_row("SELECT zh_gloss FROM active_words", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(through_view.as_deref(), Some("宁静的"));
+    }
+
+    /// Ruling #18a, second rung: the `oos_queue.status` CHECK widens. The
+    /// contract file has not caught up, so this is the one rung whose forward
+    /// shape lives in the code — and it must still run over a database created
+    /// straight from that file.
+    #[test]
+    fn a_wave_five_database_gains_the_gloss_resolution() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        legacy(&mut conn, 5);
+        assert!(columns(&conn, "words").contains(&"zh_gloss".to_string()));
+        conn.execute(
+            "INSERT INTO oos_queue (oos_lemma, status) VALUES ('perceive','open')",
+            [],
+        )
+        .unwrap();
+        assert!(!accepts_oos_status(&conn, "resolved_gloss"));
+
+        assert!(!ensure_schema(&mut conn).unwrap());
+
+        assert!(accepts_oos_status(&conn, "resolved_gloss"));
+        assert!(accepts_oos_status(&conn, "resolved_promote"));
+        assert!(!accepts_oos_status(&conn, "resolved_telepathy"));
+        // The rebuild carried the queue across.
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM oos_queue WHERE oos_lemma = 'perceive'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "open");
     }
 
     /// The rebuild puts back everything it took apart.
@@ -929,7 +1086,11 @@ mod tests {
         conn.pragma_update(None, "user_version", 2).unwrap();
         let before = live_ddl(&conn, "example_candidates").unwrap();
 
-        assert_eq!(migrate(&mut conn).unwrap(), 2, "the rungs still run");
+        assert_eq!(
+            migrate(&mut conn).unwrap(),
+            (SCHEMA_USER_VERSION - 2) as usize,
+            "the rungs still run"
+        );
         assert_eq!(
             columns(&conn, "releases")
                 .iter()
@@ -1114,7 +1275,11 @@ mod tests {
         ensure_schema(&mut conn).unwrap();
         ensure_schema(&mut conn).unwrap();
         assert_eq!(migrate(&mut conn).unwrap(), 0, "nothing left to climb");
-        for (table, column) in [("words", "core_ready"), ("releases", "word_count")] {
+        for (table, column) in [
+            ("words", "core_ready"),
+            ("words", "zh_gloss"),
+            ("releases", "word_count"),
+        ] {
             let count = columns(&conn, table)
                 .iter()
                 .filter(|c| *c == column)

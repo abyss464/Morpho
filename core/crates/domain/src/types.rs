@@ -175,7 +175,18 @@ string_enum!(
         Open => "open",
         ResolvedRewrite => "resolved_rewrite",
         ResolvedPromote => "resolved_promote",
+        // Wave-7 ruling #18a: the lemma is grounded by a Chinese gloss rather
+        // than promoted into the curriculum or written out of the definition.
+        ResolvedGloss => "resolved_gloss",
         AutoClosed => "auto_closed",
+    }
+);
+
+string_enum!(
+    /// `words.zh_gloss_source`
+    GlossSource, "zh_gloss_source", {
+        Manual => "manual",
+        Cedict => "cedict",
     }
 );
 

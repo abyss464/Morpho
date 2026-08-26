@@ -34,7 +34,7 @@ pub use tts::{DesiredTts, TtsConfig};
 pub use types::{
     AuxStatus, CandidateKind, CandidateStatus, CreatedBy, DefinitionCandidate, DefinitionSelection,
     DefinitionSource, EtymologySource, ExampleSource, ExtractedToken, FetchedDefinition,
-    FetchedExample, FetchedImage, ImageSource, MediaKind, OosStatus, ParseEnumError, Pos, Role,
-    SelectedBy, SlotRef, TtsKind, Word, WordImport,
+    FetchedExample, FetchedImage, GlossSource, ImageSource, MediaKind, OosStatus, ParseEnumError,
+    Pos, Role, SelectedBy, SlotRef, TtsKind, Word, WordImport,
 };
 pub use version::SCHEMA_USER_VERSION;

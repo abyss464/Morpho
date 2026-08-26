@@ -209,7 +209,7 @@ GROUP BY t.lemma, ds.word_id, ds.def_cand_id;
 CREATE TABLE oos_queue (
     oos_lemma  TEXT PRIMARY KEY COLLATE NOCASE,
     status     TEXT NOT NULL DEFAULT 'open'
-               CHECK (status IN ('open','resolved_rewrite','resolved_promote','auto_closed')),
+               CHECK (status IN ('open','resolved_rewrite','resolved_promote','resolved_gloss','auto_closed')),
     first_seen TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     resolved_by TEXT, resolved_at TEXT, notes TEXT
 );

@@ -9,8 +9,8 @@ use morpho_domain::change::EntityType;
 use morpho_domain::event::{Action, Actor};
 use morpho_domain::job::{JobKey, JobKind, JobStatus, RateKey, SubjectRef};
 use morpho_domain::types::{
-    CandidateKind, CreatedBy, DefinitionSource, ExtractedToken, FetchedImage, ImageSource, Role,
-    SelectedBy, SlotRef, WordImport,
+    CandidateKind, CreatedBy, DefinitionSource, ExtractedToken, FetchedImage, GlossSource,
+    ImageSource, Role, SelectedBy, SlotRef, WordImport,
 };
 use morpho_store::ops::{
     CreateWord, IngestImages, MintDefinitionCandidate, OovResolution, RecordDefExtraction,
@@ -890,6 +890,125 @@ async fn oov_promote_creates_an_active_auxiliary_and_closes_the_row() {
         )
         .await,
         1
+    );
+}
+
+#[tokio::test]
+async fn oov_gloss_anchors_the_lemma_and_closes_the_row() {
+    let (_dir, store) = fixture();
+    store
+        .write(
+            Actor::admin("abyss"),
+            WriteOp::ResolveOov {
+                lemma: "Perceive".into(),
+                resolution: OovResolution::Gloss {
+                    zh_gloss: "  察觉  ".into(),
+                    source: GlossSource::Manual,
+                },
+            },
+        )
+        .await
+        .unwrap();
+
+    let (role, aux, gloss, source) = store
+        .read(|conn| {
+            Ok(conn.query_row(
+                "SELECT role, aux_status, zh_gloss, zh_gloss_source FROM words
+                 WHERE lemma = 'perceive'",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
+            )?)
+        })
+        .await
+        .unwrap();
+    assert_eq!((role.as_str(), aux.as_str()), ("auxiliary", "active"));
+    assert_eq!(
+        gloss, "察觉",
+        "the gloss is canonicalized like any other text"
+    );
+    assert_eq!(source, "manual");
+
+    let status = store
+        .read(|conn| {
+            Ok(conn.query_row(
+                "SELECT status FROM oos_queue WHERE oos_lemma = 'perceive'",
+                [],
+                |row| row.get::<_, String>(0),
+            )?)
+        })
+        .await
+        .unwrap();
+    assert_eq!(status, "resolved_gloss");
+    assert_eq!(
+        count(
+            &store,
+            "SELECT COUNT(*) FROM events WHERE action = 'gloss_set'"
+        )
+        .await,
+        1
+    );
+
+    // An anchor is not a word the factory works on any more.
+    let active = store
+        .read(morpho_store::queries::active_words)
+        .await
+        .unwrap();
+    assert!(active.is_empty(), "{active:?}");
+}
+
+#[tokio::test]
+async fn a_gloss_is_idempotent_and_clears_its_source() {
+    let (_dir, store) = fixture();
+    let word_id = seed_word(&store, "perceive", Role::Auxiliary).await;
+
+    for _ in 0..2 {
+        store
+            .write(Actor::admin("abyss"), WriteOp::set_gloss(word_id, "察觉"))
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        count(
+            &store,
+            "SELECT COUNT(*) FROM events WHERE action = 'gloss_set'"
+        )
+        .await,
+        1,
+        "writing the same gloss twice is not a change"
+    );
+
+    store
+        .write(Actor::admin("abyss"), WriteOp::clear_gloss(word_id))
+        .await
+        .unwrap();
+    let orphaned = count(
+        &store,
+        "SELECT COUNT(*) FROM words WHERE zh_gloss IS NULL AND zh_gloss_source IS NOT NULL",
+    )
+    .await;
+    assert_eq!(orphaned, 0, "clearing the gloss clears its provenance");
+    assert_eq!(
+        count(
+            &store,
+            "SELECT COUNT(*) FROM events WHERE action = 'gloss_cleared'"
+        )
+        .await,
+        1
+    );
+
+    let missing = store
+        .write(Actor::admin("abyss"), WriteOp::set_gloss(9_999, "察觉"))
+        .await;
+    assert!(
+        matches!(missing, Err(StoreError::NotFound(_))),
+        "{missing:?}"
     );
 }
 

@@ -804,6 +804,152 @@ async fn resolving_by_rewrite_selects_the_new_candidate() {
     assert_eq!(selection["selected_by"], "human");
 }
 
+#[tokio::test]
+async fn resolving_by_gloss_anchors_the_lemma() {
+    let h = harness();
+    let (word, _) = seed_oov(&h).await;
+
+    let (status, body) = post(
+        &h.router,
+        "/api/oov/altruistic/resolve",
+        serde_json::json!({"mode": "gloss", "zh_gloss": "利他的", "notes": "not worth teaching"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["total"], 0, "the entry left the open queue");
+
+    // The anchor exists as an active auxiliary carrying the gloss.
+    let (_, words) = get(&h.router, "/api/words?q=altruistic").await;
+    assert_eq!(words["total"], 1);
+    let anchor = words["items"][0]["word_id"].as_i64().unwrap();
+    let (_, detail) = get(&h.router, &format!("/api/words/{anchor}")).await;
+    assert_eq!(detail["word"]["role"], "auxiliary");
+    assert_eq!(detail["word"]["aux_status"], "active");
+    assert_eq!(detail["word"]["zh_gloss"], "利他的");
+    assert_eq!(detail["word"]["zh_gloss_source"], "manual");
+    // An anchor is never spoken, so it lists no clips to chase.
+    assert_eq!(detail["tts"].as_array().unwrap().len(), 0);
+
+    // The queue row records how it was closed.
+    let (_, resolved) = get(&h.router, "/api/oov?status=resolved_gloss").await;
+    assert_eq!(resolved["items"][0]["oos_lemma"], "altruistic");
+    assert_eq!(resolved["items"][0]["status"], "resolved_gloss");
+
+    // And the word that needed it is untouched.
+    let (status, _) = get(&h.router, &format!("/api/words/{word}")).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn resolving_by_gloss_rejects_an_empty_gloss() {
+    let h = harness();
+    seed_oov(&h).await;
+    let (status, body) = post(
+        &h.router,
+        "/api/oov/altruistic/resolve",
+        serde_json::json!({"mode": "gloss", "zh_gloss": "   "}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "invalid_request");
+}
+
+// ---------------------------------------------------------------------------
+// Gloss anchors
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn setting_and_clearing_a_gloss_returns_the_whole_word() {
+    let h = harness();
+    let word = seed_word(&h.store, "perambulate", Role::Target, Some(41_000)).await;
+
+    let (status, body) = post(
+        &h.router,
+        &format!("/api/words/{word}/gloss"),
+        serde_json::json!({"zh_gloss": "漫步"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["word"]["word_id"], word);
+    assert_eq!(body["word"]["zh_gloss"], "漫步");
+    assert_eq!(body["word"]["zh_gloss_source"], "manual");
+    // Wave-2 ruling #2: the whole detail comes back, not just the row.
+    assert!(body["definitions"].is_array());
+    assert!(body["distractors"].is_array());
+
+    let (status, body) = delete(
+        &h.router,
+        &format!("/api/words/{word}/gloss"),
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["word"]["zh_gloss"].is_null());
+    assert!(body["word"]["zh_gloss_source"].is_null());
+}
+
+#[tokio::test]
+async fn a_gloss_is_audited_both_ways() {
+    let h = harness();
+    let word = seed_word(&h.store, "perambulate", Role::Target, Some(41_000)).await;
+    post(
+        &h.router,
+        &format!("/api/words/{word}/gloss"),
+        serde_json::json!({"zh_gloss": "漫步"}),
+    )
+    .await;
+    delete(
+        &h.router,
+        &format!("/api/words/{word}/gloss"),
+        serde_json::Value::Null,
+    )
+    .await;
+
+    let (_, events) = get(
+        &h.router,
+        &format!("/api/events?entity_type=word&entity_id={word}"),
+    )
+    .await;
+    let actions: Vec<&str> = events["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|event| event["action"].as_str().unwrap())
+        .collect();
+    assert!(actions.contains(&"gloss_set"), "{actions:?}");
+    assert!(actions.contains(&"gloss_cleared"), "{actions:?}");
+    let set = events["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|event| event["action"] == "gloss_set")
+        .unwrap();
+    assert_eq!(set["actor"], "admin:abyss");
+    assert_eq!(set["detail"]["zh_gloss"], "漫步");
+}
+
+#[tokio::test]
+async fn an_empty_gloss_is_refused_and_an_unknown_word_is_not_found() {
+    let h = harness();
+    let word = seed_word(&h.store, "perambulate", Role::Target, Some(41_000)).await;
+
+    let (status, _) = post(
+        &h.router,
+        &format!("/api/words/{word}/gloss"),
+        serde_json::json!({"zh_gloss": ""}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, _) = post(
+        &h.router,
+        "/api/words/9999/gloss",
+        serde_json::json!({"zh_gloss": "漫步"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
 // ---------------------------------------------------------------------------
 // Dead letters
 // ---------------------------------------------------------------------------
@@ -1361,4 +1507,11 @@ async fn every_contract_endpoint_is_implemented() {
         let (status, payload) = post(&h.router, uri, body).await;
         assert_eq!(status, StatusCode::CREATED, "POST {uri}: {payload}");
     }
+    // Ruling #18a's pair, which answers with the word rather than creating one.
+    let gloss = format!("/api/words/{word}/gloss");
+    let (status, payload) =
+        post(&h.router, &gloss, serde_json::json!({"zh_gloss": "宁静的"})).await;
+    assert_eq!(status, StatusCode::OK, "POST {gloss}: {payload}");
+    let (status, payload) = delete(&h.router, &gloss, serde_json::Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "DELETE {gloss}: {payload}");
 }

@@ -90,6 +90,9 @@ pub struct ReleaseRows<'a> {
     pub examples: Vec<&'a crate::model::ExportExample>,
     pub groups: Vec<&'a crate::model::ExportGroup>,
     pub distractors: Vec<(i64, i64, i64)>,
+    /// The gloss anchors this release's words actually mention. Never an orphan:
+    /// an anchor nobody reads is dead weight in the app's popover index.
+    pub gloss_anchors: Vec<&'a crate::model::GlossAnchor>,
 }
 
 /// Select and order everything the cut kept.
@@ -139,6 +142,22 @@ pub fn rows_for<'a>(payload: &'a ExportPayload, exportable: &BTreeSet<i64>) -> R
         .collect();
     distractors.sort_unstable();
 
+    // Only the anchors a shipped word actually mentions. `anchor_refs` carries
+    // the edges the dependency closure deliberately dropped, so this is the one
+    // place that knows which Chinese glosses the release has to carry.
+    let referenced: BTreeSet<i64> = payload
+        .anchor_refs
+        .iter()
+        .filter(|(word_id, _)| exportable.contains(word_id))
+        .map(|(_, anchor)| *anchor)
+        .collect();
+    let mut gloss_anchors: Vec<&crate::model::GlossAnchor> = payload
+        .gloss_anchors
+        .iter()
+        .filter(|anchor| referenced.contains(&anchor.word_id))
+        .collect();
+    gloss_anchors.sort_by_key(|anchor| anchor.word_id);
+
     ReleaseRows {
         plan_id: payload.plan_id,
         words,
@@ -146,6 +165,7 @@ pub fn rows_for<'a>(payload: &'a ExportPayload, exportable: &BTreeSet<i64>) -> R
         examples,
         groups,
         distractors,
+        gloss_anchors,
     }
 }
 
@@ -229,6 +249,14 @@ pub fn content_hash(rows: &ReleaseRows<'_>, media: &[(String, String, u64)]) -> 
     }
     for (word_id, rank, distractor) in &rows.distractors {
         hasher = hasher.field(format!("d|{word_id}|{rank}|{distractor}"));
+    }
+    // Appended after the distractors, so a release with no anchors hashes
+    // exactly as it did before ruling #18a existed.
+    for anchor in &rows.gloss_anchors {
+        hasher = hasher.field(format!(
+            "ga|{}|{}|{}",
+            anchor.word_id, anchor.lemma, anchor.zh_gloss
+        ));
     }
     for (path, hash, bytes) in media {
         hasher = hasher.field(format!("m|{path}|{hash}|{bytes}"));
@@ -449,6 +477,17 @@ pub fn write_release_db(
         }
     }
     {
+        let mut stmt =
+            tx.prepare("INSERT INTO gloss_anchors (word_id, word, zh_gloss) VALUES (?1, ?2, ?3)")?;
+        for anchor in &rows.gloss_anchors {
+            stmt.execute(rusqlite::params![
+                anchor.word_id,
+                anchor.lemma,
+                anchor.zh_gloss
+            ])?;
+        }
+    }
+    {
         let mut stmt = tx.prepare("INSERT INTO meta (key, value) VALUES (?1, ?2)")?;
         // Ordered by key, and `exported_at` is the export *date* only: a wall
         // clock in here would make two identical exports differ.
@@ -477,6 +516,7 @@ mod tests {
     fn embedded_ddl_is_the_contract_file() {
         assert!(RELEASE_DB_SQL.contains("CREATE TABLE words ("));
         assert!(RELEASE_DB_SQL.contains("CREATE TABLE distractors"));
+        assert!(RELEASE_DB_SQL.contains("CREATE TABLE gloss_anchors"));
         assert!(RELEASE_DB_SQL.contains("CREATE TABLE meta"));
     }
 

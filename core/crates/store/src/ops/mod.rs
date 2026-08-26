@@ -46,7 +46,7 @@ pub use selections::{
     SetApproval, SetSelection,
 };
 pub use tts::RecordTtsAsset;
-pub use words::{CreateWord, ImportStats, ImportWords, SetAuxStatus, SetEtymology};
+pub use words::{CreateWord, ImportStats, ImportWords, SetAuxStatus, SetEtymology, SetGloss};
 
 /// One atomic unit of change.
 #[derive(Debug, Clone)]
@@ -103,6 +103,8 @@ pub enum WriteOp {
     },
     /// Write a word's etymology.
     SetEtymology(SetEtymology),
+    /// Set or clear a word's Chinese gloss anchor.
+    SetGloss(SetGloss),
     /// Flip an auxiliary word between active and retired.
     SetAuxStatus(SetAuxStatus),
     /// Register a file in the content-addressed media registry.
@@ -319,6 +321,7 @@ pub(crate) fn apply_op(op: WriteOp, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResu
             result_count,
         } => derived::record_source_fetch(&kind, word_id, &source, result_count, ctx),
         WriteOp::SetEtymology(req) => words::set_etymology(req, ctx),
+        WriteOp::SetGloss(req) => words::set_gloss(req, ctx),
         WriteOp::SetAuxStatus(req) => words::set_aux_status(req, ctx),
         WriteOp::RegisterMediaFile {
             file_hash,
@@ -415,6 +418,22 @@ impl WriteOp {
             word_id,
             etymology,
             source,
+        })
+    }
+
+    pub fn set_gloss(word_id: i64, zh_gloss: impl Into<String>) -> Self {
+        Self::SetGloss(SetGloss {
+            word_id,
+            zh_gloss: Some(zh_gloss.into()),
+            source: morpho_domain::types::GlossSource::Manual,
+        })
+    }
+
+    pub fn clear_gloss(word_id: i64) -> Self {
+        Self::SetGloss(SetGloss {
+            word_id,
+            zh_gloss: None,
+            source: morpho_domain::types::GlossSource::Manual,
         })
     }
 

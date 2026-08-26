@@ -20,6 +20,10 @@ pub fn api_router(state: AppState) -> Router {
         // -- Words --------------------------------------------------------
         .route("/words", get(read::words).post(write::create_word))
         .route("/words/{id}", get(read::word_detail))
+        .route(
+            "/words/{id}/gloss",
+            post(write::set_gloss).delete(write::clear_gloss),
+        )
         // -- Candidates & selections --------------------------------------
         .route("/candidates/definition", post(write::mint_definition))
         .route("/candidates/example", post(write::mint_example))

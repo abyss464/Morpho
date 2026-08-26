@@ -50,10 +50,12 @@ pub fn word_counts(conn: &Connection) -> Result<WordCounts> {
             })
         },
     )?;
-    // Readiness only means anything for words that are actually in scope.
+    // Readiness only means anything for words that are actually in scope — and a
+    // gloss anchor never becomes ready, so counting it would put a permanent
+    // untouchable number in the operator's `blocked` column.
     let (active, ready, core_ready) = conn.query_row(
         "SELECT COUNT(*), COALESCE(SUM(ready = 1), 0), COALESCE(SUM(core_ready = 1), 0)
-         FROM active_words",
+         FROM active_words WHERE zh_gloss IS NULL",
         [],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?;
@@ -92,24 +94,33 @@ pub struct AssetCounts {
 /// * `missing` — the slot is empty or unapproved;
 /// * `failed`  — every source for that slot is dead or waived, so nothing more
 ///   will arrive without a human.
+///
+/// Gloss anchors are outside all three: they need no asset, so counting them as
+/// `missing` would name work that is already done.
 fn slot_rollup(conn: &Connection, approved_sql: &str, job_kind: JobKind) -> Result<AssetRollup> {
     let ready: i64 = conn.query_row(
-        &format!("SELECT COUNT(*) FROM active_words w WHERE {approved_sql}"),
+        &format!("SELECT COUNT(*) FROM active_words w WHERE w.{NOT_ANCHORED} AND {approved_sql}"),
         [],
         |row| row.get(0),
     )?;
-    let total: i64 = conn.query_row("SELECT COUNT(*) FROM active_words", [], |row| row.get(0))?;
+    let total: i64 = conn.query_row(
+        &format!("SELECT COUNT(*) FROM active_words WHERE {NOT_ANCHORED}"),
+        [],
+        |row| row.get(0),
+    )?;
     // "Failed" means no further source will produce this asset without a
     // human: every fan-out subject for the slot is dead or waived.
     let failed: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT w.word_id)
-         FROM active_words w
-         JOIN job_state j
-           ON j.subject_type = 'word'
-          AND j.kind = ?1
-          AND (j.subject_id = CAST(w.word_id AS TEXT)
-               OR j.subject_id LIKE CAST(w.word_id AS TEXT) || ':%')
-         WHERE j.status IN ('dead','waived')",
+        &format!(
+            "SELECT COUNT(DISTINCT w.word_id)
+             FROM active_words w
+             JOIN job_state j
+               ON j.subject_type = 'word'
+              AND j.kind = ?1
+              AND (j.subject_id = CAST(w.word_id AS TEXT)
+                   OR j.subject_id LIKE CAST(w.word_id AS TEXT) || ':%')
+             WHERE w.{NOT_ANCHORED} AND j.status IN ('dead','waived')"
+        ),
         rusqlite::params![job_kind.as_str()],
         |row| row.get(0),
     )?;
@@ -150,13 +161,36 @@ pub fn asset_counts(conn: &Connection) -> Result<AssetCounts> {
     })
 }
 
-/// The `tts_desired` view, as `(kind, text)` pairs.
+/// The `tts_desired` view with a `word_id` on every row, narrowed to the words
+/// the factory is actually building.
 ///
-/// The view deliberately does not know about voices: the caller combines each
-/// row with the current [`morpho_domain::TtsConfig`] to get an `input_hash`,
-/// because SQLite cannot compute blake3.
+/// Three callers need to know *whose* clip a desired text is — the readiness
+/// pass, the word list and the word detail — and the contract's view cannot say,
+/// so the join is written once here. The `zh_gloss IS NULL` filter is what keeps
+/// a gloss anchor out of the synthesis queue: an anchor is read in Chinese, not
+/// spoken (admin-api.md ruling #18a).
+pub const DESIRED_TTS_SQL: &str = "SELECT word_id, kind, text FROM (
+         SELECT w.word_id, 'word' AS kind, w.lemma AS text
+           FROM active_words w WHERE w.zh_gloss IS NULL
+         UNION ALL
+         SELECT ds.word_id, 'definition', dc.text
+           FROM definition_selections ds
+           JOIN definition_candidates dc ON dc.def_cand_id = ds.def_cand_id
+           JOIN active_words w ON w.word_id = ds.word_id AND w.zh_gloss IS NULL
+          WHERE ds.enabled = 1
+         UNION ALL
+         SELECT es.word_id, 'example', ec.text
+           FROM example_selections es
+           JOIN example_candidates ec ON ec.ex_cand_id = es.ex_cand_id
+           JOIN active_words w ON w.word_id = es.word_id AND w.zh_gloss IS NULL
+     )";
+
+/// The desired TTS texts, as `(kind, text)` pairs.
+///
+/// The caller combines each row with the current [`morpho_domain::TtsConfig`]
+/// to get an `input_hash`, because SQLite cannot compute blake3.
 pub fn tts_desired(conn: &Connection) -> Result<Vec<(TtsKind, String)>> {
-    let mut stmt = conn.prepare("SELECT kind, text FROM tts_desired")?;
+    let mut stmt = conn.prepare(&format!("SELECT kind, text FROM ({DESIRED_TTS_SQL})"))?;
     let rows = stmt.query_map([], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })?;
@@ -375,6 +409,10 @@ pub struct WordRow {
     pub frequency_rank: Option<i64>,
     pub etymology: Option<String>,
     pub etymology_source: Option<String>,
+    /// A non-empty Chinese gloss makes this word an anchor, not a student-facing
+    /// word (admin-api.md ruling #18a).
+    pub zh_gloss: Option<String>,
+    pub zh_gloss_source: Option<String>,
     pub ready: bool,
     pub core_ready: bool,
     pub blockers: Vec<String>,
@@ -391,7 +429,17 @@ impl WordRow {
 }
 
 const WORD_COLUMNS: &str = "word_id, lemma, role, aux_status, phonetic, frequency_rank, \
-                            etymology, etymology_source, ready, core_ready, blockers";
+                            etymology, etymology_source, zh_gloss, zh_gloss_source, \
+                            ready, core_ready, blockers";
+
+/// The `WHERE` clause that separates student-facing words from gloss anchors.
+///
+/// A glossed word is a terminator of the readability chain, not a word anybody
+/// learns: it takes no assets, no plan slot and no readiness verdict. Clearing
+/// the gloss puts it straight back into normal life, which is why this is a
+/// predicate over live state rather than a status column (admin-api.md ruling
+/// #18a).
+pub const NOT_ANCHORED: &str = "zh_gloss IS NULL";
 
 fn map_word(row: &rusqlite::Row<'_>) -> rusqlite::Result<WordRow> {
     let role: String = row.get(2)?;
@@ -405,9 +453,11 @@ fn map_word(row: &rusqlite::Row<'_>) -> rusqlite::Result<WordRow> {
         frequency_rank: row.get(5)?,
         etymology: row.get(6)?,
         etymology_source: row.get(7)?,
-        ready: row.get::<_, i64>(8)? != 0,
-        core_ready: row.get::<_, i64>(9)? != 0,
-        blockers: morpho_domain::blocker::parse_blockers(&row.get::<_, String>(10)?),
+        zh_gloss: row.get(8)?,
+        zh_gloss_source: row.get(9)?,
+        ready: row.get::<_, i64>(10)? != 0,
+        core_ready: row.get::<_, i64>(11)? != 0,
+        blockers: morpho_domain::blocker::parse_blockers(&row.get::<_, String>(12)?),
     })
 }
 
@@ -423,10 +473,15 @@ pub fn all_words(conn: &Connection) -> Result<Vec<WordRow>> {
     Ok(rows)
 }
 
-/// Every word in `active_words`, in the same deterministic order.
+/// Every word in `active_words` that is not a gloss anchor, in the same
+/// deterministic order.
+///
+/// This is the factory's word set: derivation, selection, the plan, the
+/// distractor pool, readiness and the release lexicon all fan out from here, so
+/// excluding anchors in one place is what keeps them out of all six.
 pub fn active_words(conn: &Connection) -> Result<Vec<WordRow>> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {WORD_COLUMNS} FROM active_words
+        "SELECT {WORD_COLUMNS} FROM active_words WHERE {NOT_ANCHORED}
          ORDER BY COALESCE(frequency_rank, 9223372036854775807), word_id"
     ))?;
     let rows = stmt
@@ -447,13 +502,81 @@ pub fn word_by_id(conn: &Connection, word_id: i64) -> Result<Option<WordRow>> {
 
 /// `def_dependencies`: edges from a word to the target/auxiliary words its
 /// selected definitions rely on. Deterministically ordered.
+///
+/// An edge into a gloss anchor is dropped, and that single omission is what
+/// ruling #18a buys: readiness sees the dependency as satisfied, the plan does
+/// not have to place the anchor, and the export closure no longer drags the
+/// dependent off the boat. Edges *out* of an anchor go too — an anchor's own
+/// definition is nobody's reading obligation.
 pub fn dependency_edges(conn: &Connection) -> Result<Vec<(i64, i64)>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare(&format!(
         "SELECT DISTINCT d.word_id, d.depends_on_word_id
          FROM def_dependencies d
-         JOIN active_words a ON a.word_id = d.word_id
-         JOIN active_words b ON b.word_id = d.depends_on_word_id
-         ORDER BY d.word_id, d.depends_on_word_id",
+         JOIN active_words a ON a.word_id = d.word_id AND a.{NOT_ANCHORED}
+         JOIN active_words b ON b.word_id = d.depends_on_word_id AND b.{NOT_ANCHORED}
+         ORDER BY d.word_id, d.depends_on_word_id"
+    ))?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// One gloss anchor: a word that terminates the readability chain in Chinese
+/// instead of being learned (admin-api.md ruling #18a).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GlossAnchor {
+    pub word_id: i64,
+    /// The lemma as it appears in definition tokens.
+    pub lemma: String,
+    pub zh_gloss: String,
+}
+
+/// Every glossed word, in ascending id.
+pub fn gloss_anchors(conn: &Connection) -> Result<Vec<GlossAnchor>> {
+    let mut stmt = conn.prepare(
+        "SELECT word_id, lemma, zh_gloss FROM words
+         WHERE zh_gloss IS NOT NULL ORDER BY word_id",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(GlossAnchor {
+                word_id: row.get(0)?,
+                lemma: row.get(1)?,
+                zh_gloss: row.get(2)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// `(word_id, anchor_word_id)` — which words' enabled selected definitions
+/// actually mention a gloss anchor.
+///
+/// The edges [`dependency_edges`] deliberately drops, kept so the exporter can
+/// ship exactly the anchors a shipped word needs and no orphans. The role
+/// filter of `def_dependencies` is not applied: a glossed base word is just as
+/// tappable in the app as a glossed auxiliary.
+pub fn gloss_anchor_refs(conn: &Connection) -> Result<Vec<(i64, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT ds.word_id, w.word_id
+         FROM definition_selections ds
+         JOIN def_tokens t ON t.def_cand_id = ds.def_cand_id
+         JOIN words w ON w.lemma = t.lemma
+         WHERE ds.enabled = 1 AND w.zh_gloss IS NOT NULL AND w.word_id <> ds.word_id
+         ORDER BY ds.word_id, w.word_id",
+    )?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// `(word_id, lemma)` — tokens of enabled selected definitions that resolve to
+/// no `words` row at all. The `oos_occurrences` view, flattened.
+pub fn unresolved_definition_tokens(conn: &Connection) -> Result<Vec<(i64, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT word_id, oos_lemma FROM oos_occurrences ORDER BY word_id, oos_lemma",
     )?;
     let rows = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?

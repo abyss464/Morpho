@@ -5,7 +5,7 @@ use rusqlite::OptionalExtension;
 use morpho_domain::canon::canonicalize;
 use morpho_domain::change::EntityType;
 use morpho_domain::event::{Action, EventDraft};
-use morpho_domain::types::{AuxStatus, CreatedBy, EtymologySource, Role, WordImport};
+use morpho_domain::types::{AuxStatus, CreatedBy, EtymologySource, GlossSource, Role, WordImport};
 
 use super::{OpCtx, WriteResult};
 use crate::error::{Result, StoreError};
@@ -230,6 +230,74 @@ pub(super) fn set_etymology(req: SetEtymology, ctx: &mut OpCtx<'_, '_>) -> Resul
     )?;
     ctx.touch(EntityType::Word, req.word_id.to_string());
     Ok(WriteResult::Unit)
+}
+
+/// Set or clear a word's Chinese gloss anchor (admin-api.md ruling #18a).
+///
+/// Setting one takes the word out of the curriculum entirely — no assets, no
+/// plan slot, no readiness verdict — and makes every dependency on it satisfied.
+/// Clearing it puts the word straight back into normal life, assets intact,
+/// because nothing about the transition destroys anything.
+#[derive(Debug, Clone)]
+pub struct SetGloss {
+    pub word_id: i64,
+    /// `None` clears the anchor. Whitespace-only text clears it too: an empty
+    /// gloss would ground nothing.
+    pub zh_gloss: Option<String>,
+    pub source: GlossSource,
+}
+
+pub(super) fn set_gloss(req: SetGloss, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResult> {
+    let row: Option<(String, Option<String>)> = ctx
+        .tx
+        .query_row(
+            "SELECT lemma, zh_gloss FROM words WHERE word_id = ?1",
+            rusqlite::params![req.word_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((lemma, current)) = row else {
+        return Err(StoreError::not_found(format!("word {}", req.word_id)));
+    };
+
+    let gloss = req
+        .zh_gloss
+        .as_deref()
+        .map(canonicalize)
+        .filter(|text| !text.is_empty());
+    if gloss == current {
+        return Ok(WriteResult::Word {
+            word_id: req.word_id,
+            created: false,
+        });
+    }
+
+    let source = gloss.as_ref().map(|_| req.source.as_str());
+    ctx.tx.execute(
+        "UPDATE words SET zh_gloss = ?2, zh_gloss_source = ?3 WHERE word_id = ?1",
+        rusqlite::params![req.word_id, gloss, source],
+    )?;
+    let action = if gloss.is_some() {
+        Action::GlossSet
+    } else {
+        Action::GlossCleared
+    };
+    ctx.event(
+        EventDraft::new(EntityType::Word, req.word_id.to_string(), action).detail(
+            serde_json::json!({
+                "word_id": req.word_id,
+                "lemma": lemma,
+                "zh_gloss": gloss,
+                "zh_gloss_source": source,
+                "previous": current,
+            }),
+        ),
+    )?;
+    ctx.touch(EntityType::Word, req.word_id.to_string());
+    Ok(WriteResult::Word {
+        word_id: req.word_id,
+        created: false,
+    })
 }
 
 const fn source_rank(source: EtymologySource) -> u8 {

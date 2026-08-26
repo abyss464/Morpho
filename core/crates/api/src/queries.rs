@@ -164,22 +164,7 @@ fn tts_rollup(conn: &Connection, config: &TtsConfig) -> Result<AssetRollup> {
 /// Texts this word needs spoken. Combined with the voice config in Rust,
 /// because SQLite cannot compute the content address.
 fn desired_texts_by_word(conn: &Connection) -> Result<HashMap<i64, Vec<(TtsKind, String)>>> {
-    let mut stmt = conn.prepare(
-        "SELECT word_id, kind, text FROM (
-             SELECT word_id, 'word' AS kind, lemma AS text FROM active_words
-             UNION ALL
-             SELECT ds.word_id, 'definition', dc.text
-               FROM definition_selections ds
-               JOIN definition_candidates dc ON dc.def_cand_id = ds.def_cand_id
-               JOIN active_words w ON w.word_id = ds.word_id
-              WHERE ds.enabled = 1
-             UNION ALL
-             SELECT es.word_id, 'example', ec.text
-               FROM example_selections es
-               JOIN example_candidates ec ON ec.ex_cand_id = es.ex_cand_id
-               JOIN active_words w ON w.word_id = es.word_id
-         )",
-    )?;
+    let mut stmt = conn.prepare(morpho_store::queries::DESIRED_TTS_SQL)?;
     let rows = stmt
         .query_map([], |row| {
             Ok((
@@ -322,7 +307,8 @@ pub fn word_list(
 pub fn word_fields(conn: &Connection, word_id: i64) -> Result<Word> {
     conn.query_row(
         "SELECT word_id, lemma, role, aux_status, phonetic, frequency_rank, etymology,
-                etymology_source, ready, blockers, created_by, created_at
+                etymology_source, zh_gloss, zh_gloss_source, ready, blockers,
+                created_by, created_at
          FROM words WHERE word_id = ?1",
         rusqlite::params![word_id],
         |row| {
@@ -335,10 +321,12 @@ pub fn word_fields(conn: &Connection, word_id: i64) -> Result<Word> {
                 frequency_rank: row.get(5)?,
                 etymology: row.get(6)?,
                 etymology_source: row.get(7)?,
-                ready: row.get::<_, i64>(8)? != 0,
-                blockers: parse_blockers(&row.get::<_, String>(9)?),
-                created_by: row.get(10)?,
-                created_at: row.get(11)?,
+                zh_gloss: row.get(8)?,
+                zh_gloss_source: row.get(9)?,
+                ready: row.get::<_, i64>(10)? != 0,
+                blockers: parse_blockers(&row.get::<_, String>(11)?),
+                created_by: row.get(12)?,
+                created_at: row.get(13)?,
             })
         },
     )
@@ -563,18 +551,22 @@ fn image_slot(conn: &Connection, word_id: i64) -> Result<ImageSlotView> {
 
 fn tts_status(conn: &Connection, word_id: i64, config: &TtsConfig) -> Result<Vec<TtsStatusView>> {
     let mut stmt = conn.prepare(
+        // A gloss anchor is never spoken, so it lists no clips at all rather
+        // than a wall of `missing` the operator can do nothing about.
         "SELECT kind, text, pos, slot FROM (
              SELECT 'word' AS kind, lemma AS text, NULL AS pos, NULL AS slot
-               FROM active_words WHERE word_id = ?1
+               FROM active_words WHERE word_id = ?1 AND zh_gloss IS NULL
              UNION ALL
              SELECT 'definition', dc.text, ds.pos, NULL
                FROM definition_selections ds
                JOIN definition_candidates dc ON dc.def_cand_id = ds.def_cand_id
+               JOIN active_words w ON w.word_id = ds.word_id AND w.zh_gloss IS NULL
               WHERE ds.word_id = ?1 AND ds.enabled = 1
              UNION ALL
              SELECT 'example', ec.text, NULL, es.slot
                FROM example_selections es
                JOIN example_candidates ec ON ec.ex_cand_id = es.ex_cand_id
+               JOIN active_words w ON w.word_id = es.word_id AND w.zh_gloss IS NULL
               WHERE es.word_id = ?1
          ) ORDER BY kind, text",
     )?;

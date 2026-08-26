@@ -8,10 +8,12 @@ use rusqlite::OptionalExtension;
 use morpho_domain::canon::fold_lemma;
 use morpho_domain::change::EntityType;
 use morpho_domain::event::{Action, EventDraft};
-use morpho_domain::types::{AuxStatus, CreatedBy, DefinitionSource, OosStatus, Role, SelectedBy};
+use morpho_domain::types::{
+    AuxStatus, CreatedBy, DefinitionSource, GlossSource, OosStatus, Role, SelectedBy,
+};
 
 use super::selections::{MintDefinitionCandidate, SetSelection};
-use super::words::CreateWord;
+use super::words::{CreateWord, SetGloss};
 use super::{selections, words, OpCtx, WriteResult};
 use crate::error::{Result, StoreError};
 
@@ -28,6 +30,14 @@ pub enum OovResolution {
         def_cand_id: i64,
         text: String,
         source: DefinitionSource,
+    },
+    /// Ground the lemma with a short Chinese gloss instead of teaching it
+    /// (admin-api.md ruling #18a). The word row is created if it does not
+    /// exist, as an auxiliary — the anchor needs an id to be referenced by, and
+    /// clearing the gloss later hands a normal auxiliary back to the factory.
+    Gloss {
+        zh_gloss: String,
+        source: GlossSource,
     },
 }
 
@@ -204,6 +214,41 @@ pub(super) fn resolve_oov(
                 ctx,
             )?;
             (OosStatus::ResolvedRewrite, minted)
+        }
+        OovResolution::Gloss { zh_gloss, source } => {
+            if morpho_domain::canon::canonicalize(&zh_gloss).is_empty() {
+                return Err(StoreError::invalid("zh_gloss must not be empty"));
+            }
+            let created = words::create_word(
+                CreateWord {
+                    lemma: lemma.clone(),
+                    role: Role::Auxiliary,
+                    phonetic: None,
+                    frequency_rank: None,
+                    created_by: CreatedBy::Promotion,
+                    if_absent: true,
+                },
+                ctx,
+            )?;
+            let word_id = created
+                .word_id()
+                .ok_or_else(|| StoreError::invalid("gloss resolve did not return a word id"))?;
+            // A retired auxiliary that is being anchored comes back: an anchor
+            // has to exist for a definition token to resolve to it.
+            ctx.tx.execute(
+                "UPDATE words SET aux_status = 'active'
+                 WHERE word_id = ?1 AND role = 'auxiliary' AND aux_status <> 'active'",
+                rusqlite::params![word_id],
+            )?;
+            words::set_gloss(
+                SetGloss {
+                    word_id,
+                    zh_gloss: Some(zh_gloss),
+                    source,
+                },
+                ctx,
+            )?;
+            (OosStatus::ResolvedGloss, created)
         }
     };
 

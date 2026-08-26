@@ -43,7 +43,12 @@ pub const RELEASE_SCHEMA_VER: &str = "1";
 /// * 4 — wave-4: the `example_candidates.source` and `image_candidates.source`
 ///   CHECK unions widen for the keyless sources, and three lanes join the
 ///   `rate_limits` seeds (admin-api.md ruling #18).
-pub const SCHEMA_USER_VERSION: i32 = 4;
+/// * 5 — wave-7: `words.zh_gloss` and `words.zh_gloss_source`, the Chinese
+///   gloss anchors that terminate the readability chain (admin-api.md ruling
+///   #18a).
+/// * 6 — wave-7: `oos_queue.status` gains `resolved_gloss`, so an out-of-scope
+///   lemma can be closed by anchoring it instead of promoting or rewriting.
+pub const SCHEMA_USER_VERSION: i32 = 6;
 
 /// Version the embedded `docs/contracts/working-db.sql` describes.
 ///
@@ -58,4 +63,9 @@ pub const SCHEMA_USER_VERSION: i32 = 4;
 /// Raise it when the contract file gains what a migration already added. It may
 /// never exceed [`SCHEMA_USER_VERSION`]; `store::schema` asserts that at compile
 /// time.
-pub const CONTRACT_SCHEMA_VERSION: i32 = 4;
+///
+/// It sits at 5 while the code is at 6: the contract already ships
+/// `words.zh_gloss`, but its `oos_queue.status` CHECK has not yet been synced
+/// with `resolved_gloss`, so the rung that widens it carries its own forward
+/// DDL and still has to run over a database created straight from the file.
+pub const CONTRACT_SCHEMA_VERSION: i32 = 6;

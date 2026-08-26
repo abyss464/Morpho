@@ -40,9 +40,20 @@ pub async fn recompute_readiness(store: &Store, context: &EngineContext) -> Resu
 
 fn collect(conn: &Connection, tts: &TtsConfig) -> Result<Vec<ReadinessRow>> {
     let active = queries::active_words(conn)?;
-    if active.is_empty() {
+    // A gloss anchor has no gates to pass — it is a terminator of the
+    // readability chain, not a word anybody learns (admin-api.md ruling #18a) —
+    // but its cached verdict must not be left over from before it was anchored,
+    // or the console would keep quoting blockers nothing will ever clear.
+    let anchors = queries::gloss_anchors(conn)?;
+    if active.is_empty() && anchors.is_empty() {
         return Ok(Vec::new());
     }
+    let cleared = anchors.into_iter().map(|anchor| ReadinessRow {
+        word_id: anchor.word_id,
+        ready: false,
+        core_ready: false,
+        blockers_json: "[]".to_string(),
+    });
 
     let sense_state = sense_state(conn)?;
     let example_state = example_state(conn)?;
@@ -95,6 +106,7 @@ fn collect(conn: &Connection, tts: &TtsConfig) -> Result<Vec<ReadinessRow>> {
             core_ready: readiness.core_ready,
             blockers_json: readiness.blockers.to_json(),
         })
+        .chain(cleared)
         .collect())
 }
 
@@ -226,22 +238,7 @@ fn tts_state(conn: &Connection, config: &TtsConfig) -> Result<HashMap<i64, TtsSt
     let assets = queries::tts_assets(conn)?;
     let abandoned = queries::abandoned_tts_inputs(conn)?;
 
-    let mut stmt = conn.prepare(
-        "SELECT word_id, kind, text FROM (
-             SELECT word_id, 'word' AS kind, lemma AS text FROM active_words
-             UNION ALL
-             SELECT ds.word_id, 'definition', dc.text
-               FROM definition_selections ds
-               JOIN definition_candidates dc ON dc.def_cand_id = ds.def_cand_id
-               JOIN active_words w ON w.word_id = ds.word_id
-              WHERE ds.enabled = 1
-             UNION ALL
-             SELECT es.word_id, 'example', ec.text
-               FROM example_selections es
-               JOIN example_candidates ec ON ec.ex_cand_id = es.ex_cand_id
-               JOIN active_words w ON w.word_id = es.word_id
-         )",
-    )?;
+    let mut stmt = conn.prepare(queries::DESIRED_TTS_SQL)?;
     let rows = stmt
         .query_map([], |row| {
             Ok((
