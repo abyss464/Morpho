@@ -39,6 +39,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.morpho.ui.designsystem.motion.correctSpring
@@ -51,6 +54,7 @@ private const val QUIZ_IMAGE_ASPECT = 4f / 3f
 
 /** Mode-2 captions are a fixed two-line band, so all four cells line up. */
 private const val CAPTION_LINES = 2
+private const val MAX_CAPTION_LINES = 4
 
 /** One cell of an image-based quiz. */
 data class ImageOption(
@@ -137,7 +141,17 @@ private fun QuizGridScaffold(
     space: QuizAnswerSpace?,
 ) {
     val gutter = MorphoTheme.spacing.sm
-    val captionBand = if (showCaptions) captionBandHeight() else 0.dp
+    // Adaptive caption band (owner feedback: two fixed lines truncated real
+    // dictionary definitions, and mode 2 is answered BY reading the captions).
+    // The band fits the longest caption of this question, capped at
+    // MAX_CAPTION_LINES, and gives lines back before it would squeeze the
+    // image band below its floor. All four cells still share one height.
+    val captionLines = if (showCaptions) {
+        adaptiveCaptionLines(options, gutter, space)
+    } else {
+        0
+    }
+    val captionBand = if (showCaptions) captionBandHeight(captionLines) else 0.dp
     val imageBand = space?.let { imageBandHeight(it, gutter, captionBand) }
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -154,6 +168,7 @@ private fun QuizGridScaffold(
                         state = optionState(index, selectedIndex, correctIndex, revealed),
                         showCaption = showCaptions,
                         captionBand = captionBand,
+                        captionLines = captionLines,
                         imageBand = imageBand,
                         enabled = enabled,
                         onClick = { onSelect(index) },
@@ -167,14 +182,56 @@ private fun QuizGridScaffold(
 }
 
 /**
- * Two lines of caption plus its padding, measured off the live text style so the band
- * still fits at a 2x font scale instead of clipping.
+ * Caption band for [lines] lines plus padding, measured off the live text style so the
+ * band still fits at a 2x font scale instead of clipping.
  */
 @Composable
-private fun captionBandHeight(): Dp {
+private fun captionBandHeight(lines: Int): Dp {
     val lineHeight = MorphoTheme.reading.definitionCaption.lineHeight
-    val lines = with(LocalDensity.current) { lineHeight.toDp() } * CAPTION_LINES
-    return lines + MorphoTheme.spacing.sm * 2
+    val band = with(LocalDensity.current) { lineHeight.toDp() } * lines
+    return band + MorphoTheme.spacing.sm * 2
+}
+
+/**
+ * Lines the caption band needs for this question: the longest caption measured at the
+ * real cell text width, clamped to [CAPTION_LINES]..[MAX_CAPTION_LINES], then reduced
+ * until the image band stays at or above its floor inside [space]. With no bounded
+ * [space] (previews, wrap-content hosts) the measured value stands as long as a width
+ * is known; otherwise the legacy two lines.
+ */
+@Composable
+private fun adaptiveCaptionLines(
+    options: List<ImageOption>,
+    gutter: Dp,
+    space: QuizAnswerSpace?,
+): Int {
+    val width = space?.maxWidth ?: return CAPTION_LINES
+    val style = MorphoTheme.reading.definitionCaption
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val textWidth = ((width - gutter) / 2 - MorphoTheme.spacing.sm * 2).coerceAtLeast(0.dp)
+    val textWidthPx = with(density) { textWidth.roundToPx() }.coerceAtLeast(1)
+    var lines = CAPTION_LINES
+    for (option in options) {
+        val caption = option.caption ?: continue
+        val measured = measurer.measure(
+            text = AnnotatedString(caption),
+            style = style,
+            constraints = Constraints(maxWidth = textWidthPx),
+        ).lineCount
+        if (measured > lines) lines = measured
+    }
+    lines = lines.coerceAtMost(MAX_CAPTION_LINES)
+    // Give lines back before squeezing the image band under its floor.
+    val lineDp = with(density) { style.lineHeight.toDp() }
+    val padding = MorphoTheme.spacing.sm * 2
+    val floor = MorphoTheme.sizes.quizImageMinBand
+    while (lines > CAPTION_LINES) {
+        val budget = (space.maxHeight - gutter) / 2 - (lineDp * lines + padding)
+        if (budget >= floor) break
+        lines--
+    }
+    return lines
 }
 
 /**
@@ -215,6 +272,7 @@ private fun QuizImageCell(
     state: QuizOptionState,
     showCaption: Boolean,
     captionBand: Dp,
+    captionLines: Int,
     imageBand: Dp?,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -340,7 +398,7 @@ private fun QuizImageCell(
                     style = MorphoTheme.reading.definitionCaption,
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Start,
-                    maxLines = CAPTION_LINES,
+                    maxLines = captionLines,
                     overflow = TextOverflow.Ellipsis,
                     trigger = GlossTrigger.LongPress,
                     enabled = enabled,
