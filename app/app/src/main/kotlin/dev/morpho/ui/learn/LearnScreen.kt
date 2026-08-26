@@ -115,6 +115,18 @@ fun LearnScreen(
             )
         },
     ) { padding ->
+        // Auto-play the prompt audio the moment a question appears (owner
+        // feedback: the sentence must be read on entry, not after answering).
+        // Keyed on word+mode so retries within one question do not replay.
+        val question = state.question
+        LaunchedEffect(question?.wordId, question?.mode) {
+            when (question?.mode) {
+                LearnMode.SENTENCE_IMAGE -> viewModel.onPlayAudio(question.sentenceAudioFile)
+                LearnMode.WORD_IMAGE_DEF, LearnMode.WORD_TEXT_DEF ->
+                    viewModel.onPlayAudio(question.wordAudioFile)
+                null -> Unit
+            }
+        }
         Box(Modifier.fillMaxSize()) {
             when {
                 state.loading -> LoadingBox(Modifier.padding(padding))
