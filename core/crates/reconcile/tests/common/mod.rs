@@ -177,6 +177,40 @@ pub async fn seed_image(
         .unwrap()
 }
 
+/// Point a word's image slot at one of its candidates, the way a settled sweep
+/// would have left it.
+pub async fn select_image(store: &Store, word_id: i64, img_cand_id: i64) {
+    store
+        .write(
+            Actor::Reconciler,
+            WriteOp::select(
+                morpho_domain::types::SlotRef::Image { word_id },
+                img_cand_id,
+                morpho_domain::types::SelectedBy::Auto,
+            ),
+        )
+        .await
+        .unwrap();
+}
+
+/// The `file_hash` a word's image slot currently points at.
+pub async fn selected_image_hash(store: &Store, word_id: i64) -> Option<String> {
+    store
+        .read(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT c.file_hash FROM image_selections s
+                 JOIN image_candidates c ON c.img_cand_id = s.img_cand_id
+                 WHERE s.word_id = ?1",
+            )?;
+            let rows = stmt
+                .query_map(rusqlite::params![word_id], |row| row.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows.into_iter().next())
+        })
+        .await
+        .unwrap()
+}
+
 /// Record a fetch completion marker, so a rule sees a source as answered.
 pub async fn mark_fetched(store: &Store, kind: &str, word_id: i64, source: &str, count: i64) {
     store

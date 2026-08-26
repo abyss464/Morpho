@@ -32,6 +32,7 @@ use morpho_store::ops::{ApplyAutoSelections, ApplyScores, AutoSelection, ScoreUp
 use morpho_store::{Store, WriteOp};
 
 use crate::engine::EngineContext;
+use crate::facts;
 use crate::score::{
     self, DefinitionFacts, ExampleFacts, ImageFacts, ImageStrategy, Scored, TokenCoverage,
     HYSTERESIS_DELTA,
@@ -433,8 +434,15 @@ fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
     }
 
     // -- images: exactly one slot ------------------------------------------
+    //
+    // Media is content-addressed, so two words searching for neighbouring ideas
+    // come back holding the same `file_hash`. A question renders the word beside
+    // its three fixed distractors, and two identical option pictures make the
+    // card unanswerable — so a candidate somebody else already shows is ranked
+    // below one nobody does, on both sides of the hysteresis comparison.
+    let taken = facts::selected_image_hashes(conn)?;
     let mut stmt = conn.prepare(
-        "SELECT ic.word_id, ic.img_cand_id, COALESCE(ic.auto_score, 0.0)
+        "SELECT ic.word_id, ic.img_cand_id, COALESCE(ic.auto_score, 0.0), ic.file_hash
          FROM image_candidates ic
          JOIN active_words w ON w.word_id = ic.word_id AND w.zh_gloss IS NULL
          WHERE ic.status = 'available'
@@ -446,17 +454,21 @@ fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
                 row.get::<_, i64>(0)?,
                 row.get::<_, i64>(1)?,
                 row.get::<_, f64>(2)?,
+                row.get::<_, String>(3)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut by_word: BTreeMap<i64, Vec<Choice>> = BTreeMap::new();
-    for (word_id, cand_id, auto_score) in rows {
+    for (word_id, cand_id, auto_score, file_hash) in rows {
         by_word.entry(word_id).or_default().push(Choice {
             cand_id,
-            score: auto_score,
+            score: score::image_selection_score(
+                auto_score,
+                facts::is_duplicate_image(&taken, &file_hash, word_id),
+            ),
         });
     }
-    let image_slots = image_slot_states(conn)?;
+    let image_slots = image_slot_states(conn, &taken)?;
     for (word_id, choices) in &by_word {
         let state = image_slots.get(word_id).copied();
         let Some(cand_id) = pick(choices, state) else {
@@ -649,9 +661,12 @@ fn example_slot_states(conn: &Connection) -> Result<HashMap<(i64, i64), SlotStat
     Ok(rows.into_iter().collect())
 }
 
-fn image_slot_states(conn: &Connection) -> Result<HashMap<i64, SlotState>> {
+fn image_slot_states(
+    conn: &Connection,
+    taken: &HashMap<String, Vec<i64>>,
+) -> Result<HashMap<i64, SlotState>> {
     let mut stmt = conn.prepare(
-        "SELECT s.word_id, s.img_cand_id, s.pinned, c.auto_score
+        "SELECT s.word_id, s.img_cand_id, s.pinned, c.auto_score, c.file_hash
          FROM image_selections s
          JOIN image_candidates c ON c.img_cand_id = s.img_cand_id",
     )?;
@@ -659,15 +674,30 @@ fn image_slot_states(conn: &Connection) -> Result<HashMap<i64, SlotState>> {
         .query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
-                SlotState {
-                    cand_id: row.get(1)?,
-                    pinned: row.get::<_, i64>(2)? != 0,
-                    score: row.get(3)?,
-                },
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)? != 0,
+                row.get::<_, Option<f64>>(3)?,
+                row.get::<_, String>(4)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows.into_iter().collect())
+    Ok(rows
+        .into_iter()
+        .map(|(word_id, cand_id, pinned, auto_score, file_hash)| {
+            // The incumbent is measured on the same ruler as its challengers:
+            // a slot holding a picture another word also holds is the one this
+            // pressure is meant to move.
+            let duplicate = facts::is_duplicate_image(taken, &file_hash, word_id);
+            (
+                word_id,
+                SlotState {
+                    cand_id,
+                    pinned,
+                    score: auto_score.map(|score| score::image_selection_score(score, duplicate)),
+                },
+            )
+        })
+        .collect())
 }
 
 fn words_with_primary(conn: &Connection) -> Result<std::collections::HashSet<i64>> {

@@ -43,6 +43,24 @@ pub const STRATEGY_PENALTY: f64 = 0.10;
 /// The penalty is useless at or below the switching margin: see above.
 const _: () = assert!(STRATEGY_PENALTY > HYSTERESIS_DELTA);
 
+/// How much a picture gives up for being the one another word already shows.
+///
+/// Media is content-addressed, so two words that search for the same idea come
+/// back with the same `file_hash` — and a question renders the word beside its
+/// three fixed distractors, which makes two identical option images an
+/// unanswerable card. This is the pressure that pulls the second-best picture
+/// into the slot when the best one is spoken for.
+///
+/// It clears [`HYSTERESIS_DELTA`] for the same reason [`STRATEGY_PENALTY`] does,
+/// and here the reason is sharper: two candidates of equal merit, one duplicated
+/// and one not, must actually *move* the slot rather than merely reorder behind
+/// it. A penalty inside the margin would rank the unique picture first and leave
+/// the duplicate sitting in the selection forever.
+pub const DUPLICATE_IMAGE_PENALTY: f64 = 0.10;
+
+/// Same reasoning as the strategy penalty, enforced the same way.
+const _: () = assert!(DUPLICATE_IMAGE_PENALTY > HYSTERESIS_DELTA);
+
 /// Which search strategy produced an image candidate.
 ///
 /// A word with no candidate after the first pass is searched again on looser
@@ -370,6 +388,26 @@ fn clamp(value: f64) -> f64 {
         return 0.0;
     }
     value.clamp(0.0, 1.0)
+}
+
+/// The score automatic selection ranks an image candidate by.
+///
+/// [`score_image`] is a pure function of the candidate and is cached in
+/// `auto_score` under a `scorer_ver`; whether a picture is *also* somebody
+/// else's is a property of the selection table, which changes every time a slot
+/// moves. Folding it into the stored score would make every selection invalidate
+/// scores across the whole lexicon and rescore a live database in circles. So it
+/// is subtracted here, at ranking time, from a value nothing persists.
+///
+/// The result is deliberately not clamped into `[0, 1]`: it is a comparison key,
+/// and flooring it at zero would let two weak candidates tie where the
+/// preference is real.
+pub fn image_selection_score(auto_score: f64, duplicate: bool) -> f64 {
+    if duplicate {
+        auto_score - DUPLICATE_IMAGE_PENALTY
+    } else {
+        auto_score
+    }
 }
 
 /// Should automatic selection move a slot from `current` to `challenger`?
@@ -726,6 +764,75 @@ mod tests {
             ImageStrategy::from_source_ref(Some("wikimedia:File:Widened-query (diagram).png")),
             ImageStrategy::Strict
         );
+    }
+
+    // -- global image uniqueness -------------------------------------------
+
+    #[test]
+    fn a_picture_another_word_already_shows_ranks_below_a_fresh_one() {
+        let taken = image_selection_score(0.865, true);
+        let free = image_selection_score(0.865, false);
+        assert!(taken < free);
+        assert!((free - taken - DUPLICATE_IMAGE_PENALTY).abs() < 1e-9);
+    }
+
+    /// The ordering the whole gate rests on: penalty > margin, so a candidate of
+    /// equal merit whose hash is free actually takes the slot instead of merely
+    /// ranking above the duplicate that sits in it.
+    #[test]
+    fn the_duplicate_penalty_clears_the_switching_margin() {
+        const { assert!(DUPLICATE_IMAGE_PENALTY > HYSTERESIS_DELTA) };
+        let incumbent = image_selection_score(0.865, true);
+        let challenger = image_selection_score(0.865, false);
+        assert!(should_switch(Some(incumbent), challenger));
+        // And one hundredth of a mark would not have: the compile-time
+        // assertion above is what keeps that from being tuned into the code.
+        assert!(!should_switch(Some(0.865 - 0.01), 0.865));
+    }
+
+    /// Nothing moves when no candidate is spoken for — the pool scores exactly
+    /// as it did before the penalty existed, bit for bit.
+    #[test]
+    fn a_pool_with_no_shared_hash_is_scored_exactly_as_before() {
+        for raw in [0.0, 0.3, 0.865, 1.0] {
+            assert_eq!(image_selection_score(raw, false), raw);
+        }
+        let incumbent = image_selection_score(0.90, false);
+        let challenger = image_selection_score(0.88, false);
+        assert!(!should_switch(Some(incumbent), challenger));
+    }
+
+    /// Two duplicates are still ranked against each other on merit, which is why
+    /// the effective score is a comparison key rather than a clamped `[0, 1]`
+    /// score.
+    #[test]
+    fn two_duplicates_keep_their_relative_order_even_at_the_bottom() {
+        let better = image_selection_score(0.06, true);
+        let worse = image_selection_score(0.03, true);
+        assert!(better > worse);
+        assert!(worse < 0.0, "a comparison key may go negative");
+    }
+
+    #[test]
+    fn a_duplicate_still_loses_to_a_far_better_picture_of_its_own_kind() {
+        // Merit is not overruled: a strict stock hit that happens to be shared
+        // still beats a widened keyless one that is not.
+        let stock = image_selection_score(
+            score_image(&ImageFacts {
+                source: ImageSource::Unsplash,
+                width: Some(1600),
+                height: Some(1200),
+                pos_matches_primary: true,
+                strategy: ImageStrategy::Strict,
+            })
+            .score,
+            true,
+        );
+        let widened = image_selection_score(
+            score_image(&keyless(ImageStrategy::WidenedQuery)).score,
+            false,
+        );
+        assert!(stock > widened);
     }
 
     #[test]

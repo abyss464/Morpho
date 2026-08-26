@@ -10,7 +10,7 @@ mod common;
 
 use std::sync::Arc;
 
-use common::{derive, harness, job_subjects, mark_fetched, seed_image, seed_word};
+use common::{derive, harness, job_subjects, mark_fetched, seed_image, seed_word, select_image};
 use morpho_domain::types::{ImageSource, Role};
 use morpho_reconcile::rules::{
     FetchExamplesRule, FetchImagesRule, FetchImagesSecondPassRule, GenImageSdxlRule,
@@ -434,6 +434,227 @@ async fn an_already_searched_word_re_enters_through_a_fresh_mark() {
         .await
         .len(),
         1
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Candidates another word already shows
+// ---------------------------------------------------------------------------
+
+/// Two words, one byte string. Content addressing gives morphological siblings
+/// the same `file_hash` from every provider, and the picture belongs to
+/// whichever of them selected first.
+async fn siblings_sharing_one_picture(
+    store: &morpho_store::Store,
+    media: &MediaStore,
+) -> (i64, i64) {
+    let holder = seed_word(store, "adapt", Role::Target).await;
+    let stuck = seed_word(store, "adapter", Role::Target).await;
+    let held = seed_image(
+        store,
+        media,
+        holder,
+        b"one webp, two words",
+        ImageSource::Wikimedia,
+    )
+    .await;
+    seed_image(
+        store,
+        media,
+        stuck,
+        b"one webp, two words",
+        ImageSource::Wikimedia,
+    )
+    .await;
+    select_image(store, holder, held).await;
+    // The completion markers say what the *provider* returned, and nothing in
+    // this wave touches them: a library that has since gone quiet reads as
+    // exhausted whether or not an old candidate is still on file. What changed
+    // is only that the old candidate no longer stands in for a picture.
+    for word_id in [holder, stuck] {
+        for source in STRICT_KEYLESS {
+            mark_fetched(store, IMAGES, word_id, source, 0).await;
+        }
+    }
+    (holder, stuck)
+}
+
+/// The wave-8 widening: a word every one of whose candidates is somebody else's
+/// selected picture has, as far as the chain is concerned, none at all. The
+/// selector will never ship a duplicate — a question renders the word beside its
+/// three fixed distractors — so the word is exactly as unserved as one the
+/// libraries never answered for, and it walks the second passes to find
+/// something of its own.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_word_holding_only_another_words_picture_re_enters_the_chain() {
+    let fixture = harness();
+    let store = fixture.store.clone();
+    let media = MediaStore::new(fixture.dir.path());
+    let (holder, stuck) = siblings_sharing_one_picture(&store, &media).await;
+
+    let context = engine(fixture.dir.path(), SourcesConfig::default());
+    assert_eq!(
+        job_subjects(
+            &derive(
+                &store,
+                Arc::new(FetchImagesSecondPassRule::new(context)) as Arc<dyn Rule>
+            )
+            .await
+        ),
+        vec![format!("fetch_images/{stuck}:openverse_relaxed")],
+        "the sibling that holds the picture is finished; the other one is not"
+    );
+    assert_ne!(holder, stuck);
+}
+
+/// The same trigger reaches the end of the chain. Once every online pass has
+/// come back with nothing it can use, a stuck sibling is generated for, exactly
+/// like a word with an empty pool.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stuck_sibling_reaches_the_generative_fallback() {
+    let fixture = harness();
+    let store = fixture.store.clone();
+    let media = MediaStore::new(fixture.dir.path());
+    let (holder, stuck) = siblings_sharing_one_picture(&store, &media).await;
+    for word_id in [holder, stuck] {
+        for pass in SECOND_PASSES {
+            mark_fetched(&store, IMAGES, word_id, pass, 0).await;
+        }
+    }
+
+    let context = engine(fixture.dir.path(), keyless_with_sdxl());
+    assert_eq!(
+        job_subjects(
+            &derive(
+                &store,
+                Arc::new(GenImageSdxlRule::new(context)) as Arc<dyn Rule>
+            )
+            .await
+        ),
+        vec![format!("gen_image_sdxl/{stuck}:sdxl")]
+    );
+}
+
+/// And the head of the chain too, which is what keeps the widening from
+/// deadlocking: a stuck word whose strict passes are not all spent would never
+/// reach the second passes at all if the first-pass rule still counted its
+/// unusable candidate as a picture.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stuck_sibling_still_gets_its_remaining_strict_passes() {
+    let fixture = harness();
+    let store = fixture.store.clone();
+    let media = MediaStore::new(fixture.dir.path());
+    let holder = seed_word(&store, "adapt", Role::Target).await;
+    let stuck = seed_word(&store, "adapter", Role::Target).await;
+    let held = seed_image(
+        &store,
+        &media,
+        holder,
+        b"one webp, two words",
+        ImageSource::Wikimedia,
+    )
+    .await;
+    seed_image(
+        &store,
+        &media,
+        stuck,
+        b"one webp, two words",
+        ImageSource::Wikimedia,
+    )
+    .await;
+    select_image(&store, holder, held).await;
+    // Wikimedia answered for both; openverse has not been asked yet.
+    for word_id in [holder, stuck] {
+        mark_fetched(&store, IMAGES, word_id, "wikimedia", 1).await;
+    }
+
+    let context = engine(fixture.dir.path(), SourcesConfig::default());
+    assert_eq!(
+        job_subjects(
+            &derive(
+                &store,
+                Arc::new(FetchImagesRule::new(context)) as Arc<dyn Rule>
+            )
+            .await
+        ),
+        vec![format!("fetch_images/{stuck}:openverse")]
+    );
+}
+
+/// The widening is about *other* words' selections. A word's own picture, sitting
+/// in its own slot, never makes it look unserved — otherwise every settled word
+/// in the lexicon would re-enter the chain the day this shipped.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_words_own_selected_picture_never_re_opens_its_chain() {
+    let fixture = harness();
+    let store = fixture.store.clone();
+    let media = MediaStore::new(fixture.dir.path());
+    let word_id = seed_word(&store, "serene", Role::Target).await;
+    let cand = seed_image(
+        &store,
+        &media,
+        word_id,
+        b"pretend webp bytes",
+        ImageSource::Wikimedia,
+    )
+    .await;
+    select_image(&store, word_id, cand).await;
+    exhaust_the_online_chain(&store, word_id).await;
+
+    let context = engine(fixture.dir.path(), keyless_with_sdxl());
+    for rule in [
+        Arc::new(FetchImagesRule::new(context.clone())) as Arc<dyn Rule>,
+        Arc::new(FetchImagesSecondPassRule::new(context.clone())) as Arc<dyn Rule>,
+        Arc::new(GenImageSdxlRule::new(context)) as Arc<dyn Rule>,
+    ] {
+        let name = rule.name();
+        assert!(derive(&store, rule).await.is_empty(), "{name} derived work");
+    }
+}
+
+/// A picture nobody has selected is nobody's, so a pool of unselected duplicates
+/// is a usable pool: the first word to reach it takes it, and only then does the
+/// second one count as stuck.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unselected_duplicate_is_not_yet_anybody_elses() {
+    let fixture = harness();
+    let store = fixture.store.clone();
+    let media = MediaStore::new(fixture.dir.path());
+    let holder = seed_word(&store, "adapt", Role::Target).await;
+    let stuck = seed_word(&store, "adapter", Role::Target).await;
+    let held = seed_image(
+        &store,
+        &media,
+        holder,
+        b"one webp, two words",
+        ImageSource::Wikimedia,
+    )
+    .await;
+    seed_image(
+        &store,
+        &media,
+        stuck,
+        b"one webp, two words",
+        ImageSource::Wikimedia,
+    )
+    .await;
+    for word_id in [holder, stuck] {
+        for source in STRICT_KEYLESS {
+            mark_fetched(&store, IMAGES, word_id, source, 1).await;
+        }
+    }
+
+    let context = engine(fixture.dir.path(), SourcesConfig::default());
+    let rule = || Arc::new(FetchImagesSecondPassRule::new(context.clone())) as Arc<dyn Rule>;
+    assert!(
+        derive(&store, rule()).await.is_empty(),
+        "nothing is spoken for yet"
+    );
+
+    select_image(&store, holder, held).await;
+    assert_eq!(
+        job_subjects(&derive(&store, rule()).await),
+        vec![format!("fetch_images/{stuck}:openverse_relaxed")]
     );
 }
 

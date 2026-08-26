@@ -380,6 +380,40 @@ pub fn validate(payload: &ExportPayload, cut: &CutResult) -> Vec<GateFailure> {
         }
     }
 
+    // Four different pictures on every question card.
+    //
+    // Media is content addressed, so two words that mean nearly the same thing
+    // select the same `file_hash` without anything going wrong anywhere: the
+    // fetch was correct, the score was correct, the selection was correct. What
+    // is wrong is only visible here, where the word meets the three distractors
+    // it is asked against — an option grid showing one picture twice has no
+    // right answer. The app cannot detect it and the learner cannot answer it,
+    // so the release stops.
+    for (word_id, options) in question_options(payload, exportable) {
+        for (index, (first_id, first_hash)) in options.iter().enumerate() {
+            for (second_id, second_hash) in options.iter().skip(index + 1) {
+                if first_hash != second_hash {
+                    continue;
+                }
+                let owner = lemma_of(word_id).unwrap_or_default();
+                let first = lemma_of(*first_id).unwrap_or_else(|| first_id.to_string());
+                let second = lemma_of(*second_id).unwrap_or_else(|| second_id.to_string());
+                let role = if *first_id == word_id {
+                    format!("{first} and its distractor {second}")
+                } else {
+                    format!("its distractors {first} and {second}")
+                };
+                fail(
+                    "question_images_distinct",
+                    format!(
+                        "{owner}'s question shows one image twice: {role} both use {first_hash}"
+                    ),
+                    Some(word_id),
+                );
+            }
+        }
+    }
+
     // Readability closure (ruling #18a): every token of a shipped definition
     // resolves to a base word, a shipped word, or a gloss anchor the release
     // carries. The three gates below are the three ways that can fail; between
@@ -455,6 +489,51 @@ pub fn validate(payload: &ExportPayload, cut: &CutResult) -> Vec<GateFailure> {
     }
 
     failures
+}
+
+/// The option images of every shipped question, answer first.
+///
+/// One entry per exportable word that carries an image, holding `(word_id,
+/// file_hash)` for the word itself and for each of its exportable distractors
+/// that has one. A word with no image is already caught by `image_present`, and
+/// a distractor that did not make the cut by `distractor_resolves`; neither has
+/// anything to compare, so neither appears.
+fn question_options<'a>(
+    payload: &'a ExportPayload,
+    exportable: &std::collections::BTreeSet<i64>,
+) -> Vec<(i64, Vec<(i64, &'a str)>)> {
+    let images: std::collections::HashMap<i64, &str> = payload
+        .words
+        .iter()
+        .filter(|word| exportable.contains(&word.word_id))
+        .filter_map(|word| Some((word.word_id, word.image_file_hash.as_deref()?)))
+        .collect();
+
+    let mut questions: std::collections::BTreeMap<i64, Vec<(i64, &str)>> = payload
+        .distractors
+        .iter()
+        .filter(|(word_id, _, _)| exportable.contains(word_id) && images.contains_key(word_id))
+        .map(|(word_id, _, _)| (*word_id, vec![(*word_id, images[word_id])]))
+        .collect();
+
+    // `distractors` arrives ordered by `(word_id, rank)`, so the options land
+    // in the order the card lays them out. `UNIQUE (word_id, distractor_word_id)`
+    // and `CHECK (word_id <> distractor_word_id)` guarantee the four entries are
+    // four different words, which is what lets the caller read a repeated hash
+    // as a repeated picture rather than a repeated option.
+    for (word_id, _, distractor) in &payload.distractors {
+        let (Some(options), Some(hash)) = (
+            questions.get_mut(word_id),
+            exportable
+                .contains(distractor)
+                .then(|| images.get(distractor))
+                .flatten(),
+        ) else {
+            continue;
+        };
+        options.push((*distractor, hash));
+    }
+    questions.into_iter().collect()
 }
 
 /// The anchor ids [`writer::rows_for`] will emit for this cut.

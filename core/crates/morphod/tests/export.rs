@@ -19,7 +19,7 @@ use morpho_export::{ExportSettings, HoldbackReport};
 use morpho_reconcile::{EngineContext, PlanParams, SourceSet, TextPipeline};
 use morpho_store::ops::{
     BindDistractors, CreateWord, DistractorBinding, IngestDefinitions, IngestExamples,
-    IngestImages, MediaRegistration, RecordTtsAsset,
+    IngestImages, MediaRegistration, MintImageCandidate, RecordTtsAsset,
 };
 use morpho_store::{MediaStore, Store, StoreConfig, WriteOp};
 
@@ -259,6 +259,78 @@ impl Fixture {
             .write(Actor::admin("abyss"), WriteOp::approve(slot))
             .await
             .unwrap();
+    }
+
+    /// Point `word_id`'s image slot at the very picture `donor` already shows,
+    /// and answer with the `file_hash` the two now share.
+    ///
+    /// Content addressing arranges this by itself — two words, one stock photo,
+    /// one hash — and the selector now leans against it, so here it is done on
+    /// purpose after the sweep has settled. What is being tested is the last
+    /// line of defence: the exporter refusing to ship a question with two
+    /// identical option images however the collision got in.
+    async fn share_image(&self, word_id: i64, donor: i64) -> String {
+        let file_hash: String = self
+            .store
+            .read(move |conn| {
+                Ok(conn.query_row(
+                    "SELECT c.file_hash FROM image_selections s
+                     JOIN image_candidates c ON c.img_cand_id = s.img_cand_id
+                     WHERE s.word_id = ?1",
+                    rusqlite::params![donor],
+                    |row| row.get(0),
+                )?)
+            })
+            .await
+            .unwrap();
+
+        // The bytes are already in the library; only the candidate row is new.
+        self.store
+            .write(
+                Actor::Worker(morpho_domain::JobKind::FetchImages),
+                WriteOp::MintImageCandidate(MintImageCandidate {
+                    word_id,
+                    pos: None,
+                    file_hash: file_hash.clone(),
+                    media: None,
+                    width: Some(768),
+                    height: Some(576),
+                    source: ImageSource::Unsplash,
+                    source_ref: Some("unsplash:the-same-photograph".into()),
+                    license: Some("Unsplash License".into()),
+                    query_used: None,
+                    created_by: None,
+                }),
+            )
+            .await
+            .unwrap();
+
+        let hash = file_hash.clone();
+        let cand: i64 = self
+            .store
+            .read(move |conn| {
+                Ok(conn.query_row(
+                    "SELECT img_cand_id FROM image_candidates
+                     WHERE word_id = ?1 AND file_hash = ?2",
+                    rusqlite::params![word_id, hash],
+                    |row| row.get(0),
+                )?)
+            })
+            .await
+            .unwrap();
+        let slot = SlotRef::Image { word_id };
+        self.store
+            .write(
+                Actor::admin("abyss"),
+                WriteOp::select(slot.clone(), cand, SelectedBy::Human),
+            )
+            .await
+            .unwrap();
+        self.store
+            .write(Actor::admin("abyss"), WriteOp::approve(slot))
+            .await
+            .unwrap();
+        file_hash
     }
 
     async fn audio(&self, _word_id: i64, lemma: &str, definition: &str) {
@@ -1132,6 +1204,143 @@ async fn anchoring_a_bound_distractor_still_holds_its_owner_back() {
         .unwrap();
     assert_eq!(held.root_cause, "dependency_holdback");
     assert_eq!(held.blocking_word_id, Some(ids[3]));
+}
+
+/// Owner play-test, wave 8: two words selected one stock photo, and the
+/// question that asks about either of them renders that photo twice. Every
+/// upstream step was correct — the fetch, the score, the selection — and the
+/// card is still unanswerable, so the exporter is where it has to stop.
+#[tokio::test]
+async fn two_words_sharing_one_picture_fail_the_gates() {
+    let f = fixture();
+    let ids = four_complete_words(&f).await;
+    assert!(f.preview().await.gates_pass);
+
+    let shared = f.share_image(ids[1], ids[0]).await;
+    let report = f.preview().await;
+
+    assert!(!report.gates_pass);
+    let collisions: Vec<&morpho_export::GateFailure> = report
+        .gate_failures
+        .iter()
+        .filter(|failure| failure.gate == "question_images_distinct")
+        .collect();
+    assert!(!collisions.is_empty(), "{:#?}", report.gate_failures);
+    // Every failure names the word whose question is broken, the other option
+    // it collides with, and the hash the two share — everything an operator
+    // needs to go and repick one of them.
+    for failure in &collisions {
+        assert!(failure.message.contains(&shared), "{failure:#?}");
+        assert!(failure.lemma.is_some(), "{failure:#?}");
+        assert!(failure.word_id.is_some(), "{failure:#?}");
+    }
+
+    // The collision is reported from every question it spoils: the two words'
+    // own cards, where the answer meets its distractor, and the other two
+    // words' cards, where two of the distractors collide with each other.
+    let owners: BTreeSet<i64> = collisions
+        .iter()
+        .filter_map(|failure| failure.word_id)
+        .collect();
+    assert_eq!(
+        owners,
+        ids.iter().copied().collect::<BTreeSet<i64>>(),
+        "all four questions in this fixture show both pictures"
+    );
+
+    let answer_side = collisions
+        .iter()
+        .find(|failure| failure.word_id == Some(ids[0]))
+        .expect("the shared word's own question");
+    assert!(
+        answer_side.message.contains("its distractor"),
+        "{answer_side:#?}"
+    );
+    let distractor_side = collisions
+        .iter()
+        .find(|failure| failure.word_id == Some(ids[2]))
+        .expect("a question where both colliding options are distractors");
+    assert!(
+        distractor_side.message.contains("its distractors"),
+        "{distractor_side:#?}"
+    );
+}
+
+/// A failing gate is a refusal, not a warning: nothing is written and no
+/// release row appears.
+#[tokio::test]
+async fn a_shared_picture_stops_the_export() {
+    let f = fixture();
+    let ids = four_complete_words(&f).await;
+    f.share_image(ids[1], ids[0]).await;
+
+    let out = f.dir.path().join("blocked");
+    let err = morpho_export::export(&f.store, &f.settings(), &out, "abyss", None)
+        .await
+        .expect_err("the gates must refuse this cut");
+    let morpho_export::ExportError::GatesFailed(failures) = err else {
+        panic!("{err:?}");
+    };
+    assert!(failures
+        .iter()
+        .any(|failure| failure.gate == "question_images_distinct"));
+    assert!(!out.exists(), "a refused export writes nothing");
+}
+
+/// The gate is about the four options of one question, not about the lexicon at
+/// large: two words that never appear on the same card may legitimately show
+/// the same picture, and holding the whole release for that would be a false
+/// alarm the operator cannot act on.
+#[tokio::test]
+async fn a_shared_picture_between_words_that_never_meet_is_not_a_collision() {
+    let f = fixture();
+    f.base_words(&["to", "change", "in", "a", "way"]).await;
+
+    // Two disjoint quartets. Each word distracts only inside its own four, so
+    // the sharing pair below never lands on one card.
+    let mut quartets: Vec<Vec<i64>> = Vec::new();
+    for (block, lemmas) in [
+        ["adapt", "adopt", "adept", "adapter"],
+        ["serene", "lucid", "vivid", "placid"],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut ids = Vec::new();
+        for (index, lemma) in lemmas.iter().enumerate() {
+            let rank = (block as i64 * 4 + index as i64 + 1) * 100;
+            let id = f.word(lemma, Role::Target, rank).await;
+            f.complete(id, lemma, &format!("to change {lemma} in a way"))
+                .await;
+            ids.push(id);
+        }
+        for (index, id) in ids.iter().enumerate() {
+            let others: Vec<i64> = ids
+                .iter()
+                .enumerate()
+                .filter(|(other, _)| *other != index)
+                .map(|(_, id)| *id)
+                .collect();
+            f.bind_distractors(*id, [others[0], others[1], others[2]])
+                .await;
+        }
+        quartets.push(ids);
+    }
+    f.converge().await;
+    assert!(f.preview().await.gates_pass);
+
+    // One word from each quartet now shows the same photograph.
+    f.share_image(quartets[1][0], quartets[0][0]).await;
+
+    let report = f.preview().await;
+    assert!(
+        !report
+            .gate_failures
+            .iter()
+            .any(|failure| failure.gate == "question_images_distinct"),
+        "{:#?}",
+        report.gate_failures
+    );
 }
 
 /// The closure gate: a token that resolves to nothing at all is caught by the

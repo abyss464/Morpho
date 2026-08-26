@@ -38,6 +38,18 @@ pub struct Facts {
     pub words_with_definitions: HashSet<i64>,
     pub words_with_examples: HashSet<i64>,
     pub words_with_images: HashSet<i64>,
+    /// Words with at least one `available` image candidate whose `file_hash` is
+    /// not already the selected image of some *other* word.
+    ///
+    /// Media is content-addressed, so morphological siblings — `adapt`,
+    /// `adapter`, `adaptation` — return byte-identical stock photos for every
+    /// query anyone thinks to ask. Whichever of them selects first takes the
+    /// picture, and the rest hold a pool that cannot produce a usable answer: a
+    /// question renders the word beside its three fixed distractors, and two
+    /// identical option images make the card unanswerable. Those words have
+    /// candidates and still need more, which is the distinction this set draws
+    /// and [`Facts::words_with_images`] cannot.
+    pub words_with_distinct_images: HashSet<i64>,
     /// Text of each word's selected primary sense, for image search queries
     /// and SDXL prompts.
     pub primary_gloss: HashMap<i64, String>,
@@ -59,6 +71,7 @@ pub struct Facts {
 impl Facts {
     /// Load the whole fact set from one read connection.
     pub fn load(conn: &Connection) -> Result<Self> {
+        let (words_with_images, words_with_distinct_images) = image_coverage(conn)?;
         Ok(Self {
             active: queries::active_words(conn)?,
             definitions_fetched: queries::source_fetches(conn, FETCH_DEFINITIONS)?,
@@ -77,10 +90,8 @@ impl Facts {
                 conn,
                 "SELECT DISTINCT word_id FROM example_candidates WHERE status = 'available'",
             )?,
-            words_with_images: id_set(
-                conn,
-                "SELECT DISTINCT word_id FROM image_candidates WHERE status = 'available'",
-            )?,
+            words_with_images,
+            words_with_distinct_images,
             primary_gloss: primary_glosses(conn)?,
             primary_gloss_tokens: primary_gloss_tokens(conn)?,
             tts_desired: queries::tts_desired(conn)?,
@@ -91,6 +102,20 @@ impl Facts {
     /// Status of one job subject, if a row exists.
     pub fn job_status(&self, key: &JobKey) -> Option<JobStatus> {
         self.jobs.get(key).map(|row| row.status)
+    }
+
+    /// Does this word still need image candidates fetched for it?
+    ///
+    /// "Zero available candidates" is the trigger the whole image chain reads —
+    /// the strict passes, the second passes and the generative fallback all
+    /// stop once a word has a picture. A word every one of whose candidates is
+    /// already somebody else's picture has, for that purpose, none: the
+    /// selector will not put a duplicate in front of a learner, so the word is
+    /// exactly as unserved as one the libraries never answered for. Widening
+    /// the trigger here is what walks a stuck morphological sibling down the
+    /// relaxed/widened/SDXL chain until something nobody else holds turns up.
+    pub fn needs_image_candidates(&self, word_id: i64) -> bool {
+        !self.words_with_distinct_images.contains(&word_id)
     }
 
     /// Has this `(kind, word, source)` combination been tried to completion?
@@ -247,6 +272,69 @@ pub const fn image_source_name(source: ImageSource) -> &'static str {
         ImageSource::Sdxl => "sdxl",
         ImageSource::Manual => "manual",
     }
+}
+
+/// `file_hash` → the words whose image slot points at it.
+///
+/// Shared with the selector, which needs the identical view to rank by: one
+/// table read, one row per selected slot.
+pub(crate) fn selected_image_hashes(conn: &Connection) -> Result<HashMap<String, Vec<i64>>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.file_hash, s.word_id
+         FROM image_selections s
+         JOIN image_candidates c ON c.img_cand_id = s.img_cand_id",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut out: HashMap<String, Vec<i64>> = HashMap::new();
+    for (file_hash, word_id) in rows {
+        out.entry(file_hash).or_default().push(word_id);
+    }
+    Ok(out)
+}
+
+/// Is this picture the selected image of some word other than `word_id`?
+///
+/// A word's *own* selection never counts against it — otherwise every settled
+/// slot in the lexicon would read as unserved the first pass after this shipped.
+pub(crate) fn is_duplicate_image(
+    selected: &HashMap<String, Vec<i64>>,
+    file_hash: &str,
+    word_id: i64,
+) -> bool {
+    selected
+        .get(file_hash)
+        .is_some_and(|words| words.iter().any(|owner| *owner != word_id))
+}
+
+/// `(words with any available image candidate, words with a usable one)`.
+///
+/// Computed from one scan of `image_candidates` and one of `image_selections`
+/// rather than from a correlated `NOT EXISTS`: `image_candidates` is indexed on
+/// `(word_id, file_hash)`, so a lookup by hash alone has no index to walk and
+/// the subquery form would scan the table once per candidate row on every pass.
+fn image_coverage(conn: &Connection) -> Result<(HashSet<i64>, HashSet<i64>)> {
+    let selected = selected_image_hashes(conn)?;
+    let mut stmt =
+        conn.prepare("SELECT word_id, file_hash FROM image_candidates WHERE status = 'available'")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let mut any = HashSet::new();
+    let mut usable = HashSet::new();
+    for (word_id, file_hash) in rows {
+        any.insert(word_id);
+        if !is_duplicate_image(&selected, &file_hash, word_id) {
+            usable.insert(word_id);
+        }
+    }
+    Ok((any, usable))
 }
 
 fn id_set(conn: &Connection, sql: &str) -> Result<HashSet<i64>> {

@@ -38,6 +38,16 @@
 //! waits for the second passes as well as the first ones. If SDXL is also
 //! absent (no ComfyUI), nothing further is derived and the word reports
 //! `missing_image`, which is what the export holdback report will say.
+//!
+//! Wave 8 widened what "ran out" means a second time. Media is content
+//! addressed, so `adapt`, `adapter` and `adaptation` come back from every
+//! provider holding one byte-identical stock photo between them; whichever
+//! selects first takes it, and the others hold a pool the selector will never
+//! ship, because a question renders the word beside its three fixed distractors
+//! and two identical option images make the card unanswerable. Such a word has
+//! candidates and is no better served than one nobody answered for, so
+//! [`Facts::needs_image_candidates`] treats it as having none and it enters the
+//! chain exactly like a word with an empty pool.
 
 use std::sync::Arc;
 
@@ -101,7 +111,7 @@ impl Rule for FetchImagesRule {
 
         let mut jobs = Vec::new();
         for word in &facts.active {
-            if facts.words_with_images.contains(&word.word_id) {
+            if !facts.needs_image_candidates(word.word_id) {
                 continue;
             }
             for provider in IMAGE_PROVIDERS {
@@ -161,8 +171,8 @@ impl Rule for FetchImagesSecondPassRule {
         let mut jobs = Vec::new();
         for word in &facts.active {
             // The trigger is the same one the generative fallback reads: zero
-            // available candidates, from anywhere.
-            if facts.words_with_images.contains(&word.word_id) {
+            // *usable* candidates, from anywhere.
+            if !facts.needs_image_candidates(word.word_id) {
                 continue;
             }
             // Nothing is retried before everything has been tried once. A word
@@ -245,9 +255,9 @@ impl Rule for GenImageSdxlRule {
 
         let mut jobs = Vec::new();
         for word in &facts.active {
-            // "Zero available candidates": a word that already has a picture
-            // from anywhere never reaches the generative fallback.
-            if facts.words_with_images.contains(&word.word_id) {
+            // "Zero available candidates": a word that already has a picture of
+            // its own from anywhere never reaches the generative fallback.
+            if !facts.needs_image_candidates(word.word_id) {
                 continue;
             }
             if facts.fetched(&FetchKind::Images, word.word_id, sdxl_name) {
