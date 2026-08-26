@@ -5,7 +5,7 @@ design whitepaper) + `docs/contracts/` (the interface contracts) to pick the
 project up cold. This file holds what the code cannot tell you: current state,
 how to run things, and the traps that cost real time.
 
-Last updated: release 1.4 (2026.08.26+b5ce3f0e).
+Last updated: 2026-08-27, scorer/3 unblock (last cut: release 1.4, 2026.08.26+b5ce3f0e).
 
 ---
 
@@ -184,33 +184,70 @@ read it). `word_id` is stable across releases, so user progress survives updates
    both map to "container" scenes. Distractor semantic clustering is open backlog.
 7. Android SDK at `~/Android/Sdk`, headless AVD `morpho_wave1`. Full-media APK
    packaging takes minutes (500 MB zip) — not a hang.
-8. **A scorer bump can un-ship the whole library.** Readability is only `0.40 *
-   (1 - 3 * oos / tokens)`, so one out-of-scope token in a ten-token definition
-   costs ~0.12 — about what two sense ranks are worth under `SENSE_WEIGHT` 0.25.
-   `scorer/2` therefore prefers a common sense that uses an unknown word over a
-   clean rarer one, the OOV queue reopens, and `oos_pending` cascades through the
-   dependency closure until nothing is exportable. Before bumping
-   `SCORER_ALGO_VER`, check what the new weights do to
-   `SELECT COUNT(*) FROM oos_queue WHERE status='open'`. The cheap fix is in the
-   scorer (make out-of-scope a hard gate or a multiplier like
-   `SELF_REFERENCE_FACTOR`), not 100+ hand overrides — a manual override pins the
-   slot and freezes it against every future scorer improvement.
+8. **A scorer bump can un-ship the whole library.** Under `scorer/2` readability
+   was only `0.40 * (1 - 3 * oos / tokens)`, so one out-of-scope token in a
+   ten-token definition cost ~0.12 — about what two sense ranks are worth under
+   `SENSE_WEIGHT` 0.25. It therefore preferred a common sense that uses an
+   unknown word over a clean rarer one, the OOV queue reopened, and
+   `oos_pending` cascaded through the dependency closure until nothing was
+   exportable. `scorer/3` fixed it the cheap way: `out_of_scope_factor()`
+   multiplies the total (1.0 / 0.25 / 0.10 for zero / one / two-or-more bad
+   tokens) exactly like `SELF_REFERENCE_FACTOR`, so an unreadable candidate can
+   only win a slot no clean one can fill. Readability stays a component to grade
+   density among clean candidates. Before bumping `SCORER_ALGO_VER`, check what
+   the new weights do to `SELECT COUNT(*) FROM oos_queue WHERE status='open'` —
+   and fix the scorer rather than hand-overriding, because a manual override
+   pins the slot and freezes it against every future scorer improvement.
 9. **Approval invalidation is by design and it is expensive.** Any selection
    change drops the approval, which drops the word out of `ready` and re-queues
    TTS for the new text. Budget a `bulk_approve.py` re-run plus a convergence
    wait after any batch re-selection.
+10. **`oos_open` 0 does not mean the export gate is clean.** `sync_oos_queue`
+    only inserts a lemma the queue has never seen; a row already sitting at
+    `auto_closed` from an earlier cycle is never reopened when the lemma comes
+    back into `oos_occurrences`. So a selection change can start referencing an
+    unknown word completely silently, and the only place it surfaces is the
+    exporter's `definition_token_resolves` gate — which itself only runs over
+    words that are already exportable, so it stays invisible while
+    `exportable_count` is 0. Read the truth straight from the tables:
+    ```sql
+    SELECT DISTINCT t.lemma FROM definition_selections ds
+      JOIN def_tokens t ON t.def_cand_id = ds.def_cand_id
+      LEFT JOIN words w ON w.lemma = t.lemma
+     WHERE ds.enabled = 1 AND w.word_id IS NULL ORDER BY t.lemma;
+    ```
+    The 2026-08-27 unblock found 182 such lemmas behind the 224 the queue
+    actually reported. Reopening `auto_closed` on re-entry is an engine fix
+    worth filing.
+11. **A promoted OOV lemma can become a permanent blocker.** `{"mode":"promote"}`
+    creates an *active* auxiliary that now needs a definition, an example, an
+    image and TTS like any other word — and lemmas like `crosspiece`,
+    `adposition` or the plural `integers` have no usable candidates anywhere, so
+    they sit `missing_example` forever and hold back the whole dependency
+    closure. Prefer `{"mode":"gloss"}`; to unstick one already promoted, anchor
+    it with `POST /api/words/{id}/gloss`, which needs no queue row.
 
 ## 8. Current state & backlog
 
-- **BLOCKED — no release cut after the 2026-08-26 content pass.** `scorer/2`
-  (self-reference factor + sense-commonality prior) moved ~1420 definition
+- **UNBLOCKED (2026-08-27) — the cut is green, nothing exported yet.** `scorer/2`
+  (self-reference factor + sense-commonality prior) had moved ~1420 definition
   selections; 102 of those traded an out-of-scope-clean definition for a
   more-common sense that references vocabulary outside the lexicon. The OOV
   queue reopened with 330 lemmas, 127 words went `oos_pending`, and the
-  dependency closure held back the other 4104 — `exportable_count` 0. See the
-  scorer-vs-readability note in §7.8 for the fix. Everything else from that pass
-  is good and approved: primary-POS corrections, CLIP rematch, the 48 generated
-  images (all selected + approved), TTS fully synthesised, 0 dead letters.
+  dependency closure held back the other 4104 — `exportable_count` 0.
+  `scorer/3` (§7.8) turns out-of-scope into a multiplicative gate; the rescore +
+  `unapprove_auto.py` + reselect moved 124 definition slots back onto clean
+  candidates and dropped the open queue 330 → 224. The rest was resolved by
+  hand: 224 queued lemmas + 182 silently-referenced ones (§7.10) anchored with
+  Chinese glosses, 6 stuck promoted auxiliaries anchored the same way (§7.11),
+  and three `question_images_distinct` collisions (integrate, justify,
+  restrictive) fixed by re-selecting one side's image. State now: 4231
+  shippable = 4231 exportable, 0 excluded, empty `gate_failures`, `oos_open` 0,
+  0 blocked words, 0 dead letters, 665 gloss anchors. **Next step is the export
+  itself** (§5) plus the app refresh (§6).
+- Everything from the 2026-08-26 pass is good and approved: primary-POS
+  corrections, CLIP rematch, the 48 generated images (all selected + approved),
+  TTS fully synthesised, 0 dead letters.
 - **Shipped:** release 1.4 (`2026.08.26+b5ce3f0e`): 4253 words, real dictionary
   definitions, OpenSubtitles example sentences (flagged 62%→0.4%), CLIP-matched
   images, 229 Chinese gloss anchors, per-question image distinctness, bottom-

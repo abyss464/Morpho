@@ -1,7 +1,8 @@
 //! Candidate scoring (README Part 3 §"选择语义", rule 1).
 //!
-//! Scoring inputs are: readability against the live lexicon with a heavy
-//! out-of-scope penalty, a length window, source priors, how common a sense is,
+//! Scoring inputs are: readability against the live lexicon, with out-of-scope
+//! tokens gating the total down as well as shading the component; a length
+//! window, source priors, how common a sense is,
 //! part-of-speech / primary-sense match, and resolution for images. Everything
 //! is a pure function of already-materialized inputs, so a `scorer_ver` bump is
 //! the only thing that ever invalidates a score.
@@ -283,6 +284,10 @@ pub struct ScoreDetail {
     /// not the weighted sum of the fields above it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub self_reference: Option<f64>,
+    /// What [`out_of_scope_factor`] returned for this candidate's unreadable
+    /// tokens — the second multiplier, alongside `self_reference`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub out_of_scope_factor: Option<f64>,
     /// Where this sense sits in its source's list, 1-based.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sense_rank: Option<usize>,
@@ -320,6 +325,28 @@ pub struct ScoreDetail {
 /// circular still gets *a* definition, because an imperfect sense beats an
 /// empty slot; the penalty only has to guarantee it is the last resort.
 pub const SELF_REFERENCE_FACTOR: f64 = 0.15;
+
+/// What is left of a definition that leans on a word outside the lexicon.
+///
+/// An out-of-scope token is not a blemish on an otherwise fine gloss — it is a
+/// hole the learner falls through, and it drags a second word into the
+/// dependency closure to boot. Grading it inside `readability` made it
+/// *comparable* to the other components: at weight 0.40 one bad token in ten
+/// costs about 0.12, which two sense ranks under [`SENSE_WEIGHT`] pay for
+/// outright, so `scorer/2` happily traded a clean gloss for a commoner sense
+/// that nobody could read and reopened the whole out-of-scope queue.
+///
+/// So it multiplies, exactly like [`SELF_REFERENCE_FACTOR`], and for the same
+/// reason: any clean sibling in the slot wins, and an unreadable candidate only
+/// takes a slot no clean candidate can fill. Two factors rather than one so
+/// that among candidates that are *all* unreadable, fewer holes still wins.
+pub const fn out_of_scope_factor(out_of_scope: usize) -> f64 {
+    match out_of_scope {
+        0 => 1.0,
+        1 => 0.25,
+        _ => 0.10,
+    }
+}
 
 /// How fast a sense's weight falls as it moves down its dictionary's list.
 ///
@@ -474,8 +501,11 @@ pub struct DefinitionFacts {
 /// A definition exists to be *read*, so readability leads; how common the sense
 /// is comes next, because a rare sense of a common word is a card the learner
 /// will never need; the length window and the source prior break the remaining
-/// ties. A circular gloss is multiplied down rather than docked, so it can only
-/// ever win a slot nothing else can fill.
+/// ties. A circular gloss and an unreadable one are both multiplied down rather
+/// than docked, so either can only ever win a slot nothing cleaner can fill.
+/// `readability` survives as a component to grade token density *among* clean
+/// candidates — with no out-of-scope tokens it is simply 1.0, and the ranking
+/// falls to the rest.
 pub fn score_definition(facts: &DefinitionFacts) -> Scored {
     let readability = facts.coverage.readability();
     // 4–14 tokens: long enough to disambiguate, short enough to hold.
@@ -487,9 +517,10 @@ pub fn score_definition(facts: &DefinitionFacts) -> Scored {
     } else {
         1.0
     };
+    let out_of_scope = out_of_scope_factor(facts.coverage.out_of_scope);
 
     let merit = 0.40 * readability + 0.14 * length + 0.21 * prior + SENSE_WEIGHT * sense;
-    let total = clamp(merit * self_reference);
+    let total = clamp(merit * self_reference * out_of_scope);
     Scored {
         score: total,
         detail: ScoreDetail {
@@ -500,6 +531,7 @@ pub fn score_definition(facts: &DefinitionFacts) -> Scored {
             sense_rank: facts.sense_rank,
             sense_prior: Some(sense),
             self_reference: Some(self_reference),
+            out_of_scope_factor: Some(out_of_scope),
             out_of_scope_tokens: Some(facts.coverage.out_of_scope),
             token_count: Some(facts.coverage.total()),
             ..ScoreDetail::default()
@@ -791,9 +823,12 @@ mod tests {
             self_referential: true,
             sense_rank: Some(1),
         });
+        // Worst on every count a clean candidate is allowed to be worst on:
+        // the weakest source, a sense far down the list, and a gloss too short
+        // for the length window.
         let clean_worst = score_definition(&DefinitionFacts {
             source: DefinitionSource::Wordnet,
-            coverage: coverage(4, 0, 2),
+            coverage: coverage(2, 0, 0),
             self_referential: false,
             sense_rank: Some(9),
         });
@@ -802,6 +837,115 @@ mod tests {
             "{clean_worst:?} vs {circular_best:?}"
         );
         assert!(should_switch(Some(circular_best.score), clean_worst.score));
+    }
+
+    // -- out-of-scope tokens, as a gate -------------------------------------
+
+    /// The `scorer/2` regression this factor exists for: the sense prior is
+    /// worth about 0.10 across a couple of ranks and one bad token in ten only
+    /// cost about 0.12 of readability, so a commoner sense the learner cannot
+    /// read outranked a clean rarer one — and every such trade reopened the
+    /// out-of-scope queue and cascaded through the dependency closure.
+    #[test]
+    fn a_clean_later_sense_beats_a_common_one_with_an_unreadable_token() {
+        let common_but_unreadable = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Freedict,
+            coverage: coverage(8, 1, 1),
+            self_referential: false,
+            sense_rank: Some(1),
+        });
+        let clean_third = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Freedict,
+            coverage: coverage(7, 3, 0),
+            self_referential: false,
+            sense_rank: Some(3),
+        });
+        assert!(
+            clean_third.score > common_but_unreadable.score,
+            "{clean_third:?} vs {common_but_unreadable:?}"
+        );
+        // And by enough to take the slot, not merely to sort above it.
+        assert!(should_switch(
+            Some(common_but_unreadable.score),
+            clean_third.score
+        ));
+    }
+
+    /// One unreadable token in a long gloss is still a hole. Diluting it across
+    /// more tokens is what let the additive form hide it.
+    #[test]
+    fn a_single_bad_token_cannot_be_diluted_by_a_longer_definition() {
+        let clean = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Wordnet,
+            coverage: coverage(4, 0, 0),
+            self_referential: false,
+            sense_rank: Some(7),
+        });
+        for total in [6usize, 10, 14, 20, 40] {
+            let long_and_bad = score_definition(&DefinitionFacts {
+                source: DefinitionSource::Manual,
+                coverage: coverage(total - 1, 0, 1),
+                self_referential: false,
+                sense_rank: Some(1),
+            });
+            assert!(
+                clean.score > long_and_bad.score,
+                "{total} tokens: {clean:?} vs {long_and_bad:?}"
+            );
+        }
+    }
+
+    /// …but it is a gate, not a rejection: a word whose every candidate leans
+    /// on an unknown word still gets a definition rather than an empty slot,
+    /// and among those the one with fewer holes wins.
+    #[test]
+    fn an_unreadable_candidate_still_wins_a_slot_nothing_cleaner_can_fill() {
+        let one_bad = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Freedict,
+            coverage: coverage(8, 1, 1),
+            self_referential: false,
+            sense_rank: Some(1),
+        });
+        let two_bad = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Freedict,
+            coverage: coverage(7, 1, 2),
+            self_referential: false,
+            sense_rank: Some(1),
+        });
+        assert!(one_bad.score > 0.0);
+        assert!(one_bad.score > two_bad.score);
+        assert!(two_bad.score > 0.0);
+        assert_eq!(one_bad.detail.out_of_scope_factor, Some(0.25));
+        assert_eq!(two_bad.detail.out_of_scope_factor, Some(0.10));
+    }
+
+    /// The factor is flat past two: beyond that the candidate is already last
+    /// resort and only the other components need to separate them.
+    #[test]
+    fn the_out_of_scope_factor_is_a_clean_one_and_two_step() {
+        assert_eq!(out_of_scope_factor(0), 1.0);
+        assert_eq!(out_of_scope_factor(1), 0.25);
+        for oos in 2..12 {
+            assert_eq!(out_of_scope_factor(oos), 0.10);
+        }
+    }
+
+    /// A clean candidate is scored exactly as `scorer/2` scored it — the factor
+    /// only ever takes marks away from a candidate that has a hole in it.
+    #[test]
+    fn a_clean_definition_is_untouched_by_the_gate() {
+        let scored = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Freedict,
+            coverage: coverage(6, 2, 0),
+            self_referential: false,
+            sense_rank: Some(2),
+        });
+        assert_eq!(scored.detail.out_of_scope_factor, Some(1.0));
+        let merit = 0.40 * 1.0
+            + 0.14 * length_window(8, 4, 14)
+            + 0.21 * definition_prior(DefinitionSource::Freedict)
+            + SENSE_WEIGHT * sense_rank_prior(Some(2));
+        assert!((scored.score - merit).abs() < 1e-12);
     }
 
     /// …and it is still worth more than nothing, so a word whose every

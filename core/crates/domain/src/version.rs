@@ -21,7 +21,11 @@ pub const TTS_ALGO_VER: &str = "tts-input/1";
 ///   candidate text, and multiplies the total down instead of docking it; a
 ///   sense-commonality prior ranks a source's earlier senses above its later
 ///   ones.
-pub const SCORER_ALGO_VER: &str = "scorer/2";
+/// * `scorer/3` — an out-of-scope token multiplies a definition's total down
+///   instead of only shading its readability component, so a definition the
+///   learner cannot read can win a slot no clean candidate can fill and no
+///   other.
+pub const SCORER_ALGO_VER: &str = "scorer/3";
 
 /// Version of the plan builder (Tarjan → condensation → grouping).
 pub const PLAN_ALGO_VER: &str = "plan/1";
