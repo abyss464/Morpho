@@ -74,7 +74,9 @@ CLIP need the ComfyUI venv: `~/Code/vendor/ComfyUI/.venv/bin/python`.
 
 - **Bulk-approve everything ready:** `python3 ops/bulk_approve.py` — approves every
   enabled definition selection, example slot, and image selection for active
-  words. Safe to re-run; approves only unapproved rows.
+  words. Safe to re-run; approves only unapproved rows. Base URL comes from
+  `MORPHO_API` (default `http://127.0.0.1:8787`) — set it when the engine runs in
+  Docker: `MORPHO_API=http://127.0.0.1:30012 python3 ops/bulk_approve.py`.
 - **Let a scorer bump actually take effect:** `python3 ops/unapprove_auto.py
   [definition|example|image ...]`. Approval implies a pin and a pinned slot is
   untouchable by auto-selection, so after a `bulk_approve.py` run the library is
@@ -109,7 +111,28 @@ CLIP need the ComfyUI venv: `~/Code/vendor/ComfyUI/.venv/bin/python`.
    and `gate_failures` empty. Common blockers and fixes:
    - `dependency_holdback` cascade → the readability graph has an un-shippable
      word pulling others out. Fix the root (gloss/promote un-learnable referenced
-     words until OOV queue is empty; `GET /api/oov?status=open`).
+     words until OOV queue is empty; `GET /api/oov?status=open` — note that
+     endpoint pages 50 at a time and ignores `offset`, so read `oos_queue` +
+     `oos_occurrences` directly for the full picture).
+     Before resolving anything by hand, ask whether the offending slot even needs
+     a decision — a candidate that is already OOV-clean may be sitting right
+     behind the selected one:
+     ```sql
+     -- selected slots that reference an open OOV lemma, and whether the same
+     -- (word, pos) has an out-of-scope-free candidate available instead
+     WITH clean AS (SELECT dc.def_cand_id, dc.word_id, dc.pos FROM definition_candidates dc
+       WHERE NOT EXISTS (SELECT 1 FROM def_tokens t LEFT JOIN words w ON w.lemma = t.lemma
+                          WHERE t.def_cand_id = dc.def_cand_id AND w.word_id IS NULL))
+     SELECT ds.word_id, ds.pos,
+            EXISTS (SELECT 1 FROM clean k WHERE k.word_id = ds.word_id AND k.pos = ds.pos
+                      AND k.def_cand_id <> ds.def_cand_id) AS has_clean_alternative
+       FROM definition_selections ds
+       JOIN def_tokens t ON t.def_cand_id = ds.def_cand_id
+       JOIN oos_queue q ON q.oos_lemma = t.lemma AND q.status = 'open'
+      WHERE ds.enabled = 1 GROUP BY ds.word_id, ds.pos;
+     ```
+     If most rows say yes, the scorer picked badly — fix the scorer (trap §7.8)
+     rather than promoting a few hundred words into the lexicon.
    - `question_images_distinct` → two of a question's four images are the same
      (or CLIP-identical family). Re-select a distinct candidate for one side.
    - `*_not_approved` → run `ops/bulk_approve.py`.
@@ -161,9 +184,33 @@ read it). `word_id` is stable across releases, so user progress survives updates
    both map to "container" scenes. Distractor semantic clustering is open backlog.
 7. Android SDK at `~/Android/Sdk`, headless AVD `morpho_wave1`. Full-media APK
    packaging takes minutes (500 MB zip) — not a hang.
+8. **A scorer bump can un-ship the whole library.** Readability is only `0.40 *
+   (1 - 3 * oos / tokens)`, so one out-of-scope token in a ten-token definition
+   costs ~0.12 — about what two sense ranks are worth under `SENSE_WEIGHT` 0.25.
+   `scorer/2` therefore prefers a common sense that uses an unknown word over a
+   clean rarer one, the OOV queue reopens, and `oos_pending` cascades through the
+   dependency closure until nothing is exportable. Before bumping
+   `SCORER_ALGO_VER`, check what the new weights do to
+   `SELECT COUNT(*) FROM oos_queue WHERE status='open'`. The cheap fix is in the
+   scorer (make out-of-scope a hard gate or a multiplier like
+   `SELF_REFERENCE_FACTOR`), not 100+ hand overrides — a manual override pins the
+   slot and freezes it against every future scorer improvement.
+9. **Approval invalidation is by design and it is expensive.** Any selection
+   change drops the approval, which drops the word out of `ready` and re-queues
+   TTS for the new text. Budget a `bulk_approve.py` re-run plus a convergence
+   wait after any batch re-selection.
 
 ## 8. Current state & backlog
 
+- **BLOCKED — no release cut after the 2026-08-26 content pass.** `scorer/2`
+  (self-reference factor + sense-commonality prior) moved ~1420 definition
+  selections; 102 of those traded an out-of-scope-clean definition for a
+  more-common sense that references vocabulary outside the lexicon. The OOV
+  queue reopened with 330 lemmas, 127 words went `oos_pending`, and the
+  dependency closure held back the other 4104 — `exportable_count` 0. See the
+  scorer-vs-readability note in §7.8 for the fix. Everything else from that pass
+  is good and approved: primary-POS corrections, CLIP rematch, the 48 generated
+  images (all selected + approved), TTS fully synthesised, 0 dead letters.
 - **Shipped:** release 1.4 (`2026.08.26+b5ce3f0e`): 4253 words, real dictionary
   definitions, OpenSubtitles example sentences (flagged 62%→0.4%), CLIP-matched
   images, 229 Chinese gloss anchors, per-question image distinctness, bottom-

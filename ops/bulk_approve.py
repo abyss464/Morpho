@@ -1,5 +1,7 @@
-import json, sqlite3, urllib.request, urllib.error
-API="http://127.0.0.1:8787/api"; DB="/home/abysser/Code/learning/Morpho/data/working.db"
+import json, os, sqlite3, urllib.request, urllib.error
+# MORPHO_API overrides the base URL (dockerised engine publishes 8787 on 30012).
+API=os.environ.get("MORPHO_API","http://127.0.0.1:8787").rstrip("/")+"/api"
+DB=os.environ.get("MORPHO_DB","/home/abysser/Code/learning/Morpho/data/working.db")
 def api(path,body):
     req=urllib.request.Request(API+path,data=json.dumps(body).encode(),
         headers={"Content-Type":"application/json","X-Morpho-User":"operator-approve"},method="POST")
