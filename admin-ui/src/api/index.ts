@@ -6,6 +6,7 @@ export {
   toBool,
   toBlockers,
   parseJsonColumn,
+  mapGalleryItem,
   mapWordDetail,
   mapWordListItem,
   mapDashboard,

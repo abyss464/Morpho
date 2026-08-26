@@ -59,6 +59,17 @@ pub async fn words(
     Ok(Json(body))
 }
 
+pub async fn gallery(
+    State(state): State<AppState>,
+    Query(query): Query<GalleryQuery>,
+) -> ApiResult<Json<Page<GalleryItem>>> {
+    let body = state
+        .store
+        .read(move |conn| queries::gallery_list(conn, &query))
+        .await?;
+    Ok(Json(body))
+}
+
 pub async fn word_detail(
     State(state): State<AppState>,
     Path(word_id): Path<i64>,

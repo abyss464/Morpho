@@ -440,6 +440,30 @@ export interface RejectCandidateParams {
 }
 
 /* ------------------------------------------------------------------ */
+/* Gallery                                                             */
+/* ------------------------------------------------------------------ */
+
+/** GET /gallery — selected-image overview for visual review. */
+export interface GalleryItem {
+  word_id: number;
+  lemma: string;
+  role: WordRole;
+  img_cand_id: number;
+  file_hash: string;
+  source: ImageSource;
+  auto_score: number | null;
+  approved: boolean;
+  selected_by: SelectedBy;
+  pinned: boolean;
+}
+
+export interface GalleryQuery extends PageParams {
+  source?: ImageSource;
+  approved?: boolean;
+  q?: string;
+}
+
+/* ------------------------------------------------------------------ */
 /* OOV queue                                                           */
 /* ------------------------------------------------------------------ */
 

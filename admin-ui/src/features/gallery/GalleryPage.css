@@ -1,0 +1,16 @@
+.morpho-gallery-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: rgba(127, 127, 127, 0.1);
+}
+
+.morpho-gallery-card .ant-card-body {
+  padding: 10px;
+}
+
+.morpho-gallery-sentinel {
+  height: 1px;
+  width: 100%;
+}

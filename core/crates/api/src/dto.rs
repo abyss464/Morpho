@@ -684,6 +684,47 @@ impl PageQuery {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Gallery
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct GalleryItem {
+    pub word_id: i64,
+    pub lemma: String,
+    pub role: String,
+    pub img_cand_id: i64,
+    pub file_hash: String,
+    pub source: String,
+    pub auto_score: Option<f64>,
+    pub approved: bool,
+    pub selected_by: String,
+    pub pinned: bool,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct GalleryQuery {
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub approved: Option<bool>,
+    #[serde(default)]
+    pub q: Option<String>,
+    #[serde(default)]
+    pub page: Option<i64>,
+    #[serde(default)]
+    pub page_size: Option<i64>,
+}
+
+impl GalleryQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination {
+            page: self.page,
+            page_size: self.page_size,
+        }
+    }
+}
+
 /// `GET /dead-letters?rate_key=&page=&page_size=` (wave-3 ruling #14).
 #[derive(Debug, Default, Deserialize)]
 pub struct DeadLetterQuery {

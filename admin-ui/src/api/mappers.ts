@@ -21,6 +21,7 @@ import type {
   ExampleCandidate,
   ExampleSelection,
   ExampleSlotView,
+  GalleryItem,
   HoldbackReport,
   ImageCandidate,
   ImageSelection,
@@ -259,6 +260,22 @@ export function mapWordListItem(raw: unknown): WordListItem {
     sense_count: toNumber(wire.sense_count),
     example_count: toNumber(wire.example_count),
     tts_missing: toNumber(wire.tts_missing),
+  };
+}
+
+export function mapGalleryItem(raw: unknown): GalleryItem {
+  const wire = asWire(raw);
+  return {
+    word_id: toNumber(wire.word_id),
+    lemma: toString(wire.lemma),
+    role: toString(wire.role, 'target') as GalleryItem['role'],
+    img_cand_id: toNumber(wire.img_cand_id),
+    file_hash: toString(wire.file_hash),
+    source: toString(wire.source, 'unsplash') as GalleryItem['source'],
+    auto_score: toNullableNumber(wire.auto_score),
+    approved: toBool(wire.approved),
+    selected_by: toString(wire.selected_by, 'auto') as GalleryItem['selected_by'],
+    pinned: toBool(wire.pinned),
   };
 }
 

@@ -9,6 +9,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MoonOutlined,
+  PictureOutlined,
   ReadOutlined,
   RocketOutlined,
 } from '@ant-design/icons';
@@ -75,6 +76,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     () => [
       { key: '/', to: '/', label: 'Dashboard', icon: <DashboardOutlined /> },
       { key: '/words', to: '/words', label: 'Words', icon: <ReadOutlined /> },
+      { key: '/gallery', to: '/gallery', label: 'Gallery', icon: <PictureOutlined /> },
       {
         key: '/oov',
         to: '/oov',

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DeadLettersRouteImport } from './routes/dead-letters'
+import { Route as GalleryRouteImport } from './routes/gallery'
 import { Route as OovRouteImport } from './routes/oov'
 import { Route as PlanRouteImport } from './routes/plan'
 import { Route as ReleasesRouteImport } from './routes/releases'
@@ -25,6 +26,11 @@ const IndexRoute = IndexRouteImport.update({
 const DeadLettersRoute = DeadLettersRouteImport.update({
   id: '/dead-letters',
   path: '/dead-letters',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GalleryRoute = GalleryRouteImport.update({
+  id: '/gallery',
+  path: '/gallery',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OovRoute = OovRouteImport.update({
@@ -56,6 +62,7 @@ const WordsWordIdRoute = WordsWordIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dead-letters': typeof DeadLettersRoute
+  '/gallery': typeof GalleryRoute
   '/oov': typeof OovRoute
   '/plan': typeof PlanRoute
   '/releases': typeof ReleasesRoute
@@ -65,6 +72,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dead-letters': typeof DeadLettersRoute
+  '/gallery': typeof GalleryRoute
   '/oov': typeof OovRoute
   '/plan': typeof PlanRoute
   '/releases': typeof ReleasesRoute
@@ -75,6 +83,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dead-letters': typeof DeadLettersRoute
+  '/gallery': typeof GalleryRoute
   '/oov': typeof OovRoute
   '/plan': typeof PlanRoute
   '/releases': typeof ReleasesRoute
@@ -86,6 +95,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dead-letters'
+    | '/gallery'
     | '/oov'
     | '/plan'
     | '/releases'
@@ -95,6 +105,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/dead-letters'
+    | '/gallery'
     | '/oov'
     | '/plan'
     | '/releases'
@@ -104,6 +115,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/dead-letters'
+    | '/gallery'
     | '/oov'
     | '/plan'
     | '/releases'
@@ -114,6 +126,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DeadLettersRoute: typeof DeadLettersRoute
+  GalleryRoute: typeof GalleryRoute
   OovRoute: typeof OovRoute
   PlanRoute: typeof PlanRoute
   ReleasesRoute: typeof ReleasesRoute
@@ -135,6 +148,13 @@ declare module '@tanstack/react-router' {
       path: '/dead-letters'
       fullPath: '/dead-letters'
       preLoaderRoute: typeof DeadLettersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gallery': {
+      id: '/gallery'
+      path: '/gallery'
+      fullPath: '/gallery'
+      preLoaderRoute: typeof GalleryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/oov': {
@@ -178,6 +198,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DeadLettersRoute: DeadLettersRoute,
+  GalleryRoute: GalleryRoute,
   OovRoute: OovRoute,
   PlanRoute: PlanRoute,
   ReleasesRoute: ReleasesRoute,

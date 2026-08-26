@@ -17,6 +17,8 @@ pub fn api_router(state: AppState) -> Router {
         .route("/events", get(read::events))
         .route("/jobs", get(read::jobs))
         .route("/stream", get(read::stream))
+        // -- Gallery -------------------------------------------------------
+        .route("/gallery", get(read::gallery))
         // -- Words --------------------------------------------------------
         .route("/words", get(read::words).post(write::create_word))
         .route("/words/{id}", get(read::word_detail))

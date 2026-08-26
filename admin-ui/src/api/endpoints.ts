@@ -9,6 +9,7 @@ import {
   mapDashboard,
   mapDeadLetter,
   mapEvent,
+  mapGalleryItem,
   mapHoldbackReport,
   mapJobsSnapshot,
   mapOovEntry,
@@ -28,6 +29,8 @@ import type {
   DeadLetter,
   EventsQuery,
   ExportBody,
+  GalleryItem,
+  GalleryQuery,
   HoldbackReport,
   JobKeyBody,
   JobsSnapshot,
@@ -99,6 +102,15 @@ export async function listWords(
 ): Promise<Paginated<WordListItem>> {
   const raw = await request<unknown>('/words', { query: toQuery(query), signal });
   return mapPaginated(raw, mapWordListItem);
+}
+
+/** GET /gallery?source=&approved=&q=&page=&page_size= */
+export async function listGallery(
+  query: GalleryQuery = {},
+  signal?: AbortSignal,
+): Promise<Paginated<GalleryItem>> {
+  const raw = await request<unknown>('/gallery', { query: toQuery(query), signal });
+  return mapPaginated(raw, mapGalleryItem);
 }
 
 /** GET /words/{id} */

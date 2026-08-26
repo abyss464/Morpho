@@ -301,6 +301,79 @@ pub fn word_list(
 }
 
 // ---------------------------------------------------------------------------
+// Gallery
+// ---------------------------------------------------------------------------
+
+pub fn gallery_list(conn: &Connection, query: &GalleryQuery) -> Result<Page<GalleryItem>> {
+    let mut clauses: Vec<String> = vec!["w.role IN ('target', 'auxiliary')".into()];
+    let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+
+    if let Some(source) = &query.source {
+        clauses.push("ic.source = ?".into());
+        params.push(Box::new(source.clone()));
+    }
+    if let Some(approved) = query.approved {
+        clauses.push("isel.approved = ?".into());
+        params.push(Box::new(i64::from(approved)));
+    }
+    if let Some(q) = &query.q {
+        clauses.push("w.lemma LIKE '%' || ? || '%'".into());
+        params.push(Box::new(q.clone()));
+    }
+    let where_sql = format!("WHERE {}", clauses.join(" AND "));
+
+    let refs: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let total: i64 = conn.query_row(
+        &format!(
+            "SELECT COUNT(*)
+             FROM words w
+             JOIN image_selections isel ON w.word_id = isel.word_id
+             JOIN image_candidates ic ON isel.img_cand_id = ic.img_cand_id
+             {where_sql}"
+        ),
+        refs.as_slice(),
+        |row| row.get(0),
+    )?;
+
+    let mut paged: Vec<Box<dyn ToSql>> = params;
+    let page = query.pagination();
+    paged.push(Box::new(page.limit()));
+    paged.push(Box::new(page.offset()));
+    let refs: Vec<&dyn ToSql> = paged.iter().map(|p| p.as_ref()).collect();
+
+    let sql = format!(
+        "SELECT w.word_id, w.lemma, w.role,
+                ic.img_cand_id, ic.file_hash, ic.source, ic.auto_score,
+                isel.approved, isel.selected_by, isel.pinned
+         FROM words w
+         JOIN image_selections isel ON w.word_id = isel.word_id
+         JOIN image_candidates ic ON isel.img_cand_id = ic.img_cand_id
+         {where_sql}
+         ORDER BY COALESCE(w.frequency_rank, 9223372036854775807), w.word_id
+         LIMIT ? OFFSET ?"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let items = stmt
+        .query_map(refs.as_slice(), |row| {
+            Ok(GalleryItem {
+                word_id: row.get("word_id")?,
+                lemma: row.get("lemma")?,
+                role: row.get("role")?,
+                img_cand_id: row.get("img_cand_id")?,
+                file_hash: row.get("file_hash")?,
+                source: row.get("source")?,
+                auto_score: row.get("auto_score")?,
+                approved: row.get::<_, i64>("approved")? != 0,
+                selected_by: row.get("selected_by")?,
+                pinned: row.get::<_, i64>("pinned")? != 0,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    Ok(Page { items, total })
+}
+
+// ---------------------------------------------------------------------------
 // Word detail
 // ---------------------------------------------------------------------------
 

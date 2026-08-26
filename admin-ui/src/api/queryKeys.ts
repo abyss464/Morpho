@@ -1,4 +1,4 @@
-import type { EventsQuery, OovQuery, PageParams, WordsQuery } from './types';
+import type { EventsQuery, GalleryQuery, OovQuery, PageParams, WordsQuery } from './types';
 
 /**
  * Central query-key factory. Keys are structured so a single
@@ -10,6 +10,9 @@ export const qk = {
   dashboard: () => ['dashboard'] as const,
   events: (query?: EventsQuery) => ['events', query ?? {}] as const,
   jobs: () => ['jobs'] as const,
+
+  gallery: () => ['gallery'] as const,
+  galleryList: (query: GalleryQuery) => ['gallery', 'list', query] as const,
 
   words: () => ['words'] as const,
   wordList: (query: WordsQuery) => ['words', 'list', query] as const,
