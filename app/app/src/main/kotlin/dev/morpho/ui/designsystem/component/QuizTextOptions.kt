@@ -158,7 +158,9 @@ private fun TextOptionCard(
         if (option.pos != null) {
             PosChip(option.pos)
         }
-        Text(
+        // Long-press, not tap: this card is an answer button, and a tap that landed on
+        // a glossed word must still mean "I choose this option".
+        GlossedText(
             text = option.text,
             style = if (option.serif) {
                 MorphoTheme.reading.definitionOption
@@ -167,6 +169,10 @@ private fun TextOptionCard(
             },
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
+            trigger = GlossTrigger.LongPress,
+            enabled = enabled,
+            onPlainTap = onClick,
+            pressInteractionSource = interactionSource,
         )
         AnimatedVisibility(
             visible = state == QuizOptionState.CORRECT || state == QuizOptionState.REVEALED,

@@ -18,7 +18,7 @@ android {
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1
-        versionName = "0.3.0-wave3a"
+        versionName = "0.4.0-wave3b"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -132,8 +132,9 @@ sqldelight {
         create("ContentDatabase") {
             packageName.set("dev.morpho.data.db.content")
             srcDirs.setFrom("src/main/sqldelight/content")
-            // release.db is an external artifact; SQLDelight owns no migrations for it.
-            // The generated Schema is used only by the debug seeder to build a fake DB.
+            // release.db is an external artifact; SQLDelight owns no migrations for it,
+            // and its generated Schema never creates the file -- DatabaseProvider copies
+            // the bundled asset in and restamps user_version so the helper stays out.
             verifyMigrations.set(false)
             deriveSchemaFromMigrations.set(false)
             generateAsync.set(false)
@@ -187,8 +188,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
-    // JDBC SQLite driver so JVM unit tests can create the real release schema and
-    // seed it with the shipped demo fixture -- no device, no Robolectric.
+    // JDBC SQLite driver so JVM unit tests can open the real bundled release.db and
+    // run the generated queries against it -- no device, no Robolectric.
     testImplementation(libs.sqldelight.sqlite.driver)
 
     androidTestImplementation(libs.androidx.test.junit)

@@ -267,6 +267,12 @@ private fun Stimulus(
     }
 }
 
+/**
+ * Deliberately *not* glossed. This is an error surface with its own colour system, and a
+ * third hue inside a red container reads as noise rather than as an affordance. Nothing
+ * is lost by it: a wrong answer always opens the detail sheet once the retry lands, and
+ * the same definition is anchored there.
+ */
 @Composable
 private fun RetryHint(definition: String) {
     Column(

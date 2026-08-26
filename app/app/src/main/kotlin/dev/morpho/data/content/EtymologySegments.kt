@@ -12,8 +12,8 @@ import kotlinx.serialization.json.JsonPrimitive
  * unparseable the sheet falls back to prose alone — a release is free to ship an
  * etymology it has no agreed segmentation for.
  *
- * Deliberately free of Android types so both the demo seeder and its JVM unit test can
- * use it unchanged.
+ * Deliberately free of Android types, so its JVM unit test exercises the same code the
+ * app runs rather than a stand-in.
  */
 object EtymologySegments {
 
@@ -32,7 +32,11 @@ object EtymologySegments {
         }
     }
 
-    /** Inverse of [parse]. Used by the demo seeder to write a contract-shaped column. */
+    /**
+     * Inverse of [parse]. The app never writes release.db, so this exists to pin the
+     * column's shape from the consuming side: a round-trip test here is what would
+     * catch the exporter and the reader drifting apart on encoding.
+     */
     fun encode(segments: List<String>): String? {
         val cleaned = segments.map { it.trim() }.filter { it.isNotEmpty() }
         if (cleaned.isEmpty()) return null

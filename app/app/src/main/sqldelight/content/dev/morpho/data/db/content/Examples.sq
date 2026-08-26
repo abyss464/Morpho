@@ -19,6 +19,27 @@ SELECT * FROM examples WHERE word_id IN ? ORDER BY word_id, display_order;
 countAll:
 SELECT count(*) FROM examples;
 
+-- Debug-only integrity assertions.
+--
+-- Mode 1 asks the question *with* the sentence, so a word without a display_order 1
+-- example cannot be asked at all.
+selectWordsWithoutFirstExample:
+SELECT w.word_id
+FROM words w
+WHERE NOT EXISTS (
+    SELECT 1 FROM examples e WHERE e.word_id = w.word_id AND e.display_order = 1
+);
+
+-- hl_start/hl_end are UTF-8 *byte* offsets; casting the sentence to a blob is what
+-- makes length() count bytes rather than characters, which is the whole point on text
+-- carrying em dashes and curly quotes.
+selectExamplesWithBadHighlight:
+SELECT example_id, word_id
+FROM examples
+WHERE hl_start < 0
+   OR hl_start >= hl_end
+   OR hl_end > length(CAST(sentence AS BLOB));
+
 insert:
 INSERT INTO examples (example_id, word_id, display_order, sentence, hl_start, hl_end, ex_audio_file)
 VALUES (?, ?, ?, ?, ?, ?, ?);

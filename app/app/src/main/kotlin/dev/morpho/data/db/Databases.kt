@@ -17,9 +17,9 @@ import java.io.File
  * friction (README Part 6). SQLDelight compiles typed queries against the exported
  * DDL and demands nothing of the file at runtime.
  *
- * * **release.db** — read-only. If `assets/release.db` exists it is copied into place
- *   verbatim on first launch and opened as-is. Otherwise (wave 1, no core exporter yet)
- *   the generated schema creates an empty DB that `DemoContentSeeder` fills.
+ * * **release.db** — read-only, shipped in `assets/`. Copied into the databases
+ *   directory verbatim on first launch and opened as-is; the generated `Schema` is
+ *   never asked to create it.
  * * **user.db** — read/write, created from the generated schema, included in
  *   Android Auto Backup.
  */
@@ -131,10 +131,10 @@ class DatabaseProvider(private val context: Context) {
      * different shape.
      *
      * SQLDelight owns no migrations for this file, and rightly so — it is a derived,
-     * read-only artifact that can always be produced again, either by re-copying the
-     * bundled asset or by re-seeding the demo fixture. So when the DDL moves (wave 3
-     * adding `words.etymology_segments`, say), the answer is to delete the file rather
-     * than to migrate it. Without this an app updated over an older install opens a
+     * read-only artifact that can always be produced again by re-copying the bundled
+     * asset. So when the DDL moves (wave 3b adding `gloss_anchors`, say), the answer is
+     * to delete the file rather than to migrate it. Without this an app updated over an
+     * older install opens a
      * database whose columns its generated queries no longer describe, and dies on the
      * first `SELECT *`.
      *
@@ -164,9 +164,9 @@ class DatabaseProvider(private val context: Context) {
     }
 
     /**
-     * Copies a bundled `assets/release.db` into the databases directory the first
-     * time it is seen. Wave 1/3a simply has no such asset and the demo seeder fills
-     * the schema-created file instead.
+     * Copies the bundled `assets/release.db` into the databases directory the first time
+     * it is seen. `noCompress` covers `.db`, so this is a straight byte copy out of the
+     * APK rather than an inflate.
      */
     private fun installBundledReleaseIfPresent() {
         val target = context.getDatabasePath(CONTENT_DB_NAME)
@@ -193,13 +193,14 @@ class DatabaseProvider(private val context: Context) {
      * Rewrites `PRAGMA user_version` on the installed copy to the version SQLDelight
      * compiled against.
      *
-     * The export sets `user_version = schema_ver` so the file reads as "already
-     * created" (release-db.sql, wave-3 rulings). That number tracks the *content*
-     * contract, though, while SQLDelight's open helper compares against its own
-     * generated schema version — the two are free to diverge, and a mismatch would send
-     * the helper down an upgrade or downgrade path that has nothing to migrate. The
-     * file is a private, read-only copy the app owns, so aligning the stamp once at
-     * install time is both safe and sufficient.
+     * This is load-bearing, not defensive. The wave-3 rulings ask the export to set
+     * `user_version = schema_ver`, but that number tracks the *content* contract while
+     * SQLDelight's open helper compares against its own generated schema version — two
+     * counters free to diverge. And the 2026.08.26 release ships `user_version = 0`
+     * regardless, which the framework helper reads as "brand new file" and answers by
+     * calling `onCreate`, i.e. `CREATE TABLE words` over a table that already has 4253
+     * rows in it. Rewriting the stamp before the helper ever opens the file turns both
+     * cases into a plain open. Safe to do because this is a private copy the app owns.
      */
     private fun stampUserVersion(file: File) {
         val wanted = ContentDatabase.Schema.version
@@ -228,9 +229,10 @@ class DatabaseProvider(private val context: Context) {
          * `release.db` are rebuilt instead of read with the wrong columns.
          *
          * 1 — wave 1.
-         * 2 — wave 3: `words.etymology_segments`.
+         * 2 — wave 3a: `words.etymology_segments`.
+         * 3 — wave 3b: `gloss_anchors`, and the first real exported release.
          */
-        const val CONTENT_DDL_VERSION = 2
+        const val CONTENT_DDL_VERSION = 3
 
         private const val DDL_MARKER_SUFFIX = ".ddl"
 

@@ -13,8 +13,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.morpho.di.AppContainer
 import dev.morpho.di.StartupReport
+import dev.morpho.domain.content.GlossIndex
 import dev.morpho.ui.MorphoApp
 import dev.morpho.ui.designsystem.component.LocalContentImageRenderer
+import dev.morpho.ui.designsystem.component.LocalGlossIndex
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
 /**
@@ -41,6 +43,10 @@ class MainActivity : ComponentActivity() {
             MorphoTheme(forceReducedMotion = settings.reducedMotion) {
                 CompositionLocalProvider(
                     LocalContentImageRenderer provides container.contentImageRenderer,
+                    // Empty until startup finishes, so definitions render as plain
+                    // English on the very first frame and gain their anchors once the
+                    // release is open — never the other way round.
+                    LocalGlossIndex provides (startup?.glossIndex ?: GlossIndex.EMPTY),
                 ) {
                     MorphoApp(container = container, startup = startup)
                 }

@@ -6,9 +6,6 @@ import coil3.ImageLoader
 import dev.morpho.BuildConfig
 import dev.morpho.data.backup.ProgressBackup
 import dev.morpho.data.content.ContentStore
-import dev.morpho.data.content.DemoMediaGenerator
-import dev.morpho.data.content.DirectoryContentStore
-import dev.morpho.data.content.FallbackContentStore
 import dev.morpho.data.content.AssetContentStore
 import dev.morpho.data.db.DatabaseProvider
 import dev.morpho.data.haptics.HapticsManager
@@ -18,13 +15,12 @@ import dev.morpho.data.media.MorphoImageLoader
 import dev.morpho.data.repository.ContentRepository
 import dev.morpho.data.repository.ProgressRepository
 import dev.morpho.data.repository.SettingsRepository
-import dev.morpho.data.seed.DemoContentSeeder
 import dev.morpho.data.sound.SfxEvent
 import dev.morpho.data.sound.SoundManager
+import dev.morpho.domain.content.GlossIndex
 import dev.morpho.domain.review.FsrsScheduler
 import dev.morpho.domain.review.ReviewScheduler
 import dev.morpho.ui.designsystem.component.ContentImageRenderer
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -59,24 +55,13 @@ class AppContainer(private val context: Context) {
 
     // --- media --------------------------------------------------------------
 
-    /** Placeholder media the demo seeder's filenames point at. */
-    private val demoMediaDir: File by lazy {
-        File(context.filesDir, DEMO_MEDIA_DIR).apply { mkdirs() }
-    }
-
     /**
-     * Shipping builds read `assets/content_media`; wave 1 has no such directory, so
-     * the generated demo media answers instead. Ordering the asset store first means
-     * dropping in real media later needs no code change.
+     * Every image and audio clip the release references, read straight out of
+     * `assets/content_media/` — the install-time asset pack on the pad flavour, the
+     * APK's own assets on fatApk. One implementation, because both resolve through the
+     * same `AssetManager` namespace.
      */
-    val contentStore: ContentStore by lazy {
-        FallbackContentStore(
-            listOf(
-                AssetContentStore(context),
-                DirectoryContentStore(demoMediaDir),
-            ),
-        )
-    }
+    val contentStore: ContentStore by lazy { AssetContentStore(context) }
 
     val audioPlayer: AudioPlayer by lazy { AudioPlayer(context, contentStore) }
 
@@ -105,19 +90,18 @@ class AppContainer(private val context: Context) {
 
     /**
      * One-time startup work, run off the main thread before the first frame needs data:
-     * seed the demo release, generate placeholder media, reconcile the content version,
+     * open the bundled release, load the gloss anchors, reconcile the content version,
      * load settings and preload the SFX.
+     *
+     * Touching [ContentRepository.wordCount] here is what forces `release.db` to be
+     * installed out of `assets/` and opened, so a broken bundle surfaces on the home
+     * screen rather than three taps into a session.
      */
     suspend fun initialize(): StartupReport = withContext(Dispatchers.IO) {
-        val seeded = DemoContentSeeder(context, databaseProvider.contentDatabase).seedIfEmpty()
-        if (seeded) contentRepository.invalidate()
-
-        val manifest = contentRepository.allMediaFiles()
-        val generated = DemoMediaGenerator(demoMediaDir)
-            .ensure(imageFiles = manifest.images, audioFiles = manifest.audio)
-
         val contentVersion = contentRepository.contentVersion()
         progressRepository.ensureInitialised(contentVersion)
+
+        val glossIndex = contentRepository.glossIndex()
 
         val settings = settingsRepository.load()
         soundManager.enabled = settings.soundEnabled
@@ -125,6 +109,9 @@ class AppContainer(private val context: Context) {
         hapticsManager.enabled = settings.hapticsEnabled
         soundManager.preload(context)
 
+        // Debug builds run the full assertion scan once (README Part 6). It is a handful
+        // of grouped queries over 4k rows, not a row-by-row walk, so it stays cheap even
+        // at release scale.
         val violations = if (BuildConfig.DEBUG) {
             contentRepository.assertIntegrity()
         } else {
@@ -132,11 +119,13 @@ class AppContainer(private val context: Context) {
         }
         violations.forEach { Log.e(TAG, "release integrity: $it") }
 
+        val wordCount = contentRepository.wordCount()
+        Log.i(TAG, "release $contentVersion: $wordCount words, ${glossIndex.size} gloss anchors")
+
         StartupReport(
-            wordCount = contentRepository.wordCount(),
+            wordCount = wordCount,
             contentVersion = contentVersion,
-            seededDemoContent = seeded,
-            generatedMediaFiles = generated,
+            glossIndex = glossIndex,
             integrityViolations = violations,
         )
     }
@@ -151,15 +140,14 @@ class AppContainer(private val context: Context) {
 
     companion object {
         private const val TAG = "AppContainer"
-        const val DEMO_MEDIA_DIR = "demo_media"
     }
 }
 
 data class StartupReport(
     val wordCount: Int,
     val contentVersion: String?,
-    val seededDemoContent: Boolean,
-    val generatedMediaFiles: Int,
+    /** `gloss_anchors`, hoisted into a composition local by [dev.morpho.MainActivity]. */
+    val glossIndex: GlossIndex = GlossIndex.EMPTY,
     val integrityViolations: List<String>,
 )
 

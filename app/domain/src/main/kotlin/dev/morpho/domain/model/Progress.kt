@@ -118,6 +118,18 @@ object ProgressDefaults {
     const val DAILY_GOAL = 50
 
     /**
+     * Cap on one review sitting, as a multiple of the daily new-word goal.
+     *
+     * FSRS hands back everything that is due, and against a 4,253-word release that is
+     * eventually hundreds of cards in a single morning — a queue nobody finishes and a
+     * "1 / 863" counter that reads as a punishment. Reviews are naturally a few times the
+     * new-word rate, so the goal is the right thing to scale against: raise the goal and
+     * the review sitting grows with it. Anything left over stays due and is offered again
+     * the moment the session ends, so nothing is dropped, only deferred.
+     */
+    const val REVIEW_SESSION_MULTIPLIER = 4
+
+    /**
      * user.db schema version.
      *
      * 1 — wave 1: `daily_stats.correct_rate REAL`.

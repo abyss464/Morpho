@@ -51,7 +51,9 @@ fun DefinitionBlock(
                     )
                 }
             }
-            Text(
+            // Nothing on this row competes for a tap, so an anchored word gives up its
+            // gloss on a plain tap — see GlossTrigger.
+            GlossedText(
                 text = definition,
                 style = MorphoTheme.reading.definition,
                 color = MaterialTheme.colorScheme.onSurface,

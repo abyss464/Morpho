@@ -411,8 +411,8 @@ private fun SettingsPreview() {
     PreviewBox {
         SettingsContent(
             settings = MorphoSettings(dailyGoal = 50),
-            wordCount = 24,
-            contentVersion = "2026.08.26+demo0001",
+            wordCount = 4_253,
+            contentVersion = "2026.08.26+ff7fd531",
             backupStatus = null,
             onDailyGoalChange = {},
             onSoundChange = {},

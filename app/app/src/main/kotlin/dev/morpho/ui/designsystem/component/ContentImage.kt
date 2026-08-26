@@ -38,8 +38,8 @@ object GradientContentImageRenderer : ContentImageRenderer {
 }
 
 /**
- * Two distinct, pleasant colours derived from a filename. Shared with the debug media
- * generator so the on-device placeholder file and the preview look the same.
+ * Two distinct, pleasant colours derived from a filename. Only [GradientContentImageRenderer]
+ * uses it, so it is what `@Preview` and component tests paint instead of a photograph.
  */
 fun gradientColorsFor(key: String): Pair<Color, Color> {
     var hash = -0x340d631b7bdddcdbL // FNV-1a 64 offset basis

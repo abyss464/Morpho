@@ -6,3 +6,10 @@ local.properties
 .cxx/
 captures/
 .kotlin/
+
+# The exported word media, ~470 MB of webp and ogg. It is a derived artifact --
+# `data/releases/<export>/{img,audio}` is the source of truth, and repopulating it is
+# the two-line rsync in content_media/README.md. release.db itself stays tracked: it is
+# 4.7 MB, the unit tests read it directly, and without it the app has no content at all.
+content_media/src/main/assets/content_media/img/
+content_media/src/main/assets/content_media/audio/

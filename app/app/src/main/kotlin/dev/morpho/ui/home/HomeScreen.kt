@@ -129,7 +129,10 @@ private fun HomeContent(
 
         ProgressRing(
             progress = state.overall.fraction,
-            centerLabel = state.overall.learnedWords.toString(),
+            // Grouped, like the caption beneath it: against a four-thousand-word release
+            // these counters run to four digits and a bare "4253" over "of 4,253 learned"
+            // reads as two different quantities.
+            centerLabel = formatCount(state.overall.learnedWords),
             centerCaption = stringResource(
                 R.string.home_ring_caption,
                 formatCount(state.overall.totalWords),
@@ -150,13 +153,13 @@ private fun HomeContent(
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             StatTile(
-                value = state.overall.learnedWords.toString(),
+                value = formatCount(state.overall.learnedWords),
                 label = stringResource(R.string.home_stat_learned),
                 icon = Icons.Rounded.AutoAwesome,
                 modifier = Modifier.weight(1f),
             )
             StatTile(
-                value = state.overall.inFlightWords.toString(),
+                value = formatCount(state.overall.inFlightWords),
                 label = stringResource(R.string.home_stat_in_progress),
                 icon = Icons.Rounded.MenuBook,
                 modifier = Modifier.weight(1f),
@@ -314,7 +317,7 @@ private fun HomeContentPreview() {
             HomeContent(
                 state = HomeUiState(
                     loading = false,
-                    overall = OverallProgress(totalWords = 5500, learnedWords = 2090, inFlightWords = 17),
+                    overall = OverallProgress(totalWords = 4253, learnedWords = 2090, inFlightWords = 17),
                     today = TodayProgress(
                         newLearned = 20,
                         dailyGoal = 50,
@@ -324,9 +327,9 @@ private fun HomeContentPreview() {
                         answerCount = 25,
                     ),
                     streakDays = 12,
-                    contentVersion = "2026.08.26+demo0001",
+                    contentVersion = "2026.08.26+ff7fd531",
                 ),
-                wordCount = 5500,
+                wordCount = 4253,
                 onStartLearning = {},
                 onStartReview = {},
             )

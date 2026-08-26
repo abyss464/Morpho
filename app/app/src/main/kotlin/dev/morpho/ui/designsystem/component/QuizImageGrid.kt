@@ -22,7 +22,6 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -268,13 +267,19 @@ private fun QuizImageCell(
             }
         }
         if (showCaption && option.caption != null) {
-            Text(
+            // Same rule as the mode-3 cards: the cell is an answer button, so the gloss
+            // hangs off a long press and a tap always picks the option.
+            GlossedText(
                 text = option.caption,
                 style = MorphoTheme.reading.definitionCaption,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Start,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                trigger = GlossTrigger.LongPress,
+                enabled = enabled,
+                onPlainTap = onClick,
+                pressInteractionSource = interactionSource,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(tokens.spacing.sm),

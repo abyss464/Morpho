@@ -1,0 +1,29 @@
+-- Mirrors docs/contracts/release-db.sql :: gloss_anchors
+--
+-- Words that appear inside shipped definitions but are not themselves learnable.
+-- The app renders a matching token as a tappable span and reveals the Chinese gloss
+-- on demand, so English immersion holds and Chinese stays a grounding modality.
+CREATE TABLE gloss_anchors (
+    word_id  INTEGER PRIMARY KEY,
+    word     TEXT NOT NULL,
+    zh_gloss TEXT NOT NULL
+);
+
+-- The whole table is a few hundred rows and every definition on screen is scanned
+-- against it, so it is read once at startup and kept in memory.
+selectAll:
+SELECT * FROM gloss_anchors ORDER BY word_id;
+
+countAll:
+SELECT count(*) FROM gloss_anchors;
+
+-- Debug-only integrity assertion. An anchor that is also a shipped word would tint a
+-- word the user is meant to be learning in English and hand them the Chinese for free,
+-- which is the one thing the anchor mechanism must never do.
+selectAnchorsShadowingWords:
+SELECT g.word_id, g.word
+FROM gloss_anchors g
+JOIN words w ON lower(w.word) = lower(g.word);
+
+insert:
+INSERT INTO gloss_anchors (word_id, word, zh_gloss) VALUES (?, ?, ?);

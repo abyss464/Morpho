@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,7 +53,9 @@ fun SentenceCard(
         ),
     ) {
         Column(Modifier.padding(MorphoTheme.spacing.lg)) {
-            Text(
+            // The card plays audio on tap; a tap that lands on an anchored word opens
+            // its gloss instead. Neither reading is an answer, so nothing is ambiguous.
+            GlossedText(
                 text = text,
                 style = if (compact) {
                     MorphoTheme.reading.sentenceCompact
@@ -62,6 +63,7 @@ fun SentenceCard(
                     MorphoTheme.reading.sentence
                 },
                 color = MaterialTheme.colorScheme.onSurface,
+                onPlainTap = onPlayAudio,
             )
             Row(
                 modifier = Modifier

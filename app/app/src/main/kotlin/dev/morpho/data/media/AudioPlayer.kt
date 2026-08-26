@@ -29,8 +29,8 @@ import java.io.InputStream
  * screen. Media files are small Opus/WAV blobs, so preloading is effectively free and
  * the next question never opens with a stall.
  *
- * Audio is read through [ContentStore], never through a file path, so PAD, fatApk and
- * the debug demo all work without the player knowing which it is talking to.
+ * Audio is read through [ContentStore], never through a file path, so PAD and fatApk
+ * both work without the player knowing which it is talking to.
  */
 @OptIn(UnstableApi::class)
 class AudioPlayer(

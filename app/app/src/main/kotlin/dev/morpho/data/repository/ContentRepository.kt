@@ -6,6 +6,8 @@ import dev.morpho.data.db.content.Distractors
 import dev.morpho.data.db.content.Examples
 import dev.morpho.data.db.content.Senses
 import dev.morpho.data.db.content.Words
+import dev.morpho.domain.content.GlossAnchor
+import dev.morpho.domain.content.GlossIndex
 import dev.morpho.domain.model.ContentMetaKeys
 import dev.morpho.domain.model.Example
 import dev.morpho.domain.model.GroupType
@@ -31,6 +33,9 @@ class ContentRepository(private val db: ContentDatabase) {
     @Volatile
     private var cachedPlan: List<PlanWord>? = null
 
+    @Volatile
+    private var cachedGlossIndex: GlossIndex? = null
+
     suspend fun planWords(): List<PlanWord> = cachedPlan ?: withContext(Dispatchers.IO) {
         db.wordsQueries.selectPlanSlice().executeAsList().map {
             PlanWord(
@@ -45,6 +50,21 @@ class ContentRepository(private val db: ContentDatabase) {
 
     suspend fun wordCount(): Int = withContext(Dispatchers.IO) {
         db.wordsQueries.countAll().executeAsOne().toInt()
+    }
+
+    /**
+     * The whole `gloss_anchors` table as a lookup index.
+     *
+     * A few hundred rows against which every definition and sentence on screen is
+     * scanned, so it is read once and held for the life of the process — the content DB
+     * is immutable, and re-querying per definition would be a query per frame.
+     */
+    suspend fun glossIndex(): GlossIndex = cachedGlossIndex ?: withContext(Dispatchers.IO) {
+        GlossIndex.of(
+            db.glossAnchorsQueries.selectAll().executeAsList().map {
+                GlossAnchor(wordId = it.word_id, word = it.word, zhGloss = it.zh_gloss)
+            },
+        ).also { cachedGlossIndex = it }
     }
 
     suspend fun isEmpty(): Boolean = wordCount() == 0
@@ -136,28 +156,20 @@ class ContentRepository(private val db: ContentDatabase) {
             db.distractorsQueries.selectDanglingDistractors().executeAsList().forEach {
                 add("word ${it.word_id} rank ${it.rank} points at unshipped word ${it.distractor_word_id}")
             }
+            db.examplesQueries.selectWordsWithoutFirstExample().executeAsList().forEach {
+                add("word $it has no display_order 1 example, so mode 1 cannot ask it")
+            }
+            db.examplesQueries.selectExamplesWithBadHighlight().executeAsList().forEach {
+                add("example ${it.example_id} (word ${it.word_id}) has an out-of-range highlight")
+            }
+            db.glossAnchorsQueries.selectAnchorsShadowingWords().executeAsList().forEach {
+                add("gloss anchor ${it.word_id} '${it.word}' shadows a shipped word")
+            }
             val orders = db.wordsQueries.selectPlanSlice().executeAsList()
             if (orders.map { it.learning_order }.toSet().size != orders.size) {
                 add("learning_order is not unique across the release")
             }
         }
-    }
-
-    /** Every media filename the release references — used by the demo media generator. */
-    suspend fun allMediaFiles(): MediaManifest = withContext(Dispatchers.IO) {
-        val words = db.wordsQueries.selectAllOrdered().executeAsList()
-        val images = words.mapTo(LinkedHashSet()) { it.image_file }
-        val audio = LinkedHashSet<String>()
-        words.forEach { audio += it.word_audio_file }
-        db.sensesQueries.selectForWords(words.map { it.word_id }).executeAsList()
-            .forEach { audio += it.def_audio_file }
-        db.examplesQueries.selectForWords(words.map { it.word_id }).executeAsList()
-            .forEach { audio += it.ex_audio_file }
-        MediaManifest(images = images, audio = audio)
-    }
-
-    fun invalidate() {
-        cachedPlan = null
     }
 
     companion object {
@@ -169,11 +181,6 @@ data class QuestionContent(
     val answer: WordBundle,
     /** The answer first, then its three distractors in rank order. */
     val options: List<WordBundle>,
-)
-
-data class MediaManifest(
-    val images: Set<String>,
-    val audio: Set<String>,
 )
 
 // ------------------------------------------------------------------ mapping

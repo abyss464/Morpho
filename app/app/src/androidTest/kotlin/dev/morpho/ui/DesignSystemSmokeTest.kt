@@ -2,15 +2,24 @@ package dev.morpho.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.TouchInjectionScope
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import dev.morpho.domain.content.GlossAnchor
+import dev.morpho.domain.content.GlossIndex
 import dev.morpho.ui.designsystem.component.GroupProgressBar
 import dev.morpho.ui.designsystem.component.GroupSegmentState
 import dev.morpho.ui.designsystem.component.ImageOption
+import dev.morpho.ui.designsystem.component.LocalGlossIndex
 import dev.morpho.ui.designsystem.component.ModePips
 import dev.morpho.ui.designsystem.component.ProgressRing
 import dev.morpho.ui.designsystem.component.QuizImageGrid
@@ -34,6 +43,13 @@ class DesignSystemSmokeTest {
 
     @get:Rule
     val composeRule = createComposeRule()
+
+    private val glossIndex = GlossIndex.of(listOf(GlossAnchor(1, "intricate", "错综复杂的")))
+
+    /** The anchored word leads, so a fixed fraction of the width lands on it. */
+    private val GLOSSED_OPTION = "intricate lattices of frost"
+
+    private fun TouchInjectionScope.onTheAnchor() = Offset(width * 0.12f, height / 2f)
 
     private val options = List(4) { i ->
         ImageOption(
@@ -104,6 +120,58 @@ class DesignSystemSmokeTest {
         repeat(4) { i ->
             composeRule.onNodeWithText("meaning number $i").assertIsDisplayed()
         }
+    }
+
+    /**
+     * The one thing the gloss mechanism must never do: turn a tap on an option's words
+     * into "I don't know what that means" instead of "I choose this". The gloss lives on
+     * a long press precisely so this stays true.
+     *
+     * Both of these drive the real pointer path — an unmerged node and injected touches —
+     * rather than invoking the card's semantic `onClick`, which would sail straight past
+     * the gesture detector the tests exist to check.
+     */
+    @Test
+    fun tappingAGlossedWordInsideAnOptionStillSelectsTheOption() {
+        var selected = -1
+        composeRule.setContent {
+            CompositionLocalProvider(LocalGlossIndex provides glossIndex) {
+                MorphoTheme {
+                    Surface {
+                        QuizTextOptions(
+                            options = listOf(
+                                TextOption(1, GLOSSED_OPTION, "adj"),
+                                TextOption(2, "plain woven cloth", "adj"),
+                            ),
+                            onSelect = { selected = it },
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithText(GLOSSED_OPTION, useUnmergedTree = true)
+            .performTouchInput { click(onTheAnchor()) }
+        assert(selected == 0) { "expected option 0 to be selected, got $selected" }
+    }
+
+    @Test
+    fun aGlossedWordRevealsItsChineseOnLongPress() {
+        composeRule.setContent {
+            CompositionLocalProvider(LocalGlossIndex provides glossIndex) {
+                MorphoTheme {
+                    Surface {
+                        QuizTextOptions(
+                            options = listOf(TextOption(1, GLOSSED_OPTION, "adj")),
+                            onSelect = {},
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithText(GLOSSED_OPTION, useUnmergedTree = true)
+            .performTouchInput { longClick(onTheAnchor()) }
+        // The popover is its own window, so assert on existence rather than display.
+        composeRule.onNodeWithText("错综复杂的").assertExists()
     }
 
     @Test

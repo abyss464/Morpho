@@ -1,4 +1,0 @@
-Placeholder so this directory survives a clone.
-
-Wave 3b drops the exported media here as img/{hash}.webp and audio/{hash}.ogg, then
-deletes this file. See ../../../../README.md.

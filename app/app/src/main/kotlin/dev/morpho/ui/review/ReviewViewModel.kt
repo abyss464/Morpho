@@ -11,6 +11,7 @@ import dev.morpho.di.SessionKind
 import dev.morpho.di.SessionResult
 import dev.morpho.domain.learning.OptionAssembler
 import dev.morpho.domain.model.FsrsCard
+import dev.morpho.domain.model.ProgressDefaults
 import dev.morpho.domain.progress.ProgressTracker
 import dev.morpho.domain.review.ReviewItem
 import dev.morpho.domain.review.ReviewQuestionType
@@ -85,10 +86,13 @@ class ReviewViewModel(private val container: AppContainer) : ViewModel() {
     private suspend fun start() {
         val now = Instant.now()
         val cards = container.progressRepository.allCards()
+        val goal = container.settingsRepository.settings.value.dailyGoal
         queue = container.reviewScheduler.buildQueue(
             cards = cards,
             now = now,
             daySeed = LocalDate.now().toEpochDay(),
+            // Bounded, or a mature deck eventually opens a session nobody can finish.
+            limit = goal * ProgressDefaults.REVIEW_SESSION_MULTIPLIER,
         )
         if (queue.isEmpty()) {
             _state.value = ReviewUiState(loading = false, finished = false, empty = true)
