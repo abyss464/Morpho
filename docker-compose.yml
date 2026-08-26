@@ -1,0 +1,15 @@
+services:
+  morphod:
+    build:
+      context: .
+      network: host
+    container_name: morphod
+    ports:
+      - "30012:8787"
+    volumes:
+      - ./data:/app/data
+      - ./content:/app/content
+    environment:
+      - PIXABAY_API_KEY=${PIXABAY_API_KEY:-}
+      - RUST_LOG=${RUST_LOG:-warn}
+    restart: unless-stopped

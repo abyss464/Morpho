@@ -1,0 +1,11 @@
+data/
+content/
+app/
+.git/
+core/target/
+admin-ui/node_modules/
+admin-ui/dist/
+**/.venv/
+*.db
+*.db-wal
+*.db-shm

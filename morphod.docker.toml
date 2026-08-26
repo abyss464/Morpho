@@ -1,0 +1,14 @@
+# morphod container configuration.
+# Path overrides only — everything else inherits built-in defaults.
+# See morphod.example.toml for the full reference.
+
+data_dir       = "/app/data"
+releases_dir   = "/app/data/releases"
+bind           = "0.0.0.0:8787"
+admin_ui_dist  = "/app/admin-ui/dist"
+
+[sources]
+wordnet_dir = "/app/data/wordnet/dict"
+
+[adapters]
+adapters_root = "/app"
