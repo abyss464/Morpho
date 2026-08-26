@@ -179,6 +179,9 @@ const SOURCE_COLOR: Record<string, string> = {
   unsplash: 'blue',
   pexels: 'cyan',
   pixabay: 'green',
+  wikimedia: 'volcano',
+  openverse: 'orange',
+  tatoeba: 'lime',
   sdxl: 'magenta',
 };
 

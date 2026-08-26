@@ -50,8 +50,15 @@ export type CandidateStatus = 'available' | 'rejected';
 export type SelectedBy = 'auto' | 'human';
 
 export type DefinitionSource = 'freedict' | 'wordnet' | 'llm_rewrite' | 'manual';
-export type ExampleSource = 'exam_corpus' | 'llm' | 'manual';
-export type ImageSource = 'unsplash' | 'pexels' | 'pixabay' | 'sdxl' | 'manual';
+export type ExampleSource = 'exam_corpus' | 'freedict' | 'tatoeba' | 'llm' | 'manual';
+export type ImageSource =
+  | 'unsplash'
+  | 'pexels'
+  | 'pixabay'
+  | 'wikimedia'
+  | 'openverse'
+  | 'sdxl'
+  | 'manual';
 export type CandidateSource = DefinitionSource | ExampleSource | ImageSource;
 
 export type EtymologySource = 'wiktionary' | 'morfessor' | 'manual';
