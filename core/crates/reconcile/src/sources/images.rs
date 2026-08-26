@@ -11,6 +11,13 @@
 //!   pictures instead of falling straight through to SDXL. Both carry per-file
 //!   licence metadata, which is recorded on the candidate.
 //!
+//! Wikimedia is searched two ways: by file name in the `File:` namespace, and —
+//! only when that comes up short — by the lead image of the word's English
+//! Wikipedia article. The second strategy exists because abstract words own no
+//! file named after them but often own an article that has already decided how
+//! to picture them. Either way the asset is a Commons file and its licence is
+//! read from Commons, so nothing enters the library unattributed.
+//!
 //! Every provider gets its own dispatcher lane. Every downloaded photo is
 //! decoded, fitted into the 768×576 box from README Part 5 and re-encoded as
 //! WebP before it ever reaches the content-addressed store, whatever it came
@@ -18,7 +25,7 @@
 
 use serde::Deserialize;
 
-use morpho_domain::error::TaskError;
+use morpho_domain::error::{ErrorKind, TaskError};
 use morpho_domain::types::ImageSource;
 
 use crate::config::SourcesConfig;
@@ -48,6 +55,26 @@ const MAX_DOWNLOAD_BYTES: usize = 24 * 1024 * 1024;
 /// TIFF, PDF and video in the same namespace, and a format the encoder cannot
 /// read is better skipped than downloaded and thrown away.
 const DECODABLE: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "bmp"];
+/// Shortest edge an article's lead image may declare, in pixels.
+///
+/// The `originalimage` field carries flags, coats of arms and wordmark logos
+/// through the same slot as photographs. Those arrive as small SVGs, which the
+/// decodable-format filter already refuses, but the raster ones need a floor —
+/// and the summary states the size, so it costs no request to apply it.
+const MIN_LEAD_IMAGE_EDGE: u32 = 96;
+/// Weight below which a Commons SVG is an icon rather than a diagram.
+///
+/// A vector lead image reaches the library as Commons' own PNG rendering, so
+/// the format is not the problem — the subject is. Logos, wordmarks and flag
+/// icons are a handful of shapes and land under a kilobyte; a drawn diagram is
+/// hundreds of paths and lands well above ten.
+const SVG_MIN_BYTES: u64 = 10 * 1024;
+/// Prefix every Commons-hosted asset shares. Anything else — a file uploaded to
+/// the language wiki itself, an external mirror — has no Commons file page and
+/// therefore no licence this code can read.
+const COMMONS_UPLOAD_PREFIX: &str = "wikipedia/commons/";
+/// Recorded in `source_ref` so a candidate says which strategy found it.
+const ARTICLE_LEAD: &str = "article-lead";
 
 /// One photo a provider offered, before download.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,10 +95,15 @@ pub struct EncodedImage {
 }
 
 /// Search one provider.
+///
+/// `lemma` is the bare word; `query` is the same word widened with the gloss's
+/// content words. Most providers only ever see the query — Wikimedia also needs
+/// the lemma, because an article title is a word, not a search phrase.
 pub async fn search(
     client: &reqwest::Client,
     config: &SourcesConfig,
     source: ImageSource,
+    lemma: &str,
     query: &str,
 ) -> Result<Vec<PhotoRef>, TaskError> {
     let encoded = http::encode_query(query);
@@ -80,7 +112,7 @@ pub async fn search(
     // The keyless half of ruling #18 first: nothing to look up, nothing to fail.
     match source {
         ImageSource::Wikimedia => {
-            return search_wikimedia(client, config, &encoded, &context).await
+            return search_wikimedia(client, config, lemma, &encoded, &context).await
         }
         ImageSource::Openverse => {
             return search_openverse(client, config, &encoded, &context).await
@@ -181,7 +213,55 @@ pub async fn search(
     }
 }
 
-/// Search Wikimedia Commons.
+/// Search Wikimedia, in two strategies.
+///
+/// The `File:` namespace is the first and the better one when it answers: a
+/// file named after the word is usually a picture of the word. It answers well
+/// for concrete nouns and thinly for the abstract and the common — a live pass
+/// left several hundred words, `desire` and `manner` and `instance` among them,
+/// with no candidate at all.
+///
+/// Many of those words do own an English Wikipedia article, and the article's
+/// lead image is a considered editorial choice about how to depict the concept.
+/// So when the namespace search comes up short of the per-word cap, the article
+/// is asked as well. A word the first strategy already filled costs no extra
+/// request, and the search phrase is not reused for it: an article is found by
+/// its title, which is the bare word, not by the gloss-widened query.
+async fn search_wikimedia(
+    client: &reqwest::Client,
+    config: &SourcesConfig,
+    lemma: &str,
+    encoded_query: &str,
+    context: &str,
+) -> Result<Vec<PhotoRef>, TaskError> {
+    let mut photos = search_commons_files(client, config, encoded_query, context).await?;
+    if photos.len() < KEYLESS_RESULTS_PER_WORD {
+        match article_lead(client, config, lemma, context).await {
+            Ok(Some(photo)) => {
+                // The article's picture is often also the top namespace hit.
+                if !photos
+                    .iter()
+                    .any(|existing| existing.download_url == photo.download_url)
+                {
+                    photos.push(photo);
+                }
+            }
+            Ok(None) => {}
+            // No article, a disambiguation page, a picture that is not on
+            // Commons: the word has no lead image, and whatever the namespace
+            // search found still stands.
+            Err(err) if err.kind() == ErrorKind::Permanent => {
+                tracing::debug!(lemma, error = %err, "no usable wikipedia lead image");
+            }
+            // A parked lane or an unreachable host is the caller's problem, the
+            // same way it is for a photo download.
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(photos)
+}
+
+/// Strategy one: full-text search over the Commons `File:` namespace.
 ///
 /// `generator=search` over namespace 6 (`File:`) runs the same full-text search
 /// as `list=search` but feeds the hits straight into `prop=imageinfo`, so one
@@ -189,7 +269,7 @@ pub async fn search(
 /// `iiurlwidth` asks the thumbnailer for a 960-wide rendering, which is what
 /// gets downloaded — pulling the originals would mean multi-megabyte camera
 /// files for a picture that ends up 768 pixels wide.
-async fn search_wikimedia(
+async fn search_commons_files(
     client: &reqwest::Client,
     config: &SourcesConfig,
     encoded_query: &str,
@@ -220,11 +300,7 @@ async fn search_wikimedia(
                 source_ref: format!("wikimedia:{}", page.title),
                 download_url: info.thumburl.or(info.url)?,
                 license: Some(attribution(
-                    meta.license_short_name
-                        .as_ref()
-                        .or(meta.usage_terms.as_ref())
-                        .or(meta.license.as_ref())
-                        .map(|field| field.value.as_str()),
+                    commons_license(meta).as_deref(),
                     meta.artist.as_ref().map(|field| field.value.as_str()),
                     "Wikimedia Commons",
                 )),
@@ -232,6 +308,225 @@ async fn search_wikimedia(
         })
         .take(KEYLESS_RESULTS_PER_WORD)
         .collect())
+}
+
+/// Strategy two: the lead image of the English Wikipedia article for the word.
+///
+/// Two requests, because the summary and the licence live in different places.
+/// The REST summary says *which* picture the article leads with and nothing at
+/// all about its terms; the terms are on the Commons file page, reached by
+/// reading the file name back out of the asset URL. A picture whose file page
+/// cannot be found, or whose extmetadata states no licence, is dropped — an
+/// image with no readable terms may not ship in a release bundle, and guessing
+/// is not an option here.
+async fn article_lead(
+    client: &reqwest::Client,
+    config: &SourcesConfig,
+    lemma: &str,
+    context: &str,
+) -> Result<Option<PhotoRef>, TaskError> {
+    // A REST path segment, not a search phrase: MediaWiki titles take an
+    // underscore where a multi-word lemma has a space.
+    let title = http::encode_query(&lemma.trim().replace(' ', "_"));
+    if title.is_empty() {
+        return Ok(None);
+    }
+    let summary: WikipediaSummary = http::get_json(
+        client,
+        &format!("{}/{title}", config.wikipedia_url.trim_end_matches('/')),
+        &[],
+        context,
+    )
+    .await?;
+
+    let Some(image) = lead_image(&summary) else {
+        return Ok(None);
+    };
+    let Some(file) = commons_file_name(&image.source) else {
+        return Ok(None);
+    };
+    let Some(page) = commons_file_page(client, config, &file, context).await? else {
+        return Ok(None);
+    };
+    Ok(licensed_candidate(page, ARTICLE_LEAD))
+}
+
+/// The picture an article leads with, if it is one worth looking up.
+///
+/// `originalimage` is the article's actual lead image; `thumbnail` is a
+/// rendering of the same file, and it is only consulted when the original is
+/// absent — falling back from a rejected original to its rendering would undo
+/// the rejection, since the two are the same picture at different sizes.
+fn lead_image(summary: &WikipediaSummary) -> Option<&SummaryImage> {
+    // A disambiguation page's picture is the ambiguity icon: it depicts the
+    // fact that the word is ambiguous, which teaches nothing about the word.
+    if summary.kind.as_deref() == Some("disambiguation") {
+        return None;
+    }
+    let image = summary
+        .originalimage
+        .as_ref()
+        .or(summary.thumbnail.as_ref())?;
+    is_depiction(image).then_some(image)
+}
+
+/// Is this lead image worth a second request?
+fn is_depiction(image: &SummaryImage) -> bool {
+    // A vector is admitted here and judged by weight on the file page: an SVG
+    // is either a drawn diagram, which is a fine illustration, or a wordmark,
+    // which is not, and the summary says nothing that tells them apart.
+    if !is_decodable(&image.source) && !is_vector(&image.source) {
+        return false;
+    }
+    // Only a stated dimension can disqualify; a summary that omits the size
+    // gets the benefit of the doubt and is filtered on decode instead.
+    let too_small = |edge: Option<u32>| edge.is_some_and(|value| value < MIN_LEAD_IMAGE_EDGE);
+    !too_small(image.width) && !too_small(image.height)
+}
+
+/// Is this file name an SVG?
+fn is_vector(name: &str) -> bool {
+    let path = name.split(['?', '#']).next().unwrap_or(name);
+    path.rsplit_once('.')
+        .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("svg"))
+}
+
+/// The Commons file name behind an `upload.wikimedia.org` asset URL.
+///
+/// Two shapes come out of the summary endpoint:
+///
+/// ```text
+/// https://upload.wikimedia.org/wikipedia/commons/3/3f/Lake_Serene.jpg
+/// https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Lake_Serene.jpg/320px-Lake_Serene.jpg
+/// ```
+///
+/// `wikipedia/en/…` — a file uploaded to the language wiki rather than to
+/// Commons, which is where non-free logos live — has no Commons file page, so
+/// no licence, so no candidate.
+fn commons_file_name(url: &str) -> Option<String> {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    let rest = path
+        .strip_prefix("https://upload.wikimedia.org/")
+        .or_else(|| path.strip_prefix("http://upload.wikimedia.org/"))?
+        .strip_prefix(COMMONS_UPLOAD_PREFIX)?;
+
+    let mut segments: Vec<&str> = rest.split('/').filter(|part| !part.is_empty()).collect();
+    if segments.first() == Some(&"thumb") {
+        segments.remove(0);
+        // The trailing segment is the rendition (`320px-Name.jpg`, or
+        // `langde-320px-Name.svg.png`); the file name is the one before it.
+        segments.pop()?;
+    }
+    // What remains is `<hash1>/<hash2>/<name>`.
+    if segments.len() != 3 {
+        return None;
+    }
+    // Underscores in a MediaWiki title are spaces, and the API accepts either;
+    // spaces are what the file page itself reports, so `source_ref` matches the
+    // titles the namespace search produces.
+    let name = percent_decode(segments[2]).replace('_', " ");
+    // The rendition may have been the only usable thing in the URL: a TIFF or
+    // a video frame renders to a JPEG thumbnail, and neither is a file this
+    // strategy should be reaching for.
+    (!name.is_empty() && (is_decodable(&name) || is_vector(&name))).then_some(name)
+}
+
+/// One Commons file page, by exact title.
+async fn commons_file_page(
+    client: &reqwest::Client,
+    config: &SourcesConfig,
+    file: &str,
+    context: &str,
+) -> Result<Option<CommonsPage>, TaskError> {
+    let url = format!(
+        "{}?action=query&format=json&formatversion=2\
+         &titles=File%3A{}&prop=imageinfo&iiprop=url%7Csize%7Cextmetadata\
+         &iiextmetadatafilter=LicenseShortName%7CUsageTerms%7CArtist%7CLicense\
+         &iiurlwidth={COMMONS_THUMB_WIDTH}",
+        config.wikimedia_url.trim_end_matches('/'),
+        http::encode_query(file),
+    );
+    let body: CommonsResponse = http::get_json(client, &url, &[], context).await?;
+    Ok(body.query.pages.into_iter().next())
+}
+
+/// A Commons page as a candidate, refused unless its licence is on record.
+///
+/// Stricter than the namespace search, which keeps a file whose extmetadata is
+/// silent and says so in the attribution line. Here the picture was reached
+/// sideways, through an article, so "licence unstated" would be a claim about a
+/// file this code never looked up properly rather than a fact about the file.
+fn licensed_candidate(page: CommonsPage, strategy: &str) -> Option<PhotoRef> {
+    let title = page.title.clone();
+    let info = page.imageinfo.into_iter().next()?;
+    if is_vector(&title) {
+        // Commons renders SVG to PNG for every thumbnail, so a drawn diagram
+        // is perfectly usable even though the source file is not decodable.
+        // A wordmark or a flag icon is not usable, and weight is what tells
+        // the two apart: a diagram carries hundreds of paths, a logo a dozen
+        // shapes. Measured on Commons, `DNA simple2.svg` is 27 kB and
+        // `Commons-logo.svg` is under 1 kB.
+        if info.size.unwrap_or(0) < SVG_MIN_BYTES {
+            return None;
+        }
+    } else if !is_decodable(&title) {
+        return None;
+    }
+    let meta = &info.extmetadata;
+    let license = commons_license(meta)?;
+    Some(PhotoRef {
+        source: ImageSource::Wikimedia,
+        // Same shape the namespace search records, plus which strategy found
+        // it, so a console reviewer can tell the two apart.
+        source_ref: format!("wikimedia:{title} ({strategy})"),
+        // The 960-wide rendering of the very file the article leads with: the
+        // original is the right picture and the wrong number of bytes. The
+        // bytes that get fetched must be decodable whatever the file is, which
+        // for a vector means the rendered thumbnail and nothing else.
+        download_url: info.thumburl.or(info.url).filter(|url| is_decodable(url))?,
+        license: Some(attribution(
+            Some(&license),
+            meta.artist.as_ref().map(|field| field.value.as_str()),
+            "Wikimedia Commons",
+        )),
+    })
+}
+
+/// The licence a Commons file states, as plain text, if it states one.
+fn commons_license(meta: &CommonsExtMetadata) -> Option<String> {
+    meta.license_short_name
+        .as_ref()
+        .or(meta.usage_terms.as_ref())
+        .or(meta.license.as_ref())
+        .map(|field| strip_markup(&field.value))
+        .filter(|value| !value.is_empty())
+}
+
+/// Undo percent-encoding in a URL path segment.
+///
+/// Commons asset URLs carry the file name encoded — `Caf%C3%A9_noir.jpg` — and
+/// the API wants the decoded title back. Invalid escapes are left alone rather
+/// than dropped, so a malformed URL degrades into a title that simply does not
+/// match instead of into a different file.
+fn percent_decode(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 3 <= bytes.len() {
+            let decoded = std::str::from_utf8(&bytes[index + 1..index + 3])
+                .ok()
+                .and_then(|pair| u8::from_str_radix(pair, 16).ok());
+            if let Some(byte) = decoded {
+                out.push(byte);
+                index += 3;
+                continue;
+            }
+        }
+        out.push(bytes[index]);
+        index += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Search Openverse.
@@ -487,12 +782,42 @@ struct CommonsPage {
     imageinfo: Vec<CommonsImageInfo>,
 }
 
+/// The `/page/summary/{title}` payload, reduced to the two fields that matter.
+///
+/// Deliberately not the whole thing: the summary also carries the extract, the
+/// coordinates and a dozen link forms, none of which this strategy uses, and
+/// none of which should be able to break parsing when the REST API adds more.
+#[derive(Debug, Default, Deserialize)]
+struct WikipediaSummary {
+    /// `standard`, `disambiguation`, `mainpage`, `no-extract`.
+    #[serde(rename = "type", default)]
+    kind: Option<String>,
+    #[serde(default)]
+    originalimage: Option<SummaryImage>,
+    #[serde(default)]
+    thumbnail: Option<SummaryImage>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct SummaryImage {
+    #[serde(default)]
+    source: String,
+    #[serde(default)]
+    width: Option<u32>,
+    #[serde(default)]
+    height: Option<u32>,
+}
+
 #[derive(Debug, Deserialize)]
 struct CommonsImageInfo {
     #[serde(default)]
     thumburl: Option<String>,
     #[serde(default)]
     url: Option<String>,
+    /// Bytes of the source file, which is how a vector icon is told from a
+    /// vector diagram.
+    #[serde(default)]
+    size: Option<u64>,
     #[serde(default)]
     extmetadata: CommonsExtMetadata,
 }
@@ -651,9 +976,15 @@ mod tests {
     async fn searching_a_keyless_provider_is_permanent() {
         let config = SourcesConfig::default();
         let client = http::build_client(&config).unwrap();
-        let err = search(&client, &config, ImageSource::Unsplash, "serene")
-            .await
-            .unwrap_err();
+        let err = search(
+            &client,
+            &config,
+            ImageSource::Unsplash,
+            "serene",
+            "serene calm",
+        )
+        .await
+        .unwrap_err();
         assert_eq!(err.kind(), morpho_domain::error::ErrorKind::Permanent);
         assert!(err.message().contains("no API key"));
     }
@@ -666,7 +997,7 @@ mod tests {
         };
         let client = http::build_client(&config).unwrap();
         for source in [ImageSource::Sdxl, ImageSource::Manual] {
-            let err = search(&client, &config, source, "serene")
+            let err = search(&client, &config, source, "serene", "serene calm")
                 .await
                 .unwrap_err();
             assert_eq!(err.kind(), morpho_domain::error::ErrorKind::Permanent);
@@ -826,5 +1157,497 @@ mod tests {
         let parsed: OpenverseResponse =
             serde_json::from_str(r#"{"result_count":0,"results":[]}"#).unwrap();
         assert!(parsed.results.is_empty());
+    }
+
+    // -- strategy two: the article lead image -------------------------------
+
+    #[test]
+    fn a_commons_asset_url_yields_its_file_name() {
+        assert_eq!(
+            commons_file_name(
+                "https://upload.wikimedia.org/wikipedia/commons/3/3f/Lake_Serene.jpg"
+            )
+            .as_deref(),
+            Some("Lake Serene.jpg")
+        );
+        // The thumbnail form: the rendition segment is dropped, not read.
+        assert_eq!(
+            commons_file_name(
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Lake_Serene.jpg/320px-Lake_Serene.jpg"
+            )
+            .as_deref(),
+            Some("Lake Serene.jpg")
+        );
+        // Percent-escapes come back as the title the API expects.
+        assert_eq!(
+            commons_file_name(
+                "https://upload.wikimedia.org/wikipedia/commons/a/ab/Caf%C3%A9_noir.jpg"
+            )
+            .as_deref(),
+            Some("Café noir.jpg")
+        );
+        assert_eq!(
+            commons_file_name(
+                "https://upload.wikimedia.org/wikipedia/commons/a/ab/Desire.png?download=1"
+            )
+            .as_deref(),
+            Some("Desire.png")
+        );
+    }
+
+    #[test]
+    fn a_file_that_is_not_on_commons_has_no_licence_to_read() {
+        // Locally uploaded to the language wiki: no Commons file page, so
+        // nothing to attribute, so no candidate.
+        assert!(commons_file_name(
+            "https://upload.wikimedia.org/wikipedia/en/4/44/Company_wordmark.png"
+        )
+        .is_none());
+        assert!(commons_file_name("https://example.test/photo.jpg").is_none());
+        assert!(commons_file_name("https://upload.wikimedia.org/wikipedia/commons/").is_none());
+        // A rasterised thumbnail names the file it was rendered from, not the
+        // rendition: a TIFF or a video frame is not something this strategy
+        // should reach for, whatever the rendition's extension claims.
+        assert!(commons_file_name(
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Scan.tif/64px-Scan.tif.jpg"
+        )
+        .is_none());
+        // An SVG does come through, to be judged by weight on the file page.
+        assert_eq!(
+            commons_file_name(
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/DNA_simple2.svg/330px-DNA_simple2.svg.png"
+            )
+            .as_deref(),
+            Some("DNA simple2.svg")
+        );
+    }
+
+    #[test]
+    fn percent_escapes_decode_and_bad_ones_survive() {
+        assert_eq!(percent_decode("Caf%C3%A9"), "Café");
+        assert_eq!(percent_decode("plain_name.jpg"), "plain_name.jpg");
+        assert_eq!(percent_decode("100%25"), "100%");
+        // Truncated or non-hex escapes stay as written rather than vanishing.
+        assert_eq!(percent_decode("a%"), "a%");
+        assert_eq!(percent_decode("a%zz"), "a%zz");
+    }
+
+    /// A live `/page/summary/Function` response, trimmed.
+    const SUMMARY: &str = r#"{
+      "type": "standard", "title": "Function (mathematics)",
+      "thumbnail": {"source": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Function_machine2.svg/320px-Function_machine2.svg.png",
+                    "width": 320, "height": 213},
+      "originalimage": {"source": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Lake_Serene.jpg",
+                        "width": 1474, "height": 1964},
+      "extract": "In mathematics, a function ..."
+    }"#;
+
+    #[test]
+    fn the_original_is_preferred_over_the_thumbnail() {
+        let summary: WikipediaSummary = serde_json::from_str(SUMMARY).unwrap();
+        let image = lead_image(&summary).unwrap();
+        assert!(image.source.ends_with("Lake_Serene.jpg"), "{image:?}");
+    }
+
+    #[test]
+    fn a_disambiguation_page_offers_no_depiction() {
+        let summary: WikipediaSummary = serde_json::from_str(
+            r#"{"type":"disambiguation","title":"Instance",
+                "originalimage":{"source":"https://upload.wikimedia.org/wikipedia/commons/3/3f/Disambig.jpg",
+                                 "width":900,"height":900}}"#,
+        )
+        .unwrap();
+        assert!(lead_image(&summary).is_none());
+    }
+
+    #[test]
+    fn a_rejected_original_is_not_downgraded_to_its_own_thumbnail() {
+        // The original is a scan the decoder cannot read; its thumbnail is a
+        // JPEG of the same scan. Falling back would undo the rejection.
+        let summary: WikipediaSummary = serde_json::from_str(
+            r#"{"type":"standard",
+                "originalimage":{"source":"https://upload.wikimedia.org/wikipedia/commons/1/12/Scan.tif",
+                                 "width":2048,"height":1536},
+                "thumbnail":{"source":"https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Scan.tif/320px-Scan.tif.jpg",
+                             "width":320,"height":240}}"#,
+        )
+        .unwrap();
+        assert!(lead_image(&summary).is_none());
+    }
+
+    #[test]
+    fn a_vector_lead_is_carried_to_the_file_page_to_be_weighed() {
+        // Nothing in the summary separates a drawn diagram from a wordmark, so
+        // the decision is deferred rather than guessed.
+        let summary: WikipediaSummary = serde_json::from_str(
+            r#"{"type":"standard","title":"Structure",
+                "thumbnail":{"source":"https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/DNA_simple2.svg/330px-DNA_simple2.svg.png",
+                             "width":330,"height":582}}"#,
+        )
+        .unwrap();
+        assert!(lead_image(&summary).is_some());
+
+        let file_page = |bytes: u64| -> CommonsPage {
+            serde_json::from_str(&format!(
+                r#"{{"title": "File:DNA simple2.svg", "imageinfo": [{{
+                     "size": {bytes},
+                     "thumburl": "https://upload.wikimedia.org/w/thumb/DNA_simple2.svg/960px-DNA_simple2.svg.png",
+                     "url": "https://upload.wikimedia.org/w/DNA_simple2.svg",
+                     "extmetadata": {{"LicenseShortName": {{"value": "Public domain"}}}}}}]}}"#
+            ))
+            .unwrap()
+        };
+
+        // A real diagram: kept, and fetched as Commons' own PNG rendering
+        // rather than as the SVG the decoder cannot read.
+        let photo = licensed_candidate(file_page(26_978), ARTICLE_LEAD).unwrap();
+        assert!(photo.download_url.ends_with(".png"), "{photo:?}");
+        assert_eq!(
+            photo.source_ref,
+            "wikimedia:File:DNA simple2.svg (article-lead)"
+        );
+        // A wordmark at the weight of `Commons-logo.svg`: refused.
+        assert!(licensed_candidate(file_page(932), ARTICLE_LEAD).is_none());
+        // Weight unstated is treated as weightless, which is the safe way
+        // round for a filter that exists to keep logos out.
+        let unweighed: CommonsPage = serde_json::from_str(
+            r#"{"title": "File:Logo.svg", "imageinfo": [{"thumburl": "https://x/960px-Logo.svg.png",
+                "extmetadata": {"LicenseShortName": {"value": "CC BY-SA 3.0"}}}]}"#,
+        )
+        .unwrap();
+        assert!(licensed_candidate(unweighed, ARTICLE_LEAD).is_none());
+    }
+
+    #[test]
+    fn a_vector_with_no_rendering_is_never_fetched_raw() {
+        // Without a thumbnail there is nothing decodable to download, and the
+        // raw SVG must not be substituted for it.
+        let page: CommonsPage = serde_json::from_str(
+            r#"{"title": "File:Diagram.svg", "imageinfo": [{"size": 40000,
+                "url": "https://upload.wikimedia.org/w/Diagram.svg",
+                "extmetadata": {"LicenseShortName": {"value": "CC0 1.0"}}}]}"#,
+        )
+        .unwrap();
+        assert!(licensed_candidate(page, ARTICLE_LEAD).is_none());
+    }
+
+    #[test]
+    fn a_tiny_icon_is_not_a_picture_of_the_word() {
+        let summary: WikipediaSummary = serde_json::from_str(
+            r#"{"type":"standard",
+                "originalimage":{"source":"https://upload.wikimedia.org/wikipedia/commons/1/12/Flag.png",
+                                 "width":40,"height":24}}"#,
+        )
+        .unwrap();
+        assert!(lead_image(&summary).is_none());
+        // A summary that states no size gets the benefit of the doubt; the
+        // decoder is the next filter.
+        let summary: WikipediaSummary = serde_json::from_str(
+            r#"{"type":"standard",
+                "originalimage":{"source":"https://upload.wikimedia.org/wikipedia/commons/1/12/Manner.jpg"}}"#,
+        )
+        .unwrap();
+        assert!(lead_image(&summary).is_some());
+        // An article with no picture at all.
+        let summary: WikipediaSummary =
+            serde_json::from_str(r#"{"type":"standard","title":"Manner"}"#).unwrap();
+        assert!(lead_image(&summary).is_none());
+    }
+
+    #[test]
+    fn a_lead_image_records_the_real_licence_and_its_strategy() {
+        let page: CommonsPage = serde_json::from_str(
+            r#"{"pageid": 1, "ns": 6, "title": "File:Lake Serene.jpg",
+                "imageinfo": [{"thumburl": "https://upload.wikimedia.org/w/thumb/960px-Lake_Serene.jpg",
+                               "url": "https://upload.wikimedia.org/w/Lake_Serene.jpg",
+                               "extmetadata": {"LicenseShortName": {"value": "CC BY-SA 4.0"},
+                                               "Artist": {"value": "<a href=\"//x\">Dan &amp; Ust</a>"}}}]}"#,
+        )
+        .unwrap();
+        let photo = licensed_candidate(page, ARTICLE_LEAD).unwrap();
+        assert_eq!(
+            photo.source_ref,
+            "wikimedia:File:Lake Serene.jpg (article-lead)"
+        );
+        assert_eq!(
+            photo.license.as_deref(),
+            Some("CC BY-SA 4.0; by Dan & Ust (Wikimedia Commons)")
+        );
+        assert!(photo.download_url.contains("960px"));
+        assert_eq!(photo.source, ImageSource::Wikimedia);
+    }
+
+    #[test]
+    fn a_file_page_with_no_stated_licence_produces_no_candidate() {
+        // No licence, no candidate — an unattributable picture cannot ship in
+        // a release bundle, and "licence unstated" would be a guess here.
+        for imageinfo in [
+            r#"[{"url": "https://upload.wikimedia.org/w/A.jpg", "extmetadata": {}}]"#,
+            r#"[{"url": "https://upload.wikimedia.org/w/A.jpg",
+                 "extmetadata": {"LicenseShortName": {"value": "  "}}}]"#,
+            "[]",
+        ] {
+            let page: CommonsPage = serde_json::from_str(&format!(
+                r#"{{"title": "File:A.jpg", "imageinfo": {imageinfo}}}"#
+            ))
+            .unwrap();
+            assert!(
+                licensed_candidate(page, ARTICLE_LEAD).is_none(),
+                "{imageinfo}"
+            );
+        }
+        // A missing page carries no imageinfo at all.
+        let page: CommonsPage =
+            serde_json::from_str(r#"{"title": "File:Nope.jpg", "missing": true}"#).unwrap();
+        assert!(licensed_candidate(page, ARTICLE_LEAD).is_none());
+    }
+
+    // -- the two strategies together, over loopback -------------------------
+
+    /// Four decodable namespace hits: the per-word cap, met by strategy one.
+    const COMMONS_FULL: &str = r#"{"query": {"pages": [
+        {"title": "File:One.jpg", "imageinfo": [{"thumburl": "https://host/1.jpg", "extmetadata": {}}]},
+        {"title": "File:Two.jpg", "imageinfo": [{"thumburl": "https://host/2.jpg", "extmetadata": {}}]},
+        {"title": "File:Three.jpg", "imageinfo": [{"thumburl": "https://host/3.jpg", "extmetadata": {}}]},
+        {"title": "File:Four.jpg", "imageinfo": [{"thumburl": "https://host/4.jpg", "extmetadata": {}}]}
+    ]}}"#;
+
+    /// The Commons file page for the article's lead image.
+    const FILE_PAGE: &str = r#"{"query": {"pages": [
+        {"pageid": 42, "ns": 6, "title": "File:Lake Serene.jpg",
+         "imageinfo": [{"thumburl": "https://upload.wikimedia.org/w/thumb/960px-Lake_Serene.jpg",
+                        "url": "https://upload.wikimedia.org/w/Lake_Serene.jpg",
+                        "extmetadata": {"LicenseShortName": {"value": "CC BY-SA 4.0"},
+                                        "Artist": {"value": "Ada"}}}]}
+    ]}}"#;
+
+    /// A loopback HTTP server that answers canned JSON.
+    ///
+    /// The sources are plain `reqwest` against configurable base URLs, so this
+    /// is enough to exercise the two-request path end to end — which request
+    /// was made, and which was not — without a mocking dependency and without
+    /// touching the network.
+    struct Mock {
+        base: String,
+        requests: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        _task: tokio::task::JoinHandle<()>,
+    }
+
+    impl Mock {
+        /// Every request line the server saw, in order.
+        fn seen(&self) -> Vec<String> {
+            self.requests.lock().unwrap().clone()
+        }
+
+        fn asked_for(&self, needle: &str) -> bool {
+            self.seen().iter().any(|line| line.contains(needle))
+        }
+
+        /// A config whose two Wikimedia endpoints point here.
+        fn config(&self) -> SourcesConfig {
+            SourcesConfig {
+                wikimedia_url: crate::config::WikimediaUrl(format!("{}/w/api.php", self.base)),
+                wikipedia_url: crate::config::WikipediaUrl(format!("{}/summary", self.base)),
+                ..SourcesConfig::default()
+            }
+        }
+    }
+
+    /// Serve `routes` — the first entry whose needle appears in the request
+    /// line wins; anything unmatched is a 404, which is what the real REST
+    /// endpoint answers for a word with no article.
+    async fn mock(routes: &'static [(&'static str, &'static str)]) -> Mock {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = std::sync::Arc::clone(&requests);
+        let task = tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let log = std::sync::Arc::clone(&log);
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                    let mut buffer = vec![0u8; 8192];
+                    let read = socket.read(&mut buffer).await.unwrap_or(0);
+                    let line = String::from_utf8_lossy(&buffer[..read])
+                        .lines()
+                        .next()
+                        .unwrap_or_default()
+                        .to_string();
+                    log.lock().unwrap().push(line.clone());
+                    let response = match routes
+                        .iter()
+                        .find(|(needle, _)| line.contains(needle))
+                        .map(|(_, body)| *body)
+                    {
+                        Some(body) => format!(
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                             content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                            body.len()
+                        ),
+                        None => "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\n\
+                                 connection: close\r\n\r\n"
+                            .to_string(),
+                    };
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+        Mock {
+            base,
+            requests,
+            _task: task,
+        }
+    }
+
+    async fn wikimedia(server: &Mock, lemma: &str) -> Vec<PhotoRef> {
+        let config = server.config();
+        let client = http::build_client(&config).unwrap();
+        search(&client, &config, ImageSource::Wikimedia, lemma, lemma)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_word_the_namespace_search_fills_costs_no_extra_request() {
+        let server = mock(&[
+            ("generator=search", COMMONS_FULL),
+            ("/summary/", SUMMARY),
+            ("titles=File", FILE_PAGE),
+        ])
+        .await;
+        let photos = wikimedia(&server, "lake").await;
+        assert_eq!(photos.len(), KEYLESS_RESULTS_PER_WORD);
+        assert!(
+            !server.asked_for("/summary/"),
+            "strategy two ran anyway: {:?}",
+            server.seen()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_short_namespace_result_is_topped_up_from_the_article() {
+        // COMMONS holds three pages, one of them an SVG: two survive, which is
+        // under the cap of four.
+        let server = mock(&[
+            ("generator=search", COMMONS),
+            ("/summary/", SUMMARY),
+            ("titles=File", FILE_PAGE),
+        ])
+        .await;
+        let photos = wikimedia(&server, "function").await;
+        assert_eq!(photos.len(), 3, "{photos:?}");
+
+        let lead = photos.last().unwrap();
+        assert_eq!(
+            lead.source_ref,
+            "wikimedia:File:Lake Serene.jpg (article-lead)"
+        );
+        assert_eq!(
+            lead.license.as_deref(),
+            Some("CC BY-SA 4.0; by Ada (Wikimedia Commons)")
+        );
+        assert!(lead.download_url.contains("960px"), "{lead:?}");
+        // The word, not the gloss-widened query, and the file page is asked
+        // for by exact title.
+        assert!(server.asked_for("/summary/function"), "{:?}", server.seen());
+        assert!(
+            server.asked_for("titles=File%3ALake+Serene.jpg"),
+            "{:?}",
+            server.seen()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_word_with_no_article_keeps_what_commons_gave_it() {
+        // The summary 404s, which is a permanent error, and must not take the
+        // namespace hits down with it.
+        let server = mock(&[("generator=search", COMMONS)]).await;
+        let photos = wikimedia(&server, "manner").await;
+        assert_eq!(photos.len(), 2, "{photos:?}");
+        assert!(server.asked_for("/summary/manner"));
+    }
+
+    #[tokio::test]
+    async fn a_disambiguation_article_never_reaches_the_file_page() {
+        let server = mock(&[
+            ("generator=search", COMMONS),
+            (
+                "/summary/",
+                r#"{"type":"disambiguation","title":"Instance",
+                    "originalimage":{"source":"https://upload.wikimedia.org/wikipedia/commons/3/3f/Disambig.jpg",
+                                     "width":900,"height":900}}"#,
+            ),
+            ("titles=File", FILE_PAGE),
+        ])
+        .await;
+        let photos = wikimedia(&server, "instance").await;
+        assert_eq!(photos.len(), 2, "{photos:?}");
+        assert!(!server.asked_for("titles=File"), "{:?}", server.seen());
+    }
+
+    #[tokio::test]
+    async fn a_lead_image_hosted_outside_commons_is_not_a_candidate() {
+        let server = mock(&[
+            ("generator=search", COMMONS),
+            (
+                "/summary/",
+                r#"{"type":"standard","title":"Strength",
+                    "originalimage":{"source":"https://upload.wikimedia.org/wikipedia/en/4/44/Fair_use.jpg",
+                                     "width":900,"height":900}}"#,
+            ),
+            ("titles=File", FILE_PAGE),
+        ])
+        .await;
+        let photos = wikimedia(&server, "strength").await;
+        assert_eq!(photos.len(), 2, "{photos:?}");
+        assert!(!server.asked_for("titles=File"), "{:?}", server.seen());
+    }
+
+    #[tokio::test]
+    async fn a_lead_image_whose_file_page_states_no_licence_is_dropped() {
+        let server = mock(&[
+            ("generator=search", COMMONS),
+            ("/summary/", SUMMARY),
+            (
+                "titles=File",
+                r#"{"query": {"pages": [
+                    {"title": "File:Lake Serene.jpg",
+                     "imageinfo": [{"thumburl": "https://upload.wikimedia.org/w/thumb/960px-Lake_Serene.jpg",
+                                    "extmetadata": {}}]}
+                ]}}"#,
+            ),
+        ])
+        .await;
+        let photos = wikimedia(&server, "desire").await;
+        assert_eq!(photos.len(), 2, "{photos:?}");
+        assert!(photos
+            .iter()
+            .all(|photo| !photo.source_ref.contains(ARTICLE_LEAD)));
+    }
+
+    #[tokio::test]
+    async fn the_article_lead_is_not_recorded_twice() {
+        // The namespace search already found the very file the article leads
+        // with; one candidate, not two.
+        let server = mock(&[
+            (
+                "generator=search",
+                r#"{"query": {"pages": [
+                    {"title": "File:Lake Serene.jpg",
+                     "imageinfo": [{"thumburl": "https://upload.wikimedia.org/w/thumb/960px-Lake_Serene.jpg",
+                                    "extmetadata": {"LicenseShortName": {"value": "CC BY-SA 4.0"}}}]}
+                ]}}"#,
+            ),
+            ("/summary/", SUMMARY),
+            ("titles=File", FILE_PAGE),
+        ])
+        .await;
+        let photos = wikimedia(&server, "serene").await;
+        assert_eq!(photos.len(), 1, "{photos:?}");
+        assert_eq!(photos[0].source_ref, "wikimedia:File:Lake Serene.jpg");
     }
 }

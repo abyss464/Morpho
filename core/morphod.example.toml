@@ -57,6 +57,13 @@ wiktionary_url = "https://en.wiktionary.org/w/api.php"
 # on every candidate.
 wikimedia_url = "https://commons.wikimedia.org/w/api.php"
 
+# English Wikipedia REST summary. The second image strategy, used only when the
+# Commons File-namespace search comes up short: abstract and common words own no
+# file named after them but do own an article whose lead image depicts them.
+# The picture is still a Commons asset and its licence is still read from
+# Commons, so nothing ships without terms.
+wikipedia_url = "https://en.wikipedia.org/api/rest_v1/page/summary"
+
 # Openverse: keyless images, filtered to commercially reusable and modifiable
 # licences. Anonymous quota is low, so a 429 parks the whole lane.
 openverse_url = "https://api.openverse.org/v1/images/"

@@ -40,6 +40,10 @@ pub struct SourcesConfig {
     pub wiktionary_url: WiktionaryUrl,
     /// Wikimedia Commons MediaWiki API endpoint (keyless image source).
     pub wikimedia_url: WikimediaUrl,
+    /// English Wikipedia REST summary base, used for the article-lead image
+    /// strategy. A different endpoint from `wikimedia_url`: the summary lives
+    /// on the language wiki, the licence lives on Commons.
+    pub wikipedia_url: WikipediaUrl,
     /// Openverse image search endpoint (keyless image source).
     pub openverse_url: OpenverseUrl,
     /// Tatoeba sentence search endpoint (keyless example source).
@@ -67,6 +71,7 @@ impl Default for SourcesConfig {
             freedict_url: FreedictUrl::default(),
             wiktionary_url: WiktionaryUrl::default(),
             wikimedia_url: WikimediaUrl::default(),
+            wikipedia_url: WikipediaUrl::default(),
             openverse_url: OpenverseUrl::default(),
             tatoeba_url: TatoebaUrl::default(),
             wordnet_dir: None,
@@ -117,6 +122,16 @@ defaulted_string!(
     WikimediaUrl,
     "https://commons.wikimedia.org/w/api.php",
     "Wikimedia Commons MediaWiki API endpoint."
+);
+defaulted_string!(
+    WikipediaUrl,
+    "https://en.wikipedia.org/api/rest_v1/page/summary",
+    "English Wikipedia REST summary base; the article title is appended as a \
+     path segment.\n\n\
+     This is the second image strategy: abstract and common words own no file \
+     in the Commons `File:` namespace but do own an article whose lead image \
+     depicts them. The picture itself still comes from Commons, which is where \
+     its licence is."
 );
 defaulted_string!(
     OpenverseUrl,
@@ -337,6 +352,7 @@ impl SourcesConfig {
             ("freedict", self.freedict_url.0.clone()),
             ("wiktionary", self.wiktionary_url.0.clone()),
             ("wikimedia", self.wikimedia_url.0.clone()),
+            ("wikipedia", self.wikipedia_url.0.clone()),
             ("openverse", self.openverse_url.0.clone()),
             ("tatoeba", self.tatoeba_url.0.clone()),
             (
@@ -546,6 +562,7 @@ mod tests {
         assert!(config.freedict_url.contains("dictionaryapi.dev"));
         assert!(config.wiktionary_url.contains("wiktionary.org"));
         assert!(config.wikimedia_url.contains("commons.wikimedia.org"));
+        assert!(config.wikipedia_url.contains("en.wikipedia.org"));
         assert!(config.openverse_url.contains("api.openverse.org"));
         assert!(config.tatoeba_url.contains("tatoeba.org"));
     }
@@ -728,6 +745,7 @@ mod tests {
                 "freedict",
                 "wiktionary",
                 "wikimedia",
+                "wikipedia",
                 "openverse",
                 "tatoeba",
                 "wordnet",
@@ -744,6 +762,7 @@ mod tests {
             "freedict",
             "wiktionary",
             "wikimedia",
+            "wikipedia",
             "openverse",
             "tatoeba",
         ] {

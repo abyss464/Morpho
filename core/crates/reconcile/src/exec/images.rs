@@ -60,6 +60,7 @@ impl Executor for FetchImagesExecutor {
             &self.context.sources.http,
             &self.context.sources.config,
             *source,
+            lemma,
             &query,
         )
         .await
