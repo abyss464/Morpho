@@ -126,7 +126,26 @@ impl Config {
 
         config.apply_env()?;
         config.resolve_adapters_root(path.as_deref());
+        config.absolutize_paths()?;
         Ok(config)
+    }
+
+    /// Adapter subprocesses run from `adapters_root`, not our cwd, so every
+    /// path handed across that boundary (media staging under `data_dir`,
+    /// release bundles under `releases_dir`) must be absolute. Anchor relative
+    /// values to the launch cwd once, at load time.
+    fn absolutize_paths(&mut self) -> Result<()> {
+        let cwd = std::env::current_dir().context("resolving working directory")?;
+        for dir in [
+            &mut self.data_dir,
+            &mut self.releases_dir,
+            &mut self.admin_ui_dist,
+        ] {
+            if dir.is_relative() {
+                *dir = cwd.join(&*dir);
+            }
+        }
+        Ok(())
     }
 
     /// Pin the directory adapter subprocesses run from (ruling #17).
