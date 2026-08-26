@@ -24,8 +24,11 @@ import dev.morpho.ui.designsystem.component.ModePips
 import dev.morpho.ui.designsystem.component.ProgressRing
 import dev.morpho.ui.designsystem.component.QuizImageGrid
 import dev.morpho.ui.designsystem.component.QuizTextOptions
+import dev.morpho.ui.designsystem.component.RetryHelpCard
+import dev.morpho.ui.designsystem.component.SenseDetail
 import dev.morpho.ui.designsystem.component.SentenceCard
 import dev.morpho.ui.designsystem.component.TextOption
+import androidx.compose.ui.unit.dp
 import dev.morpho.ui.designsystem.component.WordHeader
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 import org.junit.Rule
@@ -172,6 +175,44 @@ class DesignSystemSmokeTest {
             .performTouchInput { longClick(onTheAnchor()) }
         // The popover is its own window, so assert on existence rather than display.
         composeRule.onNodeWithText("错综复杂的").assertExists()
+    }
+
+    /**
+     * The wrong-answer card must teach the *whole* word on a miss: the word itself, its
+     * pronunciation button, and every selected sense — not just the primary gloss. A
+     * generous height keeps all senses on screen for the assertion instead of scrolling
+     * the last one out of view.
+     */
+    @Test
+    fun retryHelpCardShowsWordAndEverySense() {
+        val senses = listOf(
+            SenseDetail("adj", "kind and generous towards other people", true, "audio/def1.ogg"),
+            SenseDetail("adj", "wishing to do good rather than to gain", false, "audio/def2.ogg"),
+            SenseDetail("noun", "a benevolent person or influence", false, "audio/def3.ogg"),
+        )
+        var played = false
+        composeRule.setContent {
+            MorphoTheme {
+                Surface {
+                    RetryHelpCard(
+                        hint = "Not this one. Read the meaning, then pick again.",
+                        word = "benevolent",
+                        phonetic = "/bəˈnevələnt/",
+                        senses = senses,
+                        onPlayWord = { played = true },
+                        maxHeight = 2000.dp,
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("benevolent").assertIsDisplayed()
+        senses.forEach { sense ->
+            composeRule.onNodeWithText(sense.definition).assertIsDisplayed()
+        }
+        composeRule
+            .onNodeWithContentDescription("Play pronunciation of benevolent")
+            .performClick()
+        assert(played) { "the card's word audio button should play the word" }
     }
 
     @Test

@@ -22,6 +22,7 @@ import dev.morpho.ui.common.toWordDetail
 import dev.morpho.ui.designsystem.component.FeedbackSignal
 import dev.morpho.ui.designsystem.component.GroupSegmentState
 import dev.morpho.ui.designsystem.component.ImageOption
+import dev.morpho.ui.designsystem.component.SenseDetail
 import dev.morpho.ui.designsystem.component.TextOption
 import dev.morpho.ui.designsystem.component.WordDetail
 import kotlinx.coroutines.delay
@@ -45,7 +46,12 @@ data class QuestionUi(
     val imageOptions: List<ImageOption> = emptyList(),
     val textOptions: List<TextOption> = emptyList(),
     val correctIndex: Int,
-    val primaryDefinition: String,
+    /**
+     * Every selected sense of the answer word, in release order. Feeds the wrong-answer
+     * help card ([dev.morpho.ui.designsystem.component.RetryHelpCard]): a miss shows the
+     * word's full meaning, not just its primary gloss.
+     */
+    val senses: List<SenseDetail> = emptyList(),
 )
 
 data class LearnUiState(
@@ -199,7 +205,14 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
                 emptyList()
             },
             correctIndex = correctIndex,
-            primaryDefinition = answer.primarySense.definition,
+            senses = answer.senses.map { sense ->
+                SenseDetail(
+                    pos = sense.pos,
+                    definition = sense.definition,
+                    isPrimary = sense.isPrimary,
+                    audioFile = sense.defAudioFile,
+                )
+            },
         )
     }
 

@@ -5,13 +5,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -29,7 +27,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,8 +45,10 @@ import dev.morpho.ui.designsystem.component.QuizImageDefGrid
 import dev.morpho.ui.designsystem.component.QuizImageGrid
 import dev.morpho.ui.designsystem.component.QuizLayout
 import dev.morpho.ui.designsystem.component.QuizTextOptions
+import dev.morpho.ui.designsystem.component.RetryHelpCard
 import dev.morpho.ui.designsystem.component.ScreenPreviewBox
 import dev.morpho.ui.designsystem.component.ScreenPreviews
+import dev.morpho.ui.designsystem.component.SenseDetail
 import dev.morpho.ui.designsystem.component.SentenceCard
 import dev.morpho.ui.designsystem.component.TextOption
 import dev.morpho.ui.designsystem.component.WordHeader
@@ -209,17 +208,25 @@ private fun QuestionBody(
                 }
             }
         },
-        // Wrong answer: the English definition appears as help and the user must pick
-        // again before moving on (README Part 1, "选错 -> 显示英文释义辅助"). It lands
-        // above the options, in the slack the prompt was using, so the grid does not
-        // move out from under the thumb that just tapped it.
+        // Wrong answer: a rich help card appears and the user must pick again before
+        // moving on (README Part 1, "选错 -> 显示英文释义辅助"). It teaches on the miss —
+        // the word, its pronunciation and every sense — not just the primary gloss. It
+        // lands above the options, in the slack the prompt was using, so the grid does
+        // not move out from under the thumb that just tapped it.
         banner = {
             AnimatedVisibility(
                 visible = state.mustRetry,
                 enter = fadeIn(tween(MorphoTheme.durations.fade)),
                 exit = fadeOut(tween(MorphoTheme.durations.fade)),
             ) {
-                RetryHint(definition = question.primaryDefinition)
+                RetryHelpCard(
+                    hint = stringResource(R.string.learn_wrong_hint),
+                    word = question.word,
+                    phonetic = question.phonetic,
+                    senses = question.senses,
+                    onPlayWord = { onPlay(question.wordAudioFile) },
+                    playing = state.nowPlayingFile == question.wordAudioFile,
+                )
             }
         },
         answers = { space ->
@@ -294,35 +301,6 @@ private fun Stimulus(
     }
 }
 
-/**
- * Deliberately *not* glossed. This is an error surface with its own colour system, and a
- * third hue inside a red container reads as noise rather than as an affordance. Nothing
- * is lost by it: a wrong answer always opens the detail sheet once the retry lands, and
- * the same definition is anchored there.
- */
-@Composable
-private fun RetryHint(definition: String) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MorphoTheme.radii.shapeMd)
-            .background(MaterialTheme.colorScheme.errorContainer)
-            .padding(MorphoTheme.spacing.md),
-        verticalArrangement = Arrangement.spacedBy(MorphoTheme.spacing.xxs),
-    ) {
-        Text(
-            text = stringResource(R.string.learn_wrong_hint),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onErrorContainer,
-        )
-        Text(
-            text = definition,
-            style = MorphoTheme.reading.definition,
-            color = MaterialTheme.colorScheme.onErrorContainer,
-        )
-    }
-}
-
 @Composable
 private fun LoadingBox(modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -362,7 +340,20 @@ private val previewQuestionMode1 = QuestionUi(
     sentenceAudioFile = "audio/s.ogg",
     imageOptions = previewImageOptions,
     correctIndex = 0,
-    primaryDefinition = "kind and generous towards other people",
+    senses = listOf(
+        SenseDetail(
+            "adj",
+            "kind and generous towards other people, especially those with less power",
+            true,
+            "audio/benevolent-def1.ogg",
+        ),
+        SenseDetail(
+            "adj",
+            "wishing to do good and to help, rather than to gain something",
+            false,
+            "audio/benevolent-def2.ogg",
+        ),
+    ),
 )
 
 @ScreenPreviews
