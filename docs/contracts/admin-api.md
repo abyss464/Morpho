@@ -22,6 +22,7 @@
 > 15. `releases` gains a `word_count` column (migration); `Release.word_count` reads it, not the audit log.
 > 16. An empty release passing all gates is VALID (dependency closure may legitimately empty the cut); UI warns, never blocks.
 > 17. Adapter invocation must be cwd-independent: morphod resolves the adapters directory from config (`adapters_root`, default = repo root relative to the config file), and `morphod status` + startup logs report each adapter's availability.
+> 18. **Keyless real content sources** (owner's original design listed Wikimedia Commons): image sources gain `wikimedia` and `openverse` (no credentials, license metadata recorded per candidate); example sources gain `freedict` (mined from the same Free Dictionary payload as definitions) and `tatoeba`. Priority: keyed stock sources when configured, else wikimedia → openverse → sdxl fallback; examples manual > exam_corpus > freedict > tatoeba > llm. admin-ui's `ImageSource`/`ExampleSource` unions in types.ts must gain the new values (admin-side task).
 
 Base path `/api`. JSON everywhere. Errors: `{"error": {"code": "string", "message": "string"}}` with proper HTTP status. Pagination: `?page=1&page_size=50` → `{"items": [...], "total": n}`. All mutations write an `events` row and return the updated resource. IDs are integers unless noted.
 

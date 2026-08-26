@@ -92,7 +92,7 @@ CREATE TABLE example_candidates (
     hl_start     INTEGER NOT NULL,            -- UTF-8 byte offsets into the CANONICALIZED text
     hl_end       INTEGER NOT NULL,            -- (stored text is canonicalized; fetchers must
                                               --  compute offsets after canonicalization)
-    source       TEXT NOT NULL CHECK (source IN ('exam_corpus','llm','manual')),
+    source       TEXT NOT NULL CHECK (source IN ('exam_corpus','freedict','tatoeba','llm','manual')),
     source_ref   TEXT,
     status       TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available','rejected')),
     auto_score   REAL, score_detail TEXT, scorer_ver TEXT,
@@ -125,7 +125,7 @@ CREATE TABLE image_candidates (
     pos          TEXT,                        -- optional sense hint
     file_hash    TEXT NOT NULL REFERENCES media_files(file_hash),
     width        INTEGER, height INTEGER,
-    source       TEXT NOT NULL CHECK (source IN ('unsplash','pexels','pixabay','sdxl','manual')),
+    source       TEXT NOT NULL CHECK (source IN ('unsplash','pexels','pixabay','wikimedia','openverse','sdxl','manual')),
     source_ref   TEXT,                        -- photo id / {prompt,seed,model} JSON / note
     license      TEXT,
     query_used   TEXT,
@@ -333,6 +333,9 @@ INSERT OR IGNORE INTO rate_limits VALUES
     ('unsplash', 2, 45.0, 4),
     ('pexels', 2, 180.0, 4),
     ('pixabay', 2, 90.0, 4),
+    ('wikimedia', 2, 60.0, 4),
+    ('openverse', 2, 50.0, 4),
+    ('tatoeba', 2, 60.0, 4),
     ('sdxl', 1, 6.0, 1),
     ('edge_tts', 4, 240.0, 8),
     ('llm', 2, 30.0, 4),
