@@ -75,6 +75,13 @@ CLIP need the ComfyUI venv: `~/Code/vendor/ComfyUI/.venv/bin/python`.
 - **Bulk-approve everything ready:** `python3 ops/bulk_approve.py` — approves every
   enabled definition selection, example slot, and image selection for active
   words. Safe to re-run; approves only unapproved rows.
+- **Let a scorer bump actually take effect:** `python3 ops/unapprove_auto.py
+  [definition|example|image ...]`. Approval implies a pin and a pinned slot is
+  untouchable by auto-selection, so after a `bulk_approve.py` run the library is
+  frozen: bumping `SCORER_ALGO_VER` rescores everything and moves nothing.
+  Un-approving an `auto` slot releases the pin approval put there (a human
+  override keeps its own), the next sweep re-selects, then re-run
+  `bulk_approve.py`. Defaults to definitions.
 - **Upgrade example sentences from subtitles:** `ops/mine_subs.py` streams the
   corpus and writes per-lemma top-K sentences to a JSON; a follow-up step mints
   them as `manual` example candidates and selects slot 1 (see release 1.4 notes).

@@ -42,8 +42,8 @@ pub use plan::{PlanGroupRow, PlanWordRow, WritePlan};
 pub use readiness::{ApplyReadiness, ReadinessRow};
 pub use release::RecordRelease;
 pub use selections::{
-    ApplyAutoSelections, ApplyScores, AutoSelection, MintDefinitionCandidate, ScoreUpdate,
-    SetApproval, SetSelection,
+    ApplyAutoSelections, ApplyScores, AutoSelection, MintDefinitionCandidate, PrimaryMove,
+    ReconcilePrimaries, ScoreUpdate, SetApproval, SetSelection,
 };
 pub use tts::RecordTtsAsset;
 pub use words::{CreateWord, ImportStats, ImportWords, SetAuxStatus, SetEtymology, SetGloss};
@@ -77,6 +77,8 @@ pub enum WriteOp {
     SetApproval(SetApproval),
     /// Move `is_primary` to one part of speech.
     SetPrimarySense { word_id: i64, pos: String },
+    /// Recompute `is_primary` for words whose evidence has moved on.
+    ReconcilePrimaries(ReconcilePrimaries),
     /// Enable or disable one sense slot.
     SetSlotEnabled {
         word_id: i64,
@@ -303,6 +305,7 @@ pub(crate) fn apply_op(op: WriteOp, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResu
         WriteOp::SetPrimarySense { word_id, pos } => {
             selections::set_primary_sense(word_id, &pos, ctx)
         }
+        WriteOp::ReconcilePrimaries(req) => selections::reconcile_primaries(req, ctx),
         WriteOp::SetSlotEnabled {
             word_id,
             pos,

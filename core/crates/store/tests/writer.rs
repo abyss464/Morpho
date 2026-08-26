@@ -13,8 +13,8 @@ use morpho_domain::types::{
     ImageSource, Role, SelectedBy, SlotRef, WordImport,
 };
 use morpho_store::ops::{
-    CreateWord, IngestImages, MintDefinitionCandidate, OovResolution, RecordDefExtraction,
-    SetApproval, SetSelection, UpsertJobState,
+    CreateWord, IngestImages, MintDefinitionCandidate, OovResolution, PrimaryMove,
+    ReconcilePrimaries, RecordDefExtraction, SetApproval, SetSelection, UpsertJobState,
 };
 use morpho_store::{Store, StoreConfig, StoreError, WriteOp};
 
@@ -612,6 +612,213 @@ async fn changing_the_selected_candidate_invalidates_approval() {
         )
         .await,
         1
+    );
+}
+
+/// Rule 6: a primary the reconciler picked follows the evidence, a primary an
+/// editor picked does not move, and a decision computed against a stale
+/// snapshot is dropped rather than applied.
+#[tokio::test]
+async fn a_recomputed_primary_moves_only_what_the_reconciler_chose() {
+    let (_dir, store) = fixture();
+
+    // Two words, each with a verb slot that took `is_primary` simply by
+    // arriving first, and a noun slot the evidence actually points at.
+    let mut ids = Vec::new();
+    for (lemma, verb_by) in [("attorney", SelectedBy::Auto), ("brick", SelectedBy::Human)] {
+        let word_id = seed_word(&store, lemma, Role::Target).await;
+        for (pos, text, selected_by) in [
+            ("verb", "to act as one", verb_by),
+            ("noun", "one who acts", SelectedBy::Auto),
+        ] {
+            let cand_id = store
+                .write(
+                    Actor::Cli,
+                    WriteOp::mint_definition(word_id, pos, text, DefinitionSource::Freedict),
+                )
+                .await
+                .unwrap()
+                .result
+                .def_cand_id()
+                .unwrap();
+            store
+                .write(
+                    Actor::Reconciler,
+                    WriteOp::select(
+                        SlotRef::Definition {
+                            word_id,
+                            pos: pos.into(),
+                        },
+                        cand_id,
+                        selected_by,
+                    ),
+                )
+                .await
+                .unwrap();
+        }
+        ids.push(word_id);
+    }
+    let primary = |word_id: i64| {
+        let store = store.clone();
+        async move {
+            store
+                .read(move |conn| {
+                    Ok(conn.query_row(
+                        "SELECT pos FROM definition_selections
+                         WHERE word_id = ?1 AND is_primary = 1",
+                        rusqlite::params![word_id],
+                        |row| row.get::<_, String>(0),
+                    )?)
+                })
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(primary(ids[0]).await, "verb", "first slot took the primary");
+    assert_eq!(primary(ids[1]).await, "verb");
+
+    let outcome = store
+        .write(
+            Actor::Reconciler,
+            WriteOp::ReconcilePrimaries(ReconcilePrimaries {
+                moves: vec![
+                    PrimaryMove {
+                        word_id: ids[0],
+                        pos: "noun".into(),
+                        expected_pos: Some("verb".into()),
+                    },
+                    PrimaryMove {
+                        word_id: ids[1],
+                        pos: "noun".into(),
+                        expected_pos: Some("verb".into()),
+                    },
+                    // Stale: nothing holds `adj`, so this one is dropped.
+                    PrimaryMove {
+                        word_id: ids[0],
+                        pos: "verb".into(),
+                        expected_pos: Some("adj".into()),
+                    },
+                ],
+            }),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        outcome.result,
+        morpho_store::WriteResult::Selected {
+            applied: 1,
+            skipped: 2
+        }
+    ));
+    assert_eq!(primary(ids[0]).await, "noun", "the reconciler's own guess");
+    assert_eq!(primary(ids[1]).await, "verb", "an editor's choice stands");
+    assert_eq!(
+        count(
+            &store,
+            "SELECT COUNT(*) FROM events WHERE action = 'primary_moved'"
+        )
+        .await,
+        1
+    );
+}
+
+/// Approval implies a pin, so withdrawing it withdraws that pin — otherwise an
+/// approved library is frozen: rule 4 never touches a pinned slot, and a
+/// `scorer_ver` bump would rescore everything and move nothing.
+#[tokio::test]
+async fn unapproving_an_automatic_slot_hands_it_back_to_the_selector() {
+    let (_dir, store) = fixture();
+    let word_id = seed_word(&store, "resource", Role::Target).await;
+    let slot = SlotRef::Definition {
+        word_id,
+        pos: "noun".into(),
+    };
+    let cand_id = store
+        .write(
+            Actor::Cli,
+            WriteOp::mint_definition(word_id, "noun", "a supply", DefinitionSource::Freedict),
+        )
+        .await
+        .unwrap()
+        .result
+        .def_cand_id()
+        .unwrap();
+    store
+        .write(
+            Actor::Reconciler,
+            WriteOp::select(slot.clone(), cand_id, SelectedBy::Auto),
+        )
+        .await
+        .unwrap();
+    store
+        .write(Actor::admin("abyss"), WriteOp::approve(slot.clone()))
+        .await
+        .unwrap();
+    assert_eq!(
+        count(&store, "SELECT pinned FROM definition_selections").await,
+        1,
+        "approval implies a pin"
+    );
+
+    store
+        .write(Actor::admin("abyss"), WriteOp::unapprove(slot))
+        .await
+        .unwrap();
+    assert_eq!(
+        count(
+            &store,
+            "SELECT approved + pinned FROM definition_selections"
+        )
+        .await,
+        0,
+        "the pin approval put there goes with it"
+    );
+}
+
+/// …but only that pin. A human who chose the content pinned it themselves, and
+/// changing their mind about approving it is not changing their mind about the
+/// choice.
+#[tokio::test]
+async fn unapproving_a_human_choice_leaves_their_pin_alone() {
+    let (_dir, store) = fixture();
+    let word_id = seed_word(&store, "candid", Role::Target).await;
+    let slot = SlotRef::Definition {
+        word_id,
+        pos: "adj".into(),
+    };
+    let cand_id = store
+        .write(
+            Actor::Cli,
+            WriteOp::mint_definition(word_id, "adj", "frank and open", DefinitionSource::Manual),
+        )
+        .await
+        .unwrap()
+        .result
+        .def_cand_id()
+        .unwrap();
+    store
+        .write(
+            Actor::admin("abyss"),
+            WriteOp::select(slot.clone(), cand_id, SelectedBy::Human),
+        )
+        .await
+        .unwrap();
+    store
+        .write(Actor::admin("abyss"), WriteOp::approve(slot.clone()))
+        .await
+        .unwrap();
+    store
+        .write(Actor::admin("abyss"), WriteOp::unapprove(slot))
+        .await
+        .unwrap();
+    assert_eq!(
+        count(&store, "SELECT approved FROM definition_selections").await,
+        0
+    );
+    assert_eq!(
+        count(&store, "SELECT pinned FROM definition_selections").await,
+        1,
+        "a human override stays pinned"
     );
 }
 

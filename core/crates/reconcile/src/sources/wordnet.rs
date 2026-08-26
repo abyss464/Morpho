@@ -70,6 +70,27 @@ impl WnPos {
             _ => None,
         }
     }
+
+    /// The `ss_type` digit a sense key carries: `word%2:35:00::` is a verb.
+    fn from_sense_key_digit(c: char) -> Option<Self> {
+        match c {
+            '1' => Some(Self::Noun),
+            '2' => Some(Self::Verb),
+            // 3 is an adjective head, 5 a satellite.
+            '3' | '5' => Some(Self::Adj),
+            '4' => Some(Self::Adv),
+            _ => None,
+        }
+    }
+
+    /// Does WordNet model this part of speech at all?
+    ///
+    /// It models four. Prepositions, conjunctions and interjections are absent
+    /// from the database entirely, which is not the same as being rare — a
+    /// count of zero for `prep` is WordNet declining to answer.
+    pub fn models(pos: &str) -> bool {
+        Self::ALL.iter().any(|wn| wn.contract_pos().as_str() == pos)
+    }
 }
 
 /// One synset.
@@ -89,6 +110,10 @@ pub struct WordNet {
     /// Folded lemma → the synsets it belongs to, in sense order.
     index: HashMap<String, Vec<(WnPos, u64)>>,
     synsets: HashMap<(WnPos, u64), Synset>,
+    /// Folded lemma → how often the tagged corpora used it under each part of
+    /// speech, summed over that part of speech's senses. Read from
+    /// `cntlist.rev`; empty when the install ships without it.
+    tagged: HashMap<String, Vec<(WnPos, usize)>>,
 }
 
 /// How deep to climb the hypernym chain when deriving a cluster key.
@@ -128,9 +153,21 @@ impl WordNet {
                 format!("no WordNet data files under {}", dir.display()),
             ));
         }
+        // `cntlist.rev` is the only corpus-frequency evidence WordNet ships and
+        // the only one that separates "a word with many meanings" from "a word
+        // people actually use this way". An install without it still works; the
+        // selector falls back on counting synsets.
+        let counts = dir.join("cntlist.rev");
+        match std::fs::read_to_string(&counts) {
+            Ok(text) => db.parse_cntlist(&text),
+            Err(err) => {
+                tracing::warn!(path = %counts.display(), error = %err, "no WordNet sense-frequency counts; falling back to synset counts")
+            }
+        }
         tracing::info!(
             synsets = db.synsets.len(),
             lemmas = db.index.len(),
+            tagged = db.tagged.len(),
             "loaded WordNet"
         );
         Ok(db)
@@ -166,6 +203,32 @@ impl WordNet {
         }
     }
 
+    /// `cntlist.rev` lines: `sense_key sense_number tag_cnt`, where the sense
+    /// key is `lemma%ss_type:lex_filenum:lex_id:head_word:head_id`.
+    fn parse_cntlist(&mut self, text: &str) {
+        for line in text.lines() {
+            let mut fields = line.split_whitespace();
+            let Some(key) = fields.next() else { continue };
+            let Some(count) = fields.nth(1).and_then(|c| c.parse::<usize>().ok()) else {
+                continue;
+            };
+            let Some((lemma, rest)) = key.split_once('%') else {
+                continue;
+            };
+            let Some(pos) = rest.chars().next().and_then(WnPos::from_sense_key_digit) else {
+                continue;
+            };
+            let bucket = self.tagged.entry(lemma.to_lowercase()).or_default();
+            match bucket.iter_mut().find(|(seen, _)| *seen == pos) {
+                Some((_, total)) => *total += count,
+                None => bucket.push((pos, count)),
+            }
+        }
+        for bucket in self.tagged.values_mut() {
+            bucket.sort_by_key(|(pos, _)| *pos);
+        }
+    }
+
     fn parse_data(&mut self, pos: WnPos, text: &str) {
         for line in text.lines() {
             if line.starts_with("  ") || line.trim().is_empty() {
@@ -189,6 +252,43 @@ impl WordNet {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// How strongly one lemma belongs to each part of speech.
+    ///
+    /// This is the cross-part-of-speech evidence the selector needs to decide
+    /// which sense of a word is *the* sense. Counting harvested candidates
+    /// instead measures how talkative one dictionary was: the Free Dictionary
+    /// prints five noun senses for "dominant" (a gene, a note, a species…)
+    /// against three adjectives, which is how a word everybody uses as an
+    /// adjective ends up filed as a noun.
+    ///
+    /// The figure is how often the semantically tagged corpora used the lemma
+    /// that way, summed over that part of speech's senses. Where those counts
+    /// are missing the number of synsets stands in, and it is a much weaker
+    /// proxy: WordNet lists five verb senses of "angle" against three noun ones
+    /// because anglers and geometers both got a synset, while the corpora used
+    /// the noun twelve times and the verb twice.
+    ///
+    /// Absent from the result means absent from WordNet, which is not the same
+    /// as zero — see [`WnPos::models`].
+    pub fn pos_frequency(&self, lemma: &str) -> Vec<(Pos, usize)> {
+        let key = fold_lemma(lemma).replace(' ', "_");
+        if let Some(tagged) = self.tagged.get(&key) {
+            return tagged
+                .iter()
+                .map(|(pos, count)| (pos.contract_pos(), *count))
+                .collect();
+        }
+        let mut counts: std::collections::BTreeMap<WnPos, usize> =
+            std::collections::BTreeMap::new();
+        for synset in self.senses(lemma) {
+            *counts.entry(synset.pos).or_default() += 1;
+        }
+        counts
+            .into_iter()
+            .map(|(pos, count)| (pos.contract_pos(), count))
+            .collect()
     }
 
     /// Definition candidates for one lemma, capped and deduplicated.
@@ -460,6 +560,87 @@ quality a 1 0 1 0 00003553\n";
         assert!(db.definitions("benevolent", 5).is_empty());
         assert!(db.cluster_key("benevolent").is_none());
         assert!(db.similarity("benevolent", "serene").is_none());
+    }
+
+    /// A miniature of the two words that decide the shape of this signal.
+    fn frequency_fixture() -> WordNet {
+        let data = "\
+00000001 00 n 01 dominant 0 000 | the fifth note of a diatonic scale\n\
+00000002 00 a 01 dominant 0 000 | exercising influence or control\n\
+00000003 00 a 01 dominant 0 000 | most frequent or common\n\
+00000010 00 n 01 angle 0 000 | the space between two intersecting lines\n\
+00000011 00 n 01 angle 0 000 | a biased way of looking at something\n\
+00000012 00 v 01 angle 0 000 | to fish with a hook\n\
+00000013 00 v 01 angle 0 000 | to move or proceed at an angle\n\
+00000014 00 v 01 angle 0 000 | to seek indirectly\n";
+        let index = "\
+dominant n 1 0 1 0 00000001\n\
+dominant a 2 0 2 0 00000002 00000003\n\
+angle n 2 0 2 2 00000010 00000011\n\
+angle v 3 0 3 1 00000012 00000013 00000014\n";
+        let mut db = WordNet::default();
+        // The line's own `ss_type` decides the part of speech, so one pass over
+        // the fixture file every part of speech shares is enough.
+        db.parse_data(WnPos::Noun, data);
+        db.parse_index(index);
+        db
+    }
+
+    #[test]
+    fn synset_counts_stand_in_when_the_corpus_counts_are_missing() {
+        let db = frequency_fixture();
+        let counts = db.pos_frequency("dominant");
+        assert_eq!(counts, vec![(Pos::Noun, 1), (Pos::Adj, 2)]);
+        // A part of speech WordNet does not record is absent, not zero.
+        assert!(counts.iter().all(|(pos, _)| *pos != Pos::Verb));
+        assert!(db.pos_frequency("benevolent").is_empty());
+    }
+
+    /// The whole reason `cntlist.rev` is read at all: WordNet gives "angle"
+    /// more verb synsets than noun ones because anglers and geometers both got
+    /// one, and the tagged corpora say people mean the noun six times as often.
+    #[test]
+    fn corpus_counts_beat_synset_counts_where_they_disagree() {
+        let mut db = frequency_fixture();
+        db.parse_cntlist(
+            "angle%1:25:00:: 1 10\n\
+             angle%1:09:00:: 2 2\n\
+             angle%2:38:01:: 1 2\n",
+        );
+        assert_eq!(
+            db.pos_frequency("angle"),
+            vec![(Pos::Noun, 12), (Pos::Verb, 2)],
+            "senses of one part of speech are summed"
+        );
+        // A lemma the corpora never tagged still falls back to synset counts.
+        assert_eq!(
+            db.pos_frequency("dominant"),
+            vec![(Pos::Noun, 1), (Pos::Adj, 2)]
+        );
+    }
+
+    #[test]
+    fn adjective_satellites_count_as_adjectives_in_the_corpus_file() {
+        let mut db = WordNet::default();
+        db.parse_cntlist("calm%3:00:00:: 1 12\ncalm%5:00:00:composed:00 2 7\n");
+        assert_eq!(db.pos_frequency("calm"), vec![(Pos::Adj, 19)]);
+    }
+
+    #[test]
+    fn a_malformed_count_line_is_dropped_not_fatal() {
+        let mut db = WordNet::default();
+        db.parse_cntlist("garbage\nnopercent 1 2\nword%9:00:00:: 1 3\nword%1:00:00:: 1 x\n");
+        assert!(db.pos_frequency("word").is_empty());
+    }
+
+    #[test]
+    fn wordnet_knows_which_parts_of_speech_it_cannot_model() {
+        for pos in ["noun", "verb", "adj", "adv"] {
+            assert!(WnPos::models(pos));
+        }
+        for pos in ["prep", "conj", "interj", "phrase"] {
+            assert!(!WnPos::models(pos), "{pos} is absent from WordNet");
+        }
     }
 
     #[test]

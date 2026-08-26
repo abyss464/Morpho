@@ -1,16 +1,17 @@
 //! Candidate scoring (README Part 3 §"选择语义", rule 1).
 //!
 //! Scoring inputs are: readability against the live lexicon with a heavy
-//! out-of-scope penalty, a length window, source priors, part-of-speech /
-//! primary-sense match, and resolution for images. Everything is a pure
-//! function of already-materialized inputs, so a `scorer_ver` bump is the only
-//! thing that ever invalidates a score.
+//! out-of-scope penalty, a length window, source priors, how common a sense is,
+//! part-of-speech / primary-sense match, and resolution for images. Everything
+//! is a pure function of already-materialized inputs, so a `scorer_ver` bump is
+//! the only thing that ever invalidates a score.
 //!
 //! Scores live in `[0, 1]`. The breakdown is stored verbatim in `score_detail`
 //! so the console can explain a choice without re-deriving it.
 
 use serde::Serialize;
 
+use morpho_domain::canon::fold_lemma;
 use morpho_domain::types::{DefinitionSource, ExampleSource, ImageSource};
 use morpho_domain::version::SCORER_ALGO_VER;
 
@@ -277,8 +278,17 @@ pub struct ScoreDetail {
     pub length: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_prior: Option<f64>,
+    /// `1.0` for a clean definition, [`SELF_REFERENCE_FACTOR`] for one that
+    /// uses its own headword — a multiplier, not a component, so the total is
+    /// not the weighted sum of the fields above it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub self_reference: Option<f64>,
+    /// Where this sense sits in its source's list, 1-based.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sense_rank: Option<usize>,
+    /// What that position is worth. See [`sense_rank_prior`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sense_prior: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub highlight: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -296,34 +306,199 @@ pub struct ScoreDetail {
     pub strategy_penalty: Option<f64>,
 }
 
+// ---------------------------------------------------------------------------
+// Definitions
+// ---------------------------------------------------------------------------
+
+/// What is left of a definition that uses the word it defines.
+///
+/// A circular gloss teaches nothing — "resource: to supply with resources" is
+/// the card telling the learner to already know the answer — so it is a
+/// multiplier rather than a component: whatever else a self-referential
+/// candidate has going for it, any clean sibling in the same slot outranks it
+/// by a mile. It is not zero on purpose. A word whose every candidate is
+/// circular still gets *a* definition, because an imperfect sense beats an
+/// empty slot; the penalty only has to guarantee it is the last resort.
+pub const SELF_REFERENCE_FACTOR: f64 = 0.15;
+
+/// How fast a sense's weight falls as it moves down its dictionary's list.
+///
+/// Both sources order senses by how common they are — WordNet by tagged corpus
+/// frequency, the Free Dictionary editorially — so position in the list is the
+/// only frequency evidence available in-process. One step costs about a
+/// quarter of the component; by sense five it is worth 40% of sense one.
+pub const SENSE_RANK_DECAY: f64 = 0.35;
+
+/// Weight of the sense-commonality component in a definition's score.
+///
+/// It has to clear [`HYSTERESIS_DELTA`] across a couple of ranks or it would
+/// reorder the candidate list without ever moving a slot: rank 1 against rank 3
+/// is worth `0.25 * (1.0 - 0.588) ≈ 0.10`, twice the margin.
+const SENSE_WEIGHT: f64 = 0.25;
+
+/// Two ranks apart must actually move a slot, not merely reorder behind it.
+const _: () = assert!(SENSE_WEIGHT * 0.4 > HYSTERESIS_DELTA);
+
+/// How much a sense is worth for sitting at 1-based `rank` in its dictionary.
+///
+/// `None` — a manual or rewritten candidate, which has no list to sit in — is
+/// full marks: somebody chose it deliberately, which is stronger evidence than
+/// any position in a list.
+pub fn sense_rank_prior(rank: Option<usize>) -> f64 {
+    match rank {
+        None | Some(0) | Some(1) => 1.0,
+        Some(rank) => 1.0 / (1.0 + SENSE_RANK_DECAY * (rank - 1) as f64),
+    }
+}
+
+/// Whether `text` uses `lemma` itself, in any of the inflections English forms
+/// by suffixation.
+///
+/// Lemmatizing the definition would be the exact answer, and the cached
+/// extraction does exactly that — but it is a *separate* artifact that lands
+/// after the candidate does, so scoring it means scoring whatever the
+/// extraction happened to hold at the time. Reading the text directly makes the
+/// check a pure function of the candidate, which is what the `scorer_ver`
+/// contract promises. Generating the forms rather than stripping suffixes off
+/// the text also avoids the reverse error: "resourceful" is not "resource".
+pub fn is_self_referential(lemma: &str, text: &str) -> bool {
+    let text = text.to_lowercase();
+    inflections(lemma)
+        .iter()
+        .any(|form| contains_whole_word(&text, form))
+}
+
+/// The lemma plus the inflections regular English suffixation produces.
+///
+/// Irregulars ("go/went", "child/children") are deliberately absent: the point
+/// is to catch a gloss that repeats its own headword, and a dictionary that
+/// defines "go" as "went somewhere" is not the failure mode this exists for.
+/// Guessing wider would start punishing definitions that merely rhyme.
+fn inflections(lemma: &str) -> Vec<String> {
+    let lemma = fold_lemma(lemma);
+    if lemma.is_empty() {
+        return Vec::new();
+    }
+    let mut forms = vec![
+        lemma.clone(),
+        format!("{lemma}s"),
+        format!("{lemma}es"),
+        format!("{lemma}ed"),
+        format!("{lemma}d"),
+        format!("{lemma}ing"),
+    ];
+    let chars: Vec<char> = lemma.chars().collect();
+    let last = chars[chars.len() - 1];
+    // "carry" → "carries", "carried".
+    if last == 'y' && chars.len() > 1 && !is_vowel(chars[chars.len() - 2]) {
+        let stem: String = chars[..chars.len() - 1].iter().collect();
+        forms.push(format!("{stem}ies"));
+        forms.push(format!("{stem}ied"));
+    }
+    // "charge" → "charging", "charged" (the bare +d is already above).
+    if last == 'e' {
+        let stem: String = chars[..chars.len() - 1].iter().collect();
+        forms.push(format!("{stem}ing"));
+        forms.push(format!("{stem}ed"));
+    }
+    // "plan" → "planning", "planned": a final consonant after a single vowel
+    // after a consonant doubles. 'w', 'x' and 'y' never do.
+    if chars.len() >= 3
+        && !is_vowel(last)
+        && !matches!(last, 'w' | 'x' | 'y')
+        && is_vowel(chars[chars.len() - 2])
+        && !is_vowel(chars[chars.len() - 3])
+    {
+        forms.push(format!("{lemma}{last}ing"));
+        forms.push(format!("{lemma}{last}ed"));
+    }
+    forms
+}
+
+fn is_vowel(c: char) -> bool {
+    matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')
+}
+
+/// Does `needle` occur in `haystack` bounded by non-word characters?
+///
+/// Both sides are already lowercase. A "word character" here is anything
+/// alphanumeric, so "resourceful" does not contain "resource" and "re-source"
+/// does.
+fn contains_whole_word(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let bytes = haystack.as_bytes();
+    let mut from = 0usize;
+    while let Some(offset) = haystack[from..].find(needle) {
+        let start = from + offset;
+        let end = start + needle.len();
+        let before_ok = start == 0 || !is_word_byte(bytes[start - 1]);
+        let after_ok = end == bytes.len() || !is_word_byte(bytes[end]);
+        if before_ok && after_ok {
+            return true;
+        }
+        // Advance by one character, not one byte: the haystack is arbitrary
+        // UTF-8 and slicing mid-character would panic.
+        from = start
+            + haystack[start..]
+                .chars()
+                .next()
+                .map_or(needle.len(), char::len_utf8);
+        if from >= haystack.len() {
+            break;
+        }
+    }
+    false
+}
+
+fn is_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b >= 0x80
+}
+
 /// What a definition candidate looks like to the scorer.
 #[derive(Debug, Clone)]
 pub struct DefinitionFacts {
     pub source: DefinitionSource,
     pub coverage: TokenCoverage,
-    /// True when the definition uses the very word it defines.
+    /// True when the definition uses the very word it defines, in any
+    /// inflection. See [`is_self_referential`].
     pub self_referential: bool,
+    /// 1-based position of this sense in its source's list for this word and
+    /// part of speech, or `None` when there is no list (manual, rewrite).
+    pub sense_rank: Option<usize>,
 }
 
 /// Score one definition candidate.
 ///
-/// A definition exists to be *read*, so readability dominates; the length
-/// window and the source prior break ties between two readable options.
+/// A definition exists to be *read*, so readability leads; how common the sense
+/// is comes next, because a rare sense of a common word is a card the learner
+/// will never need; the length window and the source prior break the remaining
+/// ties. A circular gloss is multiplied down rather than docked, so it can only
+/// ever win a slot nothing else can fill.
 pub fn score_definition(facts: &DefinitionFacts) -> Scored {
     let readability = facts.coverage.readability();
     // 4–14 tokens: long enough to disambiguate, short enough to hold.
     let length = length_window(facts.coverage.total(), 4, 14);
     let prior = definition_prior(facts.source);
-    let self_reference = if facts.self_referential { 0.0 } else { 1.0 };
+    let sense = sense_rank_prior(facts.sense_rank);
+    let self_reference = if facts.self_referential {
+        SELF_REFERENCE_FACTOR
+    } else {
+        1.0
+    };
 
-    let total = 0.45 * readability + 0.18 * length + 0.25 * prior + 0.12 * self_reference;
+    let merit = 0.40 * readability + 0.14 * length + 0.21 * prior + SENSE_WEIGHT * sense;
+    let total = clamp(merit * self_reference);
     Scored {
-        score: clamp(total),
+        score: total,
         detail: ScoreDetail {
-            total: clamp(total),
+            total,
             readability: Some(readability),
             length: Some(length),
             source_prior: Some(prior),
+            sense_rank: facts.sense_rank,
+            sense_prior: Some(sense),
             self_reference: Some(self_reference),
             out_of_scope_tokens: Some(facts.coverage.out_of_scope),
             token_count: Some(facts.coverage.total()),
@@ -506,6 +681,7 @@ mod tests {
             source,
             coverage: coverage(6, 2, 0),
             self_referential: false,
+            sense_rank: Some(1),
         };
         let manual = score_definition(&facts(DefinitionSource::Manual)).score;
         let rewrite = score_definition(&facts(DefinitionSource::LlmRewrite)).score;
@@ -521,11 +697,13 @@ mod tests {
             source: DefinitionSource::Wordnet,
             coverage: coverage(8, 2, 0),
             self_referential: false,
+            sense_rank: Some(1),
         });
         let unreadable_manual = score_definition(&DefinitionFacts {
             source: DefinitionSource::Manual,
             coverage: coverage(5, 2, 3),
             self_referential: false,
+            sense_rank: Some(1),
         });
         assert!(readable_wordnet.score > unreadable_manual.score);
     }
@@ -536,10 +714,187 @@ mod tests {
             source: DefinitionSource::Freedict,
             coverage: coverage(6, 2, 0),
             self_referential: false,
+            sense_rank: Some(1),
         };
         let mut circular = base.clone();
         circular.self_referential = true;
         assert!(score_definition(&base).score > score_definition(&circular).score);
+    }
+
+    // -- self-reference, inflection-aware ----------------------------------
+
+    #[test]
+    fn a_definition_that_repeats_its_headword_is_caught_in_any_inflection() {
+        for (lemma, text) in [
+            ("resource", "To supply with resources."),
+            ("resource", "A resource of some kind."),
+            ("attorney", "To work as a legal attorney."),
+            ("charge", "The act of charging something."),
+            ("charge", "Having been charged already."),
+            ("carry", "One who carries a load."),
+            ("carry", "Carried from place to place."),
+            ("plan", "Planning done in advance."),
+            ("plan", "A thing that was planned."),
+            ("study", "Studies of a subject."),
+            ("Brick", "TO BUILD WITH BRICKS."),
+        ] {
+            assert!(
+                is_self_referential(lemma, text),
+                "{lemma:?} should be found in {text:?}"
+            );
+        }
+    }
+
+    /// The reverse error the generated-forms approach exists to avoid: a longer
+    /// word that merely starts with the lemma is a different word.
+    #[test]
+    fn a_word_that_merely_contains_the_lemma_is_not_self_reference() {
+        for (lemma, text) in [
+            ("resource", "Full of resourcefulness and wit."),
+            ("art", "A part of the whole."),
+            ("man", "Able to manage a household."),
+            ("cat", "A large catalogue of names."),
+            ("plan", "A flat surface; a plane."),
+            ("charge", "Someone in a large chariot."),
+        ] {
+            assert!(
+                !is_self_referential(lemma, text),
+                "{lemma:?} should not be found in {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn punctuation_and_hyphens_still_bound_a_whole_word() {
+        assert!(is_self_referential("case", "(law) A case, in short."));
+        assert!(is_self_referential("source", "To re-source a component."));
+        assert!(is_self_referential("bare", "Bare."));
+        assert!(!is_self_referential("", "anything at all"));
+        assert!(!is_self_referential("bare", ""));
+    }
+
+    /// The haystack is arbitrary UTF-8, so the scan must never slice a
+    /// character in half.
+    #[test]
+    fn a_non_ascii_definition_is_scanned_without_panicking() {
+        assert!(is_self_referential("cafe", "A café is a cafe of sorts."));
+        assert!(!is_self_referential("cafe", "Naïve façade — 咖啡馆."));
+    }
+
+    #[test]
+    fn a_circular_gloss_loses_to_any_clean_sibling() {
+        // The worst clean candidate in a slot still beats the best circular
+        // one: that is what makes the factor a veto rather than a nudge.
+        let circular_best = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Manual,
+            coverage: coverage(8, 2, 0),
+            self_referential: true,
+            sense_rank: Some(1),
+        });
+        let clean_worst = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Wordnet,
+            coverage: coverage(4, 0, 2),
+            self_referential: false,
+            sense_rank: Some(9),
+        });
+        assert!(
+            clean_worst.score > circular_best.score,
+            "{clean_worst:?} vs {circular_best:?}"
+        );
+        assert!(should_switch(Some(circular_best.score), clean_worst.score));
+    }
+
+    /// …and it is still worth more than nothing, so a word whose every
+    /// candidate is circular keeps a definition instead of an empty slot.
+    #[test]
+    fn a_circular_gloss_is_still_a_last_resort_rather_than_a_rejection() {
+        let scored = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Freedict,
+            coverage: coverage(6, 2, 0),
+            self_referential: true,
+            sense_rank: Some(1),
+        });
+        assert!(scored.score > 0.0);
+        assert_eq!(scored.detail.self_reference, Some(SELF_REFERENCE_FACTOR));
+    }
+
+    // -- sense commonality --------------------------------------------------
+
+    #[test]
+    fn the_sense_rank_prior_decays_and_never_reaches_zero() {
+        assert_eq!(sense_rank_prior(None), 1.0);
+        assert_eq!(sense_rank_prior(Some(1)), 1.0);
+        // A zero rank is a caller that does not know; treat it as the first.
+        assert_eq!(sense_rank_prior(Some(0)), 1.0);
+        for rank in 2..12 {
+            let here = sense_rank_prior(Some(rank));
+            assert!(here < sense_rank_prior(Some(rank - 1)));
+            assert!(here > 0.0);
+        }
+        assert!((sense_rank_prior(Some(2)) - 1.0 / 1.35).abs() < 1e-12);
+        assert!((sense_rank_prior(Some(5)) - 1.0 / 2.4).abs() < 1e-12);
+    }
+
+    /// "charm": the common noun sense sits first in the dictionary and "to make
+    /// music upon" sits well down the verb list. Equal on every other count,
+    /// the first sense has to win by more than the switching margin or the
+    /// obscure one would keep the slot it already holds.
+    #[test]
+    fn an_earlier_sense_takes_the_slot_off_a_later_one() {
+        let sense = |rank| {
+            score_definition(&DefinitionFacts {
+                source: DefinitionSource::Freedict,
+                coverage: coverage(8, 2, 0),
+                self_referential: false,
+                sense_rank: Some(rank),
+            })
+            .score
+        };
+        assert!(sense(1) > sense(2));
+        assert!(should_switch(Some(sense(3)), sense(1)));
+        assert!(should_switch(Some(sense(5)), sense(1)));
+    }
+
+    /// The prior is evidence, not a veto: a first sense nobody can read still
+    /// loses to a readable later one.
+    #[test]
+    fn readability_still_outweighs_the_sense_prior() {
+        let unreadable_first = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Freedict,
+            coverage: coverage(4, 0, 4),
+            self_referential: false,
+            sense_rank: Some(1),
+        });
+        let readable_fourth = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Freedict,
+            coverage: coverage(6, 2, 0),
+            self_referential: false,
+            sense_rank: Some(4),
+        });
+        assert!(readable_fourth.score > unreadable_first.score);
+    }
+
+    #[test]
+    fn the_breakdown_names_the_rank_it_used() {
+        let scored = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Freedict,
+            coverage: coverage(6, 2, 0),
+            self_referential: false,
+            sense_rank: Some(3),
+        });
+        let json: serde_json::Value = serde_json::from_str(&scored.detail_json()).unwrap();
+        assert_eq!(json["sense_rank"], 3);
+        assert!((json["sense_prior"].as_f64().unwrap() - sense_rank_prior(Some(3))).abs() < 1e-12);
+        // A candidate with no list to sit in says so by omission.
+        let manual = score_definition(&DefinitionFacts {
+            source: DefinitionSource::Manual,
+            coverage: coverage(6, 2, 0),
+            self_referential: false,
+            sense_rank: None,
+        });
+        let json: serde_json::Value = serde_json::from_str(&manual.detail_json()).unwrap();
+        assert!(json.get("sense_rank").is_none());
+        assert_eq!(json["sense_prior"], 1.0);
     }
 
     #[test]
@@ -670,6 +1025,7 @@ mod tests {
                 source: DefinitionSource::Manual,
                 coverage: coverage(8, 0, oos),
                 self_referential: oos % 2 == 0,
+                sense_rank: Some(oos),
             });
             assert!((0.0..=1.0).contains(&scored.score), "{scored:?}");
         }
@@ -689,6 +1045,7 @@ mod tests {
             source: DefinitionSource::Freedict,
             coverage: coverage(6, 2, 1),
             self_referential: false,
+            sense_rank: Some(2),
         });
         let parsed: serde_json::Value = serde_json::from_str(&scored.detail_json()).unwrap();
         assert!((parsed["total"].as_f64().unwrap() - scored.score).abs() < 1e-9);

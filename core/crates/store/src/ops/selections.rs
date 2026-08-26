@@ -73,6 +73,28 @@ pub struct ApplyAutoSelections {
     pub selections: Vec<AutoSelection>,
 }
 
+/// One recomputed primary sense.
+///
+/// `is_primary` is otherwise only ever set on a word's *first* selected sense,
+/// which makes it a fossil of whichever part of speech a source happened to
+/// deliver first. This is the path that corrects one, and like
+/// [`AutoSelection`] it carries what the rule saw so the write can drop a
+/// decision the world moved out from under.
+#[derive(Debug, Clone)]
+pub struct PrimaryMove {
+    pub word_id: i64,
+    /// The part of speech that should hold `is_primary`.
+    pub pos: String,
+    /// The part of speech the rule saw holding it.
+    pub expected_pos: Option<String>,
+}
+
+/// Recompute which sense of each word is the primary one.
+#[derive(Debug, Clone)]
+pub struct ReconcilePrimaries {
+    pub moves: Vec<PrimaryMove>,
+}
+
 /// One rescored candidate.
 #[derive(Debug, Clone)]
 pub struct ScoreUpdate {
@@ -623,10 +645,21 @@ pub(super) fn set_approval(req: SetApproval, ctx: &mut OpCtx<'_, '_>) -> Result<
                 .detail(serde_json::json!({ "slot": req.slot, "approved_hash": hash })),
         )?;
     } else {
+        // Approval implied the pin, so withdrawing it withdraws the pin — but
+        // only the pin approval put there. `selected_by` says who decided:
+        // `auto` means the reconciler filled this slot and approval was the
+        // only thing holding it still, so releasing it hands the slot back to
+        // rule 3. `human` means somebody chose this content on purpose, and
+        // that pin outlives their approval of it.
+        //
+        // Without this an approved library is frozen: every slot is pinned,
+        // rule 4 makes a pinned slot untouchable, and a `scorer_ver` bump
+        // rescores twenty thousand candidates that can never move anything.
         let changed = match &req.slot {
             SlotRef::Definition { word_id, pos } => ctx.tx.execute(
                 "UPDATE definition_selections
                  SET approved = 0, approved_hash = NULL, approved_by = NULL, approved_at = NULL,
+                     pinned = CASE WHEN selected_by = 'auto' THEN 0 ELSE pinned END,
                      updated_at = ?1
                  WHERE word_id = ?2 AND pos = ?3",
                 rusqlite::params![ctx.now, word_id, pos],
@@ -634,6 +667,7 @@ pub(super) fn set_approval(req: SetApproval, ctx: &mut OpCtx<'_, '_>) -> Result<
             SlotRef::Example { word_id, slot } => ctx.tx.execute(
                 "UPDATE example_selections
                  SET approved = 0, approved_hash = NULL, approved_by = NULL, approved_at = NULL,
+                     pinned = CASE WHEN selected_by = 'auto' THEN 0 ELSE pinned END,
                      updated_at = ?1
                  WHERE word_id = ?2 AND slot = ?3",
                 rusqlite::params![ctx.now, word_id, slot],
@@ -641,6 +675,7 @@ pub(super) fn set_approval(req: SetApproval, ctx: &mut OpCtx<'_, '_>) -> Result<
             SlotRef::Image { word_id } => ctx.tx.execute(
                 "UPDATE image_selections
                  SET approved = 0, approved_hash = NULL, approved_by = NULL, approved_at = NULL,
+                     pinned = CASE WHEN selected_by = 'auto' THEN 0 ELSE pinned END,
                      updated_at = ?1
                  WHERE word_id = ?2",
                 rusqlite::params![ctx.now, word_id],
@@ -720,6 +755,54 @@ pub(super) fn set_primary_sense(
     ctx.touch(EntityType::DefinitionSelection, format!("{word_id}:{pos}"));
     ctx.touch(EntityType::Word, word_id.to_string());
     Ok(WriteResult::Unit)
+}
+
+/// Move `is_primary` onto the part of speech the evidence now points at.
+///
+/// The guards are the point of the operation. A word's primary sense is
+/// editorial territory, and the reconciler is only allowed to correct one it
+/// picked itself:
+///
+/// * `expected_pos` must still hold `is_primary` — the same optimistic
+///   concurrency [`AutoSelection`] uses, so a decision computed against a stale
+///   snapshot is dropped rather than applied;
+/// * the incumbent primary must not be a slot a human chose. Pinning protects
+///   *what fills* a slot, and every slot in an approved library is pinned, so
+///   the pin says nothing here; `selected_by` says who decided.
+///
+/// The caller filters out words whose primary a human moved by hand — that
+/// lives in the audit log, which the write side has no cheap index for.
+pub(super) fn reconcile_primaries(
+    req: ReconcilePrimaries,
+    ctx: &mut OpCtx<'_, '_>,
+) -> Result<WriteResult> {
+    let mut applied = 0usize;
+    let mut skipped = 0usize;
+    for mv in req.moves {
+        let current: Option<(String, String)> = ctx
+            .tx
+            .query_row(
+                "SELECT pos, selected_by FROM definition_selections
+                 WHERE word_id = ?1 AND is_primary = 1",
+                rusqlite::params![mv.word_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        if current.as_ref().map(|(pos, _)| pos.clone()) != mv.expected_pos {
+            skipped += 1;
+            continue;
+        }
+        if current
+            .as_ref()
+            .is_some_and(|(_, by)| by == SelectedBy::Human.as_str())
+        {
+            skipped += 1;
+            continue;
+        }
+        set_primary_sense(mv.word_id, &mv.pos, ctx)?;
+        applied += 1;
+    }
+    Ok(WriteResult::Selected { applied, skipped })
 }
 
 /// Enable or disable one sense slot without changing what it points at.

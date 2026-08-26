@@ -6,7 +6,11 @@
 //!    hysteresis margin;
 //! 4. a pinned slot is never touched;
 //! 5. the first sense a word gets is marked primary, chosen by the strongest
-//!    frequency evidence available.
+//!    frequency evidence available;
+//! 6. a primary the reconciler picked moves when that evidence does — an
+//!    `is_primary` set on a word's first selected sense is otherwise a fossil
+//!    of whichever part of speech a source happened to deliver first. A primary
+//!    an editor placed is never moved.
 //!
 //! A word's three example slots are the one place where a slot is not an
 //! independent race: `UNIQUE (word_id, ex_cand_id)` makes them an assignment,
@@ -28,7 +32,9 @@ use morpho_domain::types::{
 };
 use morpho_domain::version::SCORER_ALGO_VER;
 use morpho_store::error::Result;
-use morpho_store::ops::{ApplyAutoSelections, ApplyScores, AutoSelection, ScoreUpdate};
+use morpho_store::ops::{
+    ApplyAutoSelections, ApplyScores, AutoSelection, PrimaryMove, ReconcilePrimaries, ScoreUpdate,
+};
 use morpho_store::{Store, WriteOp};
 
 use crate::engine::EngineContext;
@@ -37,6 +43,7 @@ use crate::score::{
     self, DefinitionFacts, ExampleFacts, ImageFacts, ImageStrategy, Scored, TokenCoverage,
     HYSTERESIS_DELTA,
 };
+use crate::sources::wordnet::{WnPos, WordNet};
 use crate::text::TextPipeline;
 
 // ---------------------------------------------------------------------------
@@ -70,15 +77,25 @@ fn collect_scores(conn: &Connection, pipeline: &TextPipeline) -> Result<Vec<Scor
     let mut updates = Vec::new();
 
     // -- definitions: coverage comes from the cached extraction ------------
+    //
+    // Self-reference is read off the candidate's own text rather than off
+    // `def_tokens`, which is a separate artifact that lands *after* the
+    // candidate: scoring against it means scoring whatever the extraction
+    // happened to hold at the time, and a `scorer_ver` that never changes
+    // freezes that answer forever. `sense_rank` is the candidate's position in
+    // its source's list for this word and part of speech — see
+    // [`super::super::score::sense_rank_prior`] for why that is the best
+    // frequency evidence available in-process.
     let mut stmt = conn.prepare(
-        "SELECT dc.def_cand_id, dc.source, w.lemma,
+        "SELECT dc.def_cand_id, dc.source, w.lemma, dc.text,
                 (SELECT COUNT(*) FROM def_tokens t WHERE t.def_cand_id = dc.def_cand_id),
                 (SELECT COUNT(*) FROM def_tokens t JOIN words x ON x.lemma = t.lemma
                   WHERE t.def_cand_id = dc.def_cand_id AND x.role = 'base'),
                 (SELECT COUNT(*) FROM def_tokens t JOIN words x ON x.lemma = t.lemma
                   WHERE t.def_cand_id = dc.def_cand_id AND x.role IN ('target','auxiliary')),
-                EXISTS (SELECT 1 FROM def_tokens t
-                         WHERE t.def_cand_id = dc.def_cand_id AND t.lemma = w.lemma)
+                (SELECT COUNT(*) FROM definition_candidates p
+                  WHERE p.word_id = dc.word_id AND p.pos = dc.pos AND p.source = dc.source
+                    AND p.def_cand_id <= dc.def_cand_id)
          FROM definition_candidates dc
          JOIN words w ON w.word_id = dc.word_id
          JOIN def_extractions e ON e.def_cand_id = dc.def_cand_id
@@ -90,14 +107,16 @@ fn collect_scores(conn: &Connection, pipeline: &TextPipeline) -> Result<Vec<Scor
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, i64>(3)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
                 row.get::<_, i64>(4)?,
                 row.get::<_, i64>(5)?,
-                row.get::<_, i64>(6)? != 0,
+                row.get::<_, i64>(6)?,
+                row.get::<_, i64>(7)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    for (def_cand_id, source, total, base, in_scope, self_ref) in rows {
+    for (def_cand_id, source, lemma, text, total, base, in_scope, rank) in rows {
         let source = source
             .parse::<DefinitionSource>()
             .unwrap_or(DefinitionSource::Freedict);
@@ -109,7 +128,8 @@ fn collect_scores(conn: &Connection, pipeline: &TextPipeline) -> Result<Vec<Scor
         let scored = score::score_definition(&DefinitionFacts {
             source,
             coverage,
-            self_referential: self_ref,
+            self_referential: score::is_self_referential(&lemma, &text),
+            sense_rank: sense_rank(source, rank),
         });
         updates.push(update(CandidateKind::Definition, def_cand_id, &scored));
     }
@@ -195,6 +215,25 @@ fn collect_scores(conn: &Connection, pipeline: &TextPipeline) -> Result<Vec<Scor
     Ok(updates)
 }
 
+/// Where a candidate sits in its source's sense list, if that list means
+/// anything.
+///
+/// A dictionary orders the senses of a word by how common they are, and both
+/// harvesters mint them in the order they were handed over — WordNet from
+/// `index.pos`, which is corpus-frequency order by construction; the Free
+/// Dictionary in the order it printed them. Candidate ids are monotonic and
+/// minting is `ON CONFLICT DO NOTHING`, so the id order inside one
+/// `(word, pos, source)` group *is* that list order.
+///
+/// A manual or rewritten candidate is in no such list — it was written for this
+/// word by somebody who meant it — so it has no rank rather than a bad one.
+const fn sense_rank(source: DefinitionSource, rank: i64) -> Option<usize> {
+    match source {
+        DefinitionSource::Freedict | DefinitionSource::Wordnet if rank > 0 => Some(rank as usize),
+        _ => None,
+    }
+}
+
 fn update(kind: CandidateKind, cand_id: i64, scored: &Scored) -> ScoreUpdate {
     ScoreUpdate {
         kind,
@@ -272,27 +311,55 @@ struct SlotState {
     score: Option<f64>,
 }
 
-/// Run automatic selection over every slot of every active word.
-pub async fn auto_select(store: &Store, _context: &EngineContext) -> Result<usize> {
-    let decisions = store.read(collect_selections).await?;
-    if decisions.is_empty() {
-        return Ok(0);
-    }
-    let outcome = store
-        .write(
-            Actor::Reconciler,
-            WriteOp::ApplyAutoSelections(ApplyAutoSelections {
-                selections: decisions,
-            }),
-        )
-        .await?;
-    Ok(match outcome.result {
-        morpho_store::WriteResult::Selected { applied, .. } => applied,
-        _ => 0,
-    })
+/// Everything one pass decided.
+#[derive(Debug, Default)]
+struct Decisions {
+    selections: Vec<AutoSelection>,
+    /// Rule 6: words whose primary sense no longer matches the evidence.
+    primaries: Vec<PrimaryMove>,
 }
 
-fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
+/// Run automatic selection over every slot of every active word.
+pub async fn auto_select(store: &Store, context: &EngineContext) -> Result<usize> {
+    let wordnet = context.sources.wordnet.clone();
+    let decisions = store
+        .read(move |conn| collect_selections(conn, wordnet.as_deref()))
+        .await?;
+    let mut applied = 0usize;
+    if !decisions.selections.is_empty() {
+        let outcome = store
+            .write(
+                Actor::Reconciler,
+                WriteOp::ApplyAutoSelections(ApplyAutoSelections {
+                    selections: decisions.selections,
+                }),
+            )
+            .await?;
+        if let morpho_store::WriteResult::Selected { applied: n, .. } = outcome.result {
+            applied += n;
+        }
+    }
+    // Second write, not part of the batch above: a primary move is a decision
+    // about a slot that already exists, so it has to land after any selection
+    // that creates one. Both are idempotent, so a pass that only gets half way
+    // simply finishes on the next one.
+    if !decisions.primaries.is_empty() {
+        let outcome = store
+            .write(
+                Actor::Reconciler,
+                WriteOp::ReconcilePrimaries(ReconcilePrimaries {
+                    moves: decisions.primaries,
+                }),
+            )
+            .await?;
+        if let morpho_store::WriteResult::Selected { applied: n, .. } = outcome.result {
+            applied += n;
+        }
+    }
+    Ok(applied)
+}
+
+fn collect_selections(conn: &Connection, wordnet: Option<&WordNet>) -> Result<Decisions> {
     let mut decisions = Vec::new();
 
     // -- definitions -------------------------------------------------------
@@ -315,6 +382,7 @@ fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
+    let lemmas = word_lemmas(conn)?;
     let mut by_word: BTreeMap<i64, BTreeMap<String, Vec<Choice>>> = BTreeMap::new();
     let mut evidence: HashMap<i64, Vec<PosEvidence>> = HashMap::new();
     for (word_id, pos, cand_id, auto_score, source) in rows {
@@ -333,6 +401,15 @@ fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
             }
             None => bucket.push(PosEvidence {
                 pos: pos.clone(),
+                wn_frequency: wordnet
+                    .and_then(|db| {
+                        let lemma = lemmas.get(&word_id)?;
+                        db.pos_frequency(lemma)
+                            .into_iter()
+                            .find(|(wn_pos, _)| wn_pos.as_str() == pos)
+                            .map(|(_, count)| count)
+                    })
+                    .unwrap_or(0),
                 candidates: 1,
                 source_rank,
                 first_cand_id: cand_id,
@@ -349,21 +426,40 @@ fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
             });
     }
 
+    // WordNet's evidence is only admissible when it can see the whole word. A
+    // lemma whose harvest includes a preposition, conjunction or interjection
+    // has a part of speech WordNet models nothing of, and its corpus counts for
+    // the remaining ones say only how often people used the half WordNet knows
+    // about — "beyond" is tagged as an adverb eleven times and as a preposition
+    // never, because there is no preposition to tag. Those words are decided by
+    // the harvest, exactly as they were before this signal existed.
+    for entries in evidence.values_mut() {
+        if entries.iter().any(|entry| !WnPos::models(&entry.pos)) {
+            for entry in entries.iter_mut() {
+                entry.wn_frequency = 0;
+            }
+        }
+    }
+
     let def_slots = definition_slots(conn)?;
-    let words_with_primary = words_with_primary(conn)?;
+    let primaries = current_primaries(conn)?;
+    let hand_moved = words_whose_primary_a_human_moved(conn)?;
+    let mut moves = Vec::new();
 
     for (word_id, positions) in &by_word {
-        let evidence_pos = evidence
-            .get(word_id)
-            .and_then(|entries| strongest_pos(entries));
-        let needs_primary = !words_with_primary.contains(word_id);
+        let ranked = evidence.get(word_id).map(|entries| ranked_pos(entries));
+        let evidence_pos = ranked.as_ref().and_then(|order| order.first().cloned());
+        let current_primary = primaries.get(word_id);
+        let needs_primary = current_primary.is_none();
         // Apply the evidence slot first so it is the one that becomes primary.
         let mut ordered: Vec<&String> = positions.keys().collect();
         ordered.sort_by_key(|pos| (Some(*pos) != evidence_pos.as_ref(), (*pos).clone()));
 
         for pos in ordered {
             let choices = &positions[pos];
-            let state = def_slots.get(&(*word_id, pos.clone())).copied();
+            let state = def_slots
+                .get(&(*word_id, pos.clone()))
+                .map(|slot| slot.state);
             let Some(choice) = pick(choices, state) else {
                 continue;
             };
@@ -375,6 +471,30 @@ fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
                 cand_id: choice,
                 expected_cand_id: state.map(|s| s.cand_id),
                 make_primary: needs_primary && Some(pos) == evidence_pos.as_ref(),
+            });
+        }
+
+        // Rule 6: a word that already has a primary keeps it only while the
+        // evidence still agrees. See [`ranked_pos`] and `reconcile_primaries`
+        // for what "agrees" means and whose decision is never overruled.
+        let (Some(current), Some(ranked)) = (current_primary, ranked.as_ref()) else {
+            continue;
+        };
+        if hand_moved.contains(word_id) {
+            continue;
+        }
+        let Some(wanted) = ranked.iter().find(|pos| {
+            def_slots
+                .get(&(*word_id, (*pos).clone()))
+                .is_some_and(|slot| slot.enabled)
+        }) else {
+            continue;
+        };
+        if wanted != current {
+            moves.push(PrimaryMove {
+                word_id: *word_id,
+                pos: wanted.clone(),
+                expected_pos: Some(current.clone()),
             });
         }
     }
@@ -482,13 +602,20 @@ fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
         });
     }
 
-    Ok(decisions)
+    Ok(Decisions {
+        selections: decisions,
+        primaries: moves,
+    })
 }
 
 /// What the sources say about one part of speech of one word.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PosEvidence {
     pos: String,
+    /// How strongly WordNet's tagged corpora tie the lemma to this part of
+    /// speech, or `0` when WordNet is absent, does not model it, or cannot see
+    /// the whole word. See [`super::super::sources::wordnet::WordNet::pos_frequency`].
+    wn_frequency: usize,
     /// How many distinct senses the sources recorded under this part of speech.
     candidates: usize,
     /// Best (lowest) source rank seen: manual < llm_rewrite < freedict < wordnet.
@@ -496,27 +623,37 @@ struct PosEvidence {
     first_cand_id: i64,
 }
 
-/// Rule 5: which part of speech gets `is_primary` on a word's first selection.
+/// Rules 5 and 6: every part of speech of one word, best claim on `is_primary`
+/// first.
 ///
-/// "Strongest frequency evidence available" is, concretely, the number of
-/// senses a dictionary records: a word used mostly as an adjective accumulates
-/// more adjective senses than noun ones. Sense *count* is cross-part-of-speech
-/// evidence; sense *order* is not — the Free Dictionary orders senses within a
-/// part of speech, and its first block is whichever one it happened to list
-/// first, which is how "vivid" ends up defined as a felt-tip pen.
+/// "Strongest frequency evidence available" is, in order of preference: how
+/// often WordNet's tagged corpora used the lemma that way, then how many senses
+/// the harvest recorded under each part of speech. Sense *order* is not
+/// cross-part-of-speech evidence at all — the Free Dictionary orders senses
+/// within a part of speech, and its first block is whichever one it happened to
+/// list first, which is how "vivid" ends up defined as a felt-tip pen.
 ///
-/// Ties fall back to source authority and then to the lowest candidate id, so
-/// the answer is a pure function of the lexicon.
-fn strongest_pos(evidence: &[PosEvidence]) -> Option<String> {
-    evidence
-        .iter()
-        .max_by(|a, b| {
-            a.candidates
-                .cmp(&b.candidates)
-                .then_with(|| b.source_rank.cmp(&a.source_rank))
-                .then_with(|| b.first_cand_id.cmp(&a.first_cand_id))
-        })
-        .map(|entry| entry.pos.clone())
+/// Counting harvested candidates measures how talkative one dictionary was, and
+/// that is the whole "dominant (noun)" failure: five noun senses printed (a
+/// gene, a note, a species) against three adjectives, and a word everybody uses
+/// as an adjective gets filed as a noun. Corpus counts measure use, which is
+/// what a learner meets.
+///
+/// The harvest still decides two cases, and both are the signal admitting it
+/// cannot see: a lemma the corpora never tagged, and a word with a part of
+/// speech WordNet models nothing of (see [`WnPos::models`]). Remaining ties fall
+/// back to source authority and then to the lowest candidate id, so the answer
+/// is a pure function of the lexicon.
+fn ranked_pos(evidence: &[PosEvidence]) -> Vec<String> {
+    let mut ordered: Vec<&PosEvidence> = evidence.iter().collect();
+    ordered.sort_by(|a, b| {
+        b.wn_frequency
+            .cmp(&a.wn_frequency)
+            .then_with(|| b.candidates.cmp(&a.candidates))
+            .then_with(|| a.source_rank.cmp(&b.source_rank))
+            .then_with(|| a.first_cand_id.cmp(&b.first_cand_id))
+    });
+    ordered.into_iter().map(|entry| entry.pos.clone()).collect()
 }
 
 /// Decide all three example slots at once.
@@ -619,9 +756,16 @@ fn rank_choices(a: &Choice, b: &Choice) -> std::cmp::Ordering {
         .then_with(|| a.cand_id.cmp(&b.cand_id))
 }
 
-fn definition_slots(conn: &Connection) -> Result<HashMap<(i64, String), SlotState>> {
+/// One sense slot: what fills it, plus whether the word shows it at all.
+#[derive(Debug, Clone, Copy)]
+struct DefSlot {
+    state: SlotState,
+    enabled: bool,
+}
+
+fn definition_slots(conn: &Connection) -> Result<HashMap<(i64, String), DefSlot>> {
     let mut stmt = conn.prepare(
-        "SELECT ds.word_id, ds.pos, ds.def_cand_id, ds.pinned, dc.auto_score
+        "SELECT ds.word_id, ds.pos, ds.def_cand_id, ds.pinned, dc.auto_score, ds.enabled
          FROM definition_selections ds
          JOIN definition_candidates dc ON dc.def_cand_id = ds.def_cand_id",
     )?;
@@ -629,12 +773,25 @@ fn definition_slots(conn: &Connection) -> Result<HashMap<(i64, String), SlotStat
         .query_map([], |row| {
             Ok((
                 (row.get::<_, i64>(0)?, row.get::<_, String>(1)?),
-                SlotState {
-                    cand_id: row.get(2)?,
-                    pinned: row.get::<_, i64>(3)? != 0,
-                    score: row.get(4)?,
+                DefSlot {
+                    state: SlotState {
+                        cand_id: row.get(2)?,
+                        pinned: row.get::<_, i64>(3)? != 0,
+                        score: row.get(4)?,
+                    },
+                    enabled: row.get::<_, i64>(5)? != 0,
                 },
             ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows.into_iter().collect())
+}
+
+fn word_lemmas(conn: &Connection) -> Result<HashMap<i64, String>> {
+    let mut stmt = conn.prepare("SELECT word_id, lemma FROM words")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows.into_iter().collect())
@@ -700,13 +857,36 @@ fn image_slot_states(
         .collect())
 }
 
-fn words_with_primary(conn: &Connection) -> Result<std::collections::HashSet<i64>> {
+/// Which part of speech currently holds `is_primary`, per word.
+fn current_primaries(conn: &Connection) -> Result<HashMap<i64, String>> {
     let mut stmt =
-        conn.prepare("SELECT word_id FROM definition_selections WHERE is_primary = 1")?;
+        conn.prepare("SELECT word_id, pos FROM definition_selections WHERE is_primary = 1")?;
     let rows = stmt
-        .query_map([], |row| row.get::<_, i64>(0))?
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows.into_iter().collect())
+}
+
+/// Words whose primary sense somebody moved by hand.
+///
+/// The reconciler corrects its own guesses and never an editor's. Which slot a
+/// human *filled* is on the row (`selected_by`), but moving the primary changes
+/// no slot at all, so the only record that it happened is the audit log —
+/// `entity_id` there is `"<word_id>:<pos>"`.
+fn words_whose_primary_a_human_moved(conn: &Connection) -> Result<std::collections::HashSet<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT entity_id FROM events
+         WHERE action = 'primary_moved' AND actor <> 'reconciler'",
+    )?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|id| id.split(':').next()?.parse().ok())
+        .collect())
 }
 
 /// Marker so the unused-parameter lint stays quiet about `SelectedBy`, which
@@ -968,10 +1148,25 @@ mod tests {
     fn evidence(pos: &str, candidates: usize, source_rank: u8, first: i64) -> PosEvidence {
         PosEvidence {
             pos: pos.to_string(),
+            wn_frequency: 0,
             candidates,
             source_rank,
             first_cand_id: first,
         }
+    }
+
+    fn wn_evidence(pos: &str, wn_frequency: usize, candidates: usize) -> PosEvidence {
+        PosEvidence {
+            pos: pos.to_string(),
+            wn_frequency,
+            candidates,
+            source_rank: 2,
+            first_cand_id: 1,
+        }
+    }
+
+    fn strongest_pos(evidence: &[PosEvidence]) -> Option<String> {
+        ranked_pos(evidence).first().cloned()
     }
 
     #[test]
@@ -980,6 +1175,28 @@ mod tests {
         // before three adjective ones. Sense count is the real evidence.
         let vivid = vec![evidence("noun", 1, 2, 10), evidence("adj", 3, 2, 11)];
         assert_eq!(strongest_pos(&vivid).as_deref(), Some("adj"));
+    }
+
+    /// "dominant": the Free Dictionary prints five noun senses (a gene, a note,
+    /// a species) against three adjective ones, so counting the harvest files
+    /// an adjective as a noun. The corpora count use, not column inches.
+    #[test]
+    fn corpus_frequency_outranks_how_talkative_the_dictionary_was() {
+        let dominant = vec![wn_evidence("noun", 4, 5), wn_evidence("adj", 21, 3)];
+        assert_eq!(strongest_pos(&dominant).as_deref(), Some("adj"));
+        // "attorney": both signals agree, and the answer is still the noun.
+        let attorney = vec![wn_evidence("noun", 11, 5), wn_evidence("verb", 0, 2)];
+        assert_eq!(strongest_pos(&attorney).as_deref(), Some("noun"));
+    }
+
+    /// A word the corpora never tagged has no frequency signal on any side, and
+    /// the harvest decides exactly as it did before the signal existed. The
+    /// caller zeroes the whole word the same way when one of its parts of
+    /// speech is one WordNet models nothing of — see `collect_selections`.
+    #[test]
+    fn a_word_wordnet_cannot_speak_for_falls_back_to_the_harvest() {
+        let unknown = vec![evidence("prep", 6, 2, 10), evidence("adv", 3, 2, 20)];
+        assert_eq!(strongest_pos(&unknown).as_deref(), Some("prep"));
     }
 
     #[test]
@@ -1004,6 +1221,33 @@ mod tests {
             Some("adj")
         );
         assert_eq!(strongest_pos(&[]), None);
+    }
+
+    /// Rule 6 needs the whole order, not just its head: the primary lands on
+    /// the best part of speech whose slot the word actually shows.
+    #[test]
+    fn the_ranking_is_total_and_ordered_best_first() {
+        let charm = vec![
+            wn_evidence("verb", 3, 5),
+            wn_evidence("noun", 5, 7),
+            wn_evidence("adj", 0, 1),
+        ];
+        assert_eq!(ranked_pos(&charm), vec!["noun", "verb", "adj"]);
+        assert!(ranked_pos(&[]).is_empty());
+    }
+
+    // -- sense rank ---------------------------------------------------------
+
+    #[test]
+    fn only_a_harvested_list_has_a_sense_rank() {
+        assert_eq!(sense_rank(DefinitionSource::Freedict, 1), Some(1));
+        assert_eq!(sense_rank(DefinitionSource::Wordnet, 4), Some(4));
+        // Somebody wrote these for this word; there is no list to sit in.
+        assert_eq!(sense_rank(DefinitionSource::Manual, 3), None);
+        assert_eq!(sense_rank(DefinitionSource::LlmRewrite, 3), None);
+        // A count of zero is impossible (the row counts itself) but must not
+        // become a rank.
+        assert_eq!(sense_rank(DefinitionSource::Freedict, 0), None);
     }
 
     #[test]

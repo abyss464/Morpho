@@ -14,7 +14,14 @@ pub const EXTRACTION_ALGO_VER: &str = "def-extract/1";
 pub const TTS_ALGO_VER: &str = "tts-input/1";
 
 /// Version of the candidate scorer. Bumping it re-scores every candidate.
-pub const SCORER_ALGO_VER: &str = "scorer/1";
+///
+/// * `scorer/1` — readability + length + source prior, self-reference as a
+///   0.12 component read off the cached extraction.
+/// * `scorer/2` — self-reference is inflection-aware, read straight off the
+///   candidate text, and multiplies the total down instead of docking it; a
+///   sense-commonality prior ranks a source's earlier senses above its later
+///   ones.
+pub const SCORER_ALGO_VER: &str = "scorer/2";
 
 /// Version of the plan builder (Tarjan → condensation → grouping).
 pub const PLAN_ALGO_VER: &str = "plan/1";
