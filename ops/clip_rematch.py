@@ -8,17 +8,35 @@ the app needs (a pick that visually duplicates an option already chosen in a
 question this word participates in is skipped). Only re-select when the new
 best beats the current selection's text-match by a margin, so we don't churn
 already-good images. All mutations via the admin API.
+
+Every word's outcome (score, chosen candidate, whether the run changed the
+selection) is persisted to REPORT_PATH so a downstream pass can rank aptness
+without recomputing embeddings. A genuinely human-reviewed pin — an
+image_selection whose latest event actor is the admin-UI default identity
+('admin:local'), as opposed to an operator/ops-script actor — is never
+overridden, though it is still scored for the report.
 """
 
-import json, sqlite3, urllib.request, urllib.error
+import json, os, sqlite3, urllib.request, urllib.error
 import torch, open_clip
 from PIL import Image
 
 DB = "/home/abysser/Code/learning/Morpho/data/working.db"
 MEDIA = "/home/abysser/Code/learning/Morpho/data/media"
-API = "http://127.0.0.1:8787/api"
+API = os.environ.get("MORPHO_API", "http://127.0.0.1:30012/api")
+REPORT_PATH = os.environ.get(
+    "CLIP_REPORT",
+    "/tmp/claude-1000/-home-abysser-Code-learning-Morpho/"
+    "d3d89616-3276-4389-b525-1b3f57774b29/scratchpad/clip_scores.json",
+)
 MARGIN = 0.02          # new pick must beat current text-match by this
 DUP_SIM = 0.92         # visual-duplicate threshold within a question
+# Actors that are automated pipeline/ops scripts, not a real reviewer using
+# the admin gallery. The admin-ui client (admin-ui/src/api/client.ts) sends
+# X-Morpho-User: local by default for genuine manual actions, recorded as
+# actor 'admin:local'. Anything else touching image_selections in this
+# dataset is an ops script or the reconciler.
+HUMAN_ACTOR = "admin:local"
 
 def api(path, body):
     req = urllib.request.Request(API + path, data=json.dumps(body).encode(),
@@ -69,6 +87,19 @@ def txt_embed(text):
 sel_hash = {w: h for w, h in conn.execute("""
     SELECT i.word_id, c.file_hash FROM image_selections i
     JOIN image_candidates c ON c.img_cand_id=i.img_cand_id""")}
+sel_cid = {w: c for w, c in conn.execute(
+    "SELECT word_id, img_cand_id FROM image_selections")}
+
+# words whose current image selection was last touched by a genuine human
+# reviewer (admin gallery), per the events audit log — never overridden.
+human_pinned = {wid for (wid,) in conn.execute("""
+    SELECT entity_id FROM events e1
+    WHERE entity_type='image_selection' AND actor=?
+      AND event_id = (SELECT MAX(event_id) FROM events e2
+                       WHERE e2.entity_type='image_selection'
+                         AND e2.entity_id=e1.entity_id)""", (HUMAN_ACTOR,))}
+human_pinned = {int(wid) for wid in human_pinned}
+
 emb_cache = {}
 def emb_of(h):
     if h not in emb_cache:
@@ -82,12 +113,17 @@ for w, d in conn.execute("SELECT word_id, distractor_word_id FROM distractors"):
     qmates.setdefault(w, set()).add(d)
     qmates.setdefault(d, set()).add(w)
 
-changed = kept = noimg = 0
+changed = kept = noimg = human_skipped = 0
+report = []
 for i, (wid, lemma) in enumerate(words):
     cands = conn.execute("""SELECT img_cand_id, file_hash FROM image_candidates
         WHERE word_id=? AND status='available'""", (wid,)).fetchall()
     if not cands:
-        noimg += 1; continue
+        noimg += 1
+        report.append({"word_id": wid, "lemma": lemma, "best_clip_score": None,
+                        "selected_img_cand_id": None, "n_candidates": 0,
+                        "changed": False})
+        continue
     s = sentence(wid) or lemma
     query = f"{s} {lemma}: {definition(wid)[:80]}"
     q = txt_embed(query)
@@ -102,17 +138,46 @@ for i, (wid, lemma) in enumerate(words):
             continue
         scored.append((float(q @ e), cid, h))
     if not scored:
-        kept += 1; continue
+        kept += 1
+        report.append({"word_id": wid, "lemma": lemma, "best_clip_score": None,
+                        "selected_img_cand_id": sel_cid.get(wid),
+                        "n_candidates": len(cands), "changed": False})
+        continue
     scored.sort(reverse=True)
     best_score, best_cid, best_h = scored[0]
     cur_score = next((sc for sc, _, h in scored if h == cur), None)
-    if cur_score is not None and best_score <= cur_score + MARGIN:
-        kept += 1; continue
-    if api("/selections/image", {"word_id": wid, "cand_id": best_cid}) and \
-       api("/selections/image/approve", {"word_id": wid}):
-        sel_hash[wid] = best_h
-        changed += 1
-    if (i + 1) % 500 == 0:
-        print(f"{i+1}/{len(words)}  changed {changed} kept {kept} noimg {noimg}", flush=True)
 
-print(f"DONE changed {changed} kept {kept} noimg {noimg}", flush=True)
+    if wid in human_pinned:
+        # Never move a genuinely human-reviewed pick; still report its score.
+        human_skipped += 1
+        final_score = cur_score if cur_score is not None else best_score
+        final_cid = sel_cid.get(wid)
+        did_change = False
+    elif cur_score is not None and best_score <= cur_score + MARGIN:
+        kept += 1
+        final_score, final_cid, did_change = cur_score, sel_cid.get(wid), False
+    elif api("/selections/image", {"word_id": wid, "cand_id": best_cid}) and \
+         api("/selections/image/approve", {"word_id": wid}):
+        sel_hash[wid] = best_h
+        sel_cid[wid] = best_cid
+        changed += 1
+        final_score, final_cid, did_change = best_score, best_cid, True
+    else:
+        # API call failed: nothing moved, report what's still live.
+        kept += 1
+        final_score, final_cid, did_change = cur_score, sel_cid.get(wid), False
+
+    report.append({"word_id": wid, "lemma": lemma, "best_clip_score": final_score,
+                    "selected_img_cand_id": final_cid, "n_candidates": len(cands),
+                    "changed": did_change})
+
+    if (i + 1) % 500 == 0:
+        print(f"{i+1}/{len(words)}  changed {changed} kept {kept} noimg {noimg} "
+              f"human_pinned {human_skipped}", flush=True)
+
+os.makedirs(os.path.dirname(REPORT_PATH), exist_ok=True)
+with open(REPORT_PATH, "w") as f:
+    json.dump(report, f, indent=1)
+
+print(f"DONE changed {changed} kept {kept} noimg {noimg} human_pinned {human_skipped}", flush=True)
+print(f"report: {REPORT_PATH} ({len(report)} words)", flush=True)
