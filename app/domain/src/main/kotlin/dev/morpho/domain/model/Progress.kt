@@ -98,6 +98,47 @@ data class DailyStats(
         get() = if (answerCount == 0) null else correctCount.toDouble() / answerCount
 }
 
+// ── Home screen display models ──────────────────────────────────────
+
+enum class GreetingPeriod {
+    MORNING,
+    AFTERNOON,
+    EVENING,
+}
+
+enum class ActivityChartStyle {
+    BAR,
+    HEATMAP,
+    ;
+
+    val dbValue: String get() = name.lowercase()
+
+    companion object {
+        fun fromDb(value: String): ActivityChartStyle = when (value) {
+            "heatmap" -> HEATMAP
+            else -> BAR
+        }
+    }
+}
+
+data class DailyActivity(
+    val date: LocalDate,
+    val wordsStudied: Int,
+    val newLearned: Int,
+    val reviewed: Int,
+)
+
+data class HeatmapCell(
+    val date: LocalDate,
+    val intensity: Int,
+)
+
+data class HeatmapData(
+    val cells: List<HeatmapCell>,
+    val weeks: Int,
+    val maxActivity: Int,
+)
+
 /** `meta` keys the app writes into user.db. */
 object UserMetaKeys {
     const val CONTENT_VERSION = "content_version"
@@ -112,6 +153,7 @@ object UserMetaKeys {
     const val REDUCED_MOTION_OVERRIDE = "reduced_motion_override"
     const val LAST_STUDY_DATE = "last_study_date"
     const val STREAK_DAYS = "streak_days"
+    const val ACTIVITY_CHART_STYLE = "activity_chart_style"
 }
 
 object ProgressDefaults {
