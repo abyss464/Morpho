@@ -8,6 +8,9 @@ CREATE TABLE words (
     group_id        INTEGER NOT NULL REFERENCES groups(group_id),
     learning_order  INTEGER NOT NULL,
     etymology       TEXT,
+    -- JSON array of morph segments, e.g. ["bene","vol","ent"]. Nullable: a word
+    -- with prose but no agreed segmentation renders as prose only.
+    etymology_segments TEXT,
     image_file      TEXT NOT NULL,
     word_audio_file TEXT NOT NULL
 );
@@ -34,5 +37,6 @@ SELECT count(*) FROM words;
 insert:
 INSERT INTO words (
     word_id, word, phonetic, frequency_rank, role,
-    group_id, learning_order, etymology, image_file, word_audio_file
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    group_id, learning_order, etymology, etymology_segments,
+    image_file, word_audio_file
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);

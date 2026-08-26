@@ -95,7 +95,27 @@
     <string name="settings_content_version">Content version</string>
     <string name="settings_app_version">App version</string>
     <string name="settings_word_count">Words in this release</string>
-    <string name="settings_stub_notice">Coming in a later release.</string>
+
+    <!-- Backup: export -->
+    <string name="backup_working">Working…</string>
+    <string name="backup_export_done">Progress saved (%1$s).</string>
+    <string name="backup_export_failed">Could not save your progress file.</string>
+
+    <!-- Backup: import confirmation -->
+    <string name="backup_import_title">Replace your progress?</string>
+    <string name="backup_import_body">This file replaces everything on this device: every word you have learned, every review date, and your settings. It cannot be undone.</string>
+    <string name="backup_import_contents">The file holds %1$d words in progress, %2$d scheduled reviews and %3$d days of history.</string>
+    <string name="backup_import_restart_note">Morpho restarts once the file is in place.</string>
+    <string name="backup_import_confirm">Replace</string>
+    <string name="backup_import_cancel">Keep my progress</string>
+
+    <!-- Backup: refusals -->
+    <string name="backup_reject_not_sqlite">That file is not a Morpho progress file.</string>
+    <string name="backup_reject_missing_tables">That file is missing progress data (%1$s). Pick a file exported from Morpho.</string>
+    <string name="backup_reject_no_version">That file carries no schema version, so it cannot be trusted.</string>
+    <string name="backup_reject_bad_version">That file has an unreadable schema version (%1$s).</string>
+    <string name="backup_reject_newer">That file was written by a newer version of Morpho (format %1$d, this app reads %2$d). Update Morpho, then import again.</string>
+    <string name="backup_import_failed">Could not replace your progress. Nothing was changed.</string>
 
     <!-- Accessibility -->
     <string name="cd_play_word">Play the pronunciation of %1$s</string>

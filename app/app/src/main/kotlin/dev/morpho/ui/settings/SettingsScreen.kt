@@ -1,5 +1,7 @@
 package dev.morpho.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -22,12 +25,10 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -35,6 +36,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.morpho.BuildConfig
 import dev.morpho.R
+import dev.morpho.data.backup.BackupSummary
+import dev.morpho.data.backup.BackupVerdict
+import dev.morpho.data.backup.ProgressBackup
 import dev.morpho.data.repository.MorphoSettings
 import dev.morpho.data.repository.SettingsRepository
 import dev.morpho.data.sound.SfxEvent
@@ -45,9 +49,8 @@ import dev.morpho.ui.designsystem.component.ThemePreviews
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
 /**
- * Settings: daily goal, the sound and haptics toggles the design contract requires,
- * and the progress export/import entry points (stubbed in wave 1 — the SAF plumbing
- * lands with the backup work).
+ * Settings: daily goal, the sound and haptics toggles the design contract requires, and
+ * the progress export/import flow over the Storage Access Framework.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,7 +62,17 @@ fun SettingsScreen(
 ) {
     val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(container))
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    var stubNotice by remember { mutableStateOf(false) }
+    val backup by viewModel.backup.collectAsStateWithLifecycle()
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(ProgressBackup.MIME_TYPE),
+    ) { viewModel.onExportTarget(it) }
+
+    // Any type: pickers disagree on what to call a SQLite file, and every candidate is
+    // validated before a single byte is swapped in.
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { viewModel.onImportSource(it) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -84,7 +97,7 @@ fun SettingsScreen(
             settings = settings,
             wordCount = startup.wordCount,
             contentVersion = startup.contentVersion,
-            stubNoticeVisible = stubNotice,
+            backupStatus = backupStatusText(backup),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
@@ -93,9 +106,106 @@ fun SettingsScreen(
             onVolumeChange = viewModel::setSfxVolume,
             onHapticsChange = viewModel::setHapticsEnabled,
             onReducedMotionChange = viewModel::setReducedMotion,
-            onStubTapped = { stubNotice = true },
+            onExport = {
+                viewModel.dismissMessage()
+                exportLauncher.launch(viewModel.suggestedExportName())
+            },
+            onImport = {
+                viewModel.dismissMessage()
+                importLauncher.launch(arrayOf("*/*"))
+            },
         )
     }
+
+    backup.pending?.let { staged ->
+        ImportConfirmDialog(
+            summary = staged.summary,
+            onConfirm = viewModel::confirmImport,
+            onDismiss = viewModel::cancelImport,
+        )
+    }
+}
+
+/**
+ * The one destructive action in the app, so it says plainly what disappears and offers
+ * a decline that names the thing being protected rather than a bare "Cancel".
+ */
+@Composable
+private fun ImportConfirmDialog(
+    summary: BackupSummary?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.backup_import_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(MorphoTheme.spacing.sm)) {
+                Text(stringResource(R.string.backup_import_body))
+                if (summary != null) {
+                    Text(
+                        stringResource(
+                            R.string.backup_import_contents,
+                            summary.wordsTracked,
+                            summary.cardsScheduled,
+                            summary.daysRecorded,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    stringResource(R.string.backup_import_restart_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(
+                    stringResource(R.string.backup_import_confirm),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.backup_import_cancel))
+            }
+        },
+    )
+}
+
+/** Turns the view model's backup state into one line of copy under the data section. */
+@Composable
+private fun backupStatusText(state: BackupUiState): String? = when {
+    state.busy -> stringResource(R.string.backup_working)
+    state.message is BackupMessage.Exported ->
+        stringResource(R.string.backup_export_done, formatBytes(state.message.bytes))
+    state.message is BackupMessage.ExportFailed -> stringResource(R.string.backup_export_failed)
+    state.message is BackupMessage.ImportFailed -> stringResource(R.string.backup_import_failed)
+    state.message is BackupMessage.Rejected -> rejectionText(state.message.verdict)
+    else -> null
+}
+
+@Composable
+private fun rejectionText(verdict: BackupVerdict): String = when (verdict) {
+    is BackupVerdict.NotSqlite -> stringResource(R.string.backup_reject_not_sqlite)
+    is BackupVerdict.MissingTables ->
+        stringResource(R.string.backup_reject_missing_tables, verdict.missing.joinToString(", "))
+    is BackupVerdict.MissingSchemaVersion -> stringResource(R.string.backup_reject_no_version)
+    is BackupVerdict.UnreadableSchemaVersion ->
+        stringResource(R.string.backup_reject_bad_version, verdict.raw)
+    is BackupVerdict.NewerSchema ->
+        stringResource(R.string.backup_reject_newer, verdict.found, verdict.supported)
+    is BackupVerdict.Ok -> ""
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+    bytes >= 1024 -> "%.0f KB".format(bytes / 1024.0)
+    else -> "$bytes B"
 }
 
 @Composable
@@ -103,13 +213,14 @@ private fun SettingsContent(
     settings: MorphoSettings,
     wordCount: Int,
     contentVersion: String?,
-    stubNoticeVisible: Boolean,
+    backupStatus: String?,
     onDailyGoalChange: (Int) -> Unit,
     onSoundChange: (Boolean) -> Unit,
     onVolumeChange: (Float) -> Unit,
     onHapticsChange: (Boolean) -> Unit,
     onReducedMotionChange: (Boolean?) -> Unit,
-    onStubTapped: () -> Unit,
+    onExport: () -> Unit,
+    onImport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MorphoTheme.spacing
@@ -178,16 +289,16 @@ private fun SettingsContent(
         SettingRow(
             title = stringResource(R.string.settings_export),
             summary = stringResource(R.string.settings_export_summary),
-            onClick = onStubTapped,
+            onClick = onExport,
         )
         SettingRow(
             title = stringResource(R.string.settings_import),
             summary = stringResource(R.string.settings_import_summary),
-            onClick = onStubTapped,
+            onClick = onImport,
         )
-        if (stubNoticeVisible) {
+        if (backupStatus != null) {
             Text(
-                text = stringResource(R.string.settings_stub_notice),
+                text = backupStatus,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.secondary,
             )
@@ -302,13 +413,26 @@ private fun SettingsPreview() {
             settings = MorphoSettings(dailyGoal = 50),
             wordCount = 24,
             contentVersion = "2026.08.26+demo0001",
-            stubNoticeVisible = false,
+            backupStatus = null,
             onDailyGoalChange = {},
             onSoundChange = {},
             onVolumeChange = {},
             onHapticsChange = {},
             onReducedMotionChange = {},
-            onStubTapped = {},
+            onExport = {},
+            onImport = {},
+        )
+    }
+}
+
+@ThemePreviews
+@Composable
+private fun ImportConfirmDialogPreview() {
+    PreviewBox {
+        ImportConfirmDialog(
+            summary = BackupSummary(wordsTracked = 812, cardsScheduled = 640, daysRecorded = 47),
+            onConfirm = {},
+            onDismiss = {},
         )
     }
 }

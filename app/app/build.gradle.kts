@@ -18,7 +18,7 @@ android {
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1
-        versionName = "0.1.0-wave1"
+        versionName = "0.3.0-wave3a"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -42,8 +42,8 @@ android {
     }
 
     // Distribution flavors mirror README Part 5: Play Asset Delivery vs. one fat APK.
-    // Wave 1 only differs in which ContentStore implementation is compiled in;
-    // the actual asset pack module arrives with real content in a later wave.
+    // Both read media through the same `AssetContentStore` at `content_media/…`; only
+    // the packaging differs.
     flavorDimensions += "distribution"
     productFlavors {
         create("pad") {
@@ -54,6 +54,12 @@ android {
             dimension = "distribution"
         }
     }
+
+    // The install-time pack is consumed by `bundle*` tasks only — APK assembly ignores
+    // asset packs entirely, which is exactly why the fatApk flavour needs its own route
+    // to the same bytes (below) and why declaring the pack here leaves fatApk APKs
+    // untouched. AGP offers no per-flavour assetPacks DSL, so this is the honest split.
+    assetPacks += ":content_media"
 
     buildFeatures {
         compose = true
@@ -88,6 +94,12 @@ android {
         }
         getByName("androidTest") {
             java.srcDirs("src/androidTest/kotlin")
+        }
+        // One fat APK carries the media in its own assets. Pointed at the asset pack's
+        // source directory rather than a second copy, so wave 3b unpacks the export
+        // once and both distributions pick it up.
+        getByName("fatApk") {
+            assets.srcDirs("../content_media/src/main/assets")
         }
     }
 

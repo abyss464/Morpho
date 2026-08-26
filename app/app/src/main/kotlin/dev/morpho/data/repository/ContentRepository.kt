@@ -187,6 +187,7 @@ private fun Words.toDomain() = Word(
     groupId = group_id,
     learningOrder = learning_order.toInt(),
     etymology = etymology,
+    etymologySegmentsJson = etymology_segments,
     imageFile = image_file,
     wordAudioFile = word_audio_file,
 )

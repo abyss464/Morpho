@@ -54,10 +54,17 @@ class ProgressTrackerTest {
 
     @Test
     fun `today's card combines daily stats, goal and due reviews`() {
-        val stats = DailyStats(today, newLearned = 20, reviewed = 8, correctRate = 0.75)
+        val stats = DailyStats(
+            today,
+            newLearned = 20,
+            reviewed = 8,
+            correctCount = 21,
+            answerCount = 28,
+        )
         val progress = ProgressTracker.today(stats, dailyGoal = 50, dueReviewCount = 12)
         assertEquals(30, progress.remainingNew)
         assertEquals(0.4f, progress.fraction)
+        assertEquals(0.75, progress.correctRate!!, 1e-9)
         assertTrue(progress.hasWork)
         assertTrue(!progress.goalMet)
 
@@ -111,7 +118,7 @@ class ProgressTrackerTest {
     }
 
     @Test
-    fun `merging a session accumulates counts and re-averages accuracy`() {
+    fun `merging a session accumulates every count`() {
         val first = ProgressTracker.mergeSession(
             existing = null,
             date = today,
@@ -121,6 +128,8 @@ class ProgressTrackerTest {
             totalAnswers = 10,
         )
         assertEquals(10, first.newLearned)
+        assertEquals(8, first.correctCount)
+        assertEquals(10, first.answerCount)
         assertEquals(0.8, first.correctRate!!, 1e-9)
 
         val second = ProgressTracker.mergeSession(
@@ -133,6 +142,88 @@ class ProgressTrackerTest {
         )
         assertEquals(10, second.newLearned)
         assertEquals(10, second.reviewed)
+        assertEquals(18, second.correctCount)
+        assertEquals(20, second.answerCount)
         assertEquals(0.9, second.correctRate!!, 1e-9)
+    }
+
+    @Test
+    fun `a day answered in many sessions equals the same day answered in one`() {
+        // The property the count columns exist for. Sessions of wildly unequal length
+        // are the case a stored rate got wrong: re-averaging weighted a 3-answer session
+        // as heavily as a 97-answer one.
+        val sessions = listOf(
+            Triple(3, 2, 3),      // newLearned, correct, answered
+            Triple(0, 91, 97),
+            Triple(7, 4, 11),
+            Triple(0, 0, 4),
+        )
+
+        var folded: DailyStats? = null
+        sessions.forEach { (learned, correct, answered) ->
+            folded = ProgressTracker.mergeSession(
+                existing = folded,
+                date = today,
+                newLearned = learned,
+                reviewed = if (learned == 0) answered else 0,
+                correctAnswers = correct,
+                totalAnswers = answered,
+            )
+        }
+
+        val atOnce = ProgressTracker.mergeSession(
+            existing = null,
+            date = today,
+            newLearned = sessions.sumOf { it.first },
+            reviewed = sessions.filter { it.first == 0 }.sumOf { it.third },
+            correctAnswers = sessions.sumOf { it.second },
+            totalAnswers = sessions.sumOf { it.third },
+        )
+
+        assertEquals(atOnce, folded)
+        assertEquals(97, folded!!.correctCount)
+        assertEquals(115, folded!!.answerCount)
+    }
+
+    @Test
+    fun `merge order does not change the day`() {
+        val a = Triple(5, 4, 5)
+        val b = Triple(0, 17, 40)
+
+        fun fold(first: Triple<Int, Int, Int>, second: Triple<Int, Int, Int>): DailyStats {
+            val one = ProgressTracker.mergeSession(
+                null, today, first.first, 0, first.second, first.third,
+            )
+            return ProgressTracker.mergeSession(
+                one, today, second.first, 0, second.second, second.third,
+            )
+        }
+
+        assertEquals(fold(a, b), fold(b, a))
+    }
+
+    @Test
+    fun `a day with no answers has no accuracy at all`() {
+        val merged = ProgressTracker.mergeSession(
+            existing = null,
+            date = today,
+            newLearned = 0,
+            reviewed = 0,
+            correctAnswers = 0,
+            totalAnswers = 0,
+        )
+        assertEquals(0, merged.answerCount)
+        assertNull(merged.correctRate)
+    }
+
+    @Test
+    fun `a perfect day reads as exactly one, not a rounded rate`() {
+        var day: DailyStats? = null
+        repeat(7) {
+            day = ProgressTracker.mergeSession(day, today, 3, 0, 3, 3)
+        }
+        assertEquals(21, day!!.correctCount)
+        assertEquals(21, day!!.answerCount)
+        assertEquals(1.0, day!!.correctRate!!, 0.0)
     }
 }

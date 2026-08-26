@@ -131,7 +131,8 @@ class ProgressRepository(private val db: UserDatabase) {
             date = row.date.format(DATE),
             new_learned = row.newLearned.toLong(),
             reviewed = row.reviewed.toLong(),
-            correct_rate = row.correctRate,
+            correct_count = row.correctCount.toLong(),
+            answer_count = row.answerCount.toLong(),
         )
     }
 
@@ -148,7 +149,13 @@ class ProgressRepository(private val db: UserDatabase) {
     suspend fun ensureInitialised(contentVersion: String?) {
         withContext(Dispatchers.IO) {
             db.transaction {
-                if (meta.selectValue(UserMetaKeys.SCHEMA_VER).executeAsOneOrNull() == null) {
+                // The stamp always tracks the schema the app is compiled against. A
+                // lower value can only come from a pre-release build, whose tables are
+                // regenerated rather than migrated; a higher one means the file was
+                // written by a newer app, which the import flow already refuses.
+                val stamped = meta.selectValue(UserMetaKeys.SCHEMA_VER)
+                    .executeAsOneOrNull()?.toIntOrNull()
+                if (stamped != ProgressDefaults.SCHEMA_VER) {
                     meta.upsert(UserMetaKeys.SCHEMA_VER, ProgressDefaults.SCHEMA_VER.toString())
                 }
                 if (meta.selectValue(UserMetaKeys.DAILY_GOAL).executeAsOneOrNull() == null) {
@@ -205,5 +212,6 @@ private fun Daily_stats.toDomain() = DailyStats(
     date = LocalDate.parse(date),
     newLearned = new_learned.toInt(),
     reviewed = reviewed.toInt(),
-    correctRate = correct_rate,
+    correctCount = correct_count.toInt(),
+    answerCount = answer_count.toInt(),
 )

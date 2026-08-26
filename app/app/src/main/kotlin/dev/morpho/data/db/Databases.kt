@@ -2,6 +2,7 @@ package dev.morpho.data.db
 
 import android.content.Context
 import android.util.Log
+import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import dev.morpho.data.db.content.ContentDatabase
@@ -25,6 +26,7 @@ import java.io.File
 class DatabaseProvider(private val context: Context) {
 
     private val contentDriver: SqlDriver by lazy {
+        discardStaleContentDatabase()
         installBundledReleaseIfPresent()
         AndroidSqliteDriver(
             schema = ContentDatabase.Schema,
@@ -39,6 +41,7 @@ class DatabaseProvider(private val context: Context) {
     }
 
     private val userDriver: SqlDriver by lazy {
+        discardPreReleaseUserDatabase()
         AndroidSqliteDriver(
             schema = UserDatabase.Schema,
             context = context,
@@ -62,10 +65,21 @@ class DatabaseProvider(private val context: Context) {
     /**
      * Flushes the WAL so a copy of `user.db` is complete on its own.
      * Required before backup or manual export (README Part 6).
+     *
+     * Runs as a *query*, not a statement: `wal_checkpoint` reports back three columns
+     * (busy, log frames, checkpointed frames), and Android's SQLite refuses to execute a
+     * row-returning statement through the changed-row-count path. The cursor also has to
+     * be stepped, because `rawQuery` does not touch the database until it is read — so
+     * an unread cursor would checkpoint nothing at all.
      */
     fun checkpointUserDatabase() {
         runCatching {
-            userDriver.execute(null, "PRAGMA wal_checkpoint(TRUNCATE);", 0)
+            userDriver.executeQuery(
+                identifier = null,
+                sql = "PRAGMA wal_checkpoint(TRUNCATE);",
+                mapper = { cursor -> QueryResult.Value(cursor.next().value) },
+                parameters = 0,
+            ).value
         }.onFailure { Log.w(TAG, "wal checkpoint failed", it) }
     }
 
@@ -75,8 +89,84 @@ class DatabaseProvider(private val context: Context) {
     }
 
     /**
+     * Deletes a `user.db` written before the pre-release schema settled.
+     *
+     * Wave 1 stored `daily_stats.correct_rate`; wave 3 replaced it with exact counts.
+     * Neither version ever shipped, so the schema was regenerated outright rather than
+     * migrated — which leaves developer devices holding a v1 file whose columns the
+     * generated queries no longer name.
+     *
+     * This is a **one-shot** reset, deliberately pinned to the literal baseline rather
+     * than to the current [dev.morpho.domain.model.ProgressDefaults.SCHEMA_VER]: past
+     * the first shipped release, user progress is real and a version bump must arrive
+     * with an actual SQLDelight migration, not with a deletion.
+     */
+    private fun discardPreReleaseUserDatabase() {
+        val file = context.getDatabasePath(USER_DB_NAME)
+        if (!file.isFile) return
+        val stored = readUserSchemaVersion(file) ?: return
+        if (stored >= PRE_RELEASE_USER_SCHEMA_VER) return
+
+        Log.w(TAG, "user.db schema_ver $stored predates the pre-release baseline; recreating")
+        listOf("", "-wal", "-shm").forEach { suffix ->
+            File(file.parentFile, file.name + suffix).delete()
+        }
+    }
+
+    /** Reads `meta.schema_ver` without SQLDelight, whose queries need the new columns. */
+    private fun readUserSchemaVersion(file: File): Int? = runCatching {
+        android.database.sqlite.SQLiteDatabase.openDatabase(
+            file.absolutePath,
+            null,
+            android.database.sqlite.SQLiteDatabase.OPEN_READONLY,
+        ).use { db ->
+            db.rawQuery("SELECT value FROM meta WHERE key = 'schema_ver'", null).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0)?.trim()?.toIntOrNull() else null
+            }
+        }
+    }.getOrNull()
+
+    /**
+     * Throws away a `release.db` left behind by a build whose content DDL was a
+     * different shape.
+     *
+     * SQLDelight owns no migrations for this file, and rightly so — it is a derived,
+     * read-only artifact that can always be produced again, either by re-copying the
+     * bundled asset or by re-seeding the demo fixture. So when the DDL moves (wave 3
+     * adding `words.etymology_segments`, say), the answer is to delete the file rather
+     * than to migrate it. Without this an app updated over an older install opens a
+     * database whose columns its generated queries no longer describe, and dies on the
+     * first `SELECT *`.
+     *
+     * The stamp lives in a sibling marker file, not in the database: `user_version`
+     * belongs to SQLDelight's open helper, which compares it against its own schema
+     * version and would read any other value as an upgrade or a downgrade.
+     */
+    private fun discardStaleContentDatabase() {
+        val database = context.getDatabasePath(CONTENT_DB_NAME)
+        val marker = File(database.parentFile, "$CONTENT_DB_NAME$DDL_MARKER_SUFFIX")
+
+        val stamped = runCatching {
+            if (marker.isFile) marker.readText().trim().toIntOrNull() else null
+        }.getOrNull()
+        if (stamped == CONTENT_DDL_VERSION) return
+
+        if (database.exists()) {
+            Log.i(TAG, "content DDL $stamped -> $CONTENT_DDL_VERSION; rebuilding release.db")
+            listOf("", "-wal", "-shm").forEach { suffix ->
+                File(database.parentFile, database.name + suffix).delete()
+            }
+        }
+        runCatching {
+            marker.parentFile?.mkdirs()
+            marker.writeText(CONTENT_DDL_VERSION.toString())
+        }.onFailure { Log.w(TAG, "could not write the content DDL marker", it) }
+    }
+
+    /**
      * Copies a bundled `assets/release.db` into the databases directory the first
-     * time it is seen. This is the wave-2 path; wave 1 simply has no such asset.
+     * time it is seen. Wave 1/3a simply has no such asset and the demo seeder fills
+     * the schema-created file instead.
      */
     private fun installBundledReleaseIfPresent() {
         val target = context.getDatabasePath(CONTENT_DB_NAME)
@@ -91,6 +181,7 @@ class DatabaseProvider(private val context: Context) {
             context.assets.open(BUNDLED_RELEASE_ASSET).use { input ->
                 target.outputStream().use { output -> input.copyTo(output) }
             }
+            stampUserVersion(target)
             Log.i(TAG, "installed bundled release.db (${target.length()} bytes)")
         }.onFailure {
             Log.e(TAG, "failed to install bundled release.db", it)
@@ -98,10 +189,52 @@ class DatabaseProvider(private val context: Context) {
         }
     }
 
+    /**
+     * Rewrites `PRAGMA user_version` on the installed copy to the version SQLDelight
+     * compiled against.
+     *
+     * The export sets `user_version = schema_ver` so the file reads as "already
+     * created" (release-db.sql, wave-3 rulings). That number tracks the *content*
+     * contract, though, while SQLDelight's open helper compares against its own
+     * generated schema version — the two are free to diverge, and a mismatch would send
+     * the helper down an upgrade or downgrade path that has nothing to migrate. The
+     * file is a private, read-only copy the app owns, so aligning the stamp once at
+     * install time is both safe and sufficient.
+     */
+    private fun stampUserVersion(file: File) {
+        val wanted = ContentDatabase.Schema.version
+        runCatching {
+            android.database.sqlite.SQLiteDatabase.openDatabase(
+                file.absolutePath,
+                null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READWRITE,
+            ).use { db ->
+                if (db.version.toLong() != wanted) {
+                    Log.i(TAG, "release.db user_version ${db.version} -> $wanted")
+                    db.execSQL("PRAGMA user_version = $wanted;")
+                }
+            }
+        }.onFailure { Log.w(TAG, "could not stamp release.db user_version", it) }
+    }
+
     companion object {
         private const val TAG = "DatabaseProvider"
         const val CONTENT_DB_NAME = "release.db"
         const val USER_DB_NAME = "user.db"
         const val BUNDLED_RELEASE_ASSET = "release.db"
+
+        /**
+         * Bump whenever the content `.sq` DDL changes shape, so installed copies of
+         * `release.db` are rebuilt instead of read with the wrong columns.
+         *
+         * 1 — wave 1.
+         * 2 — wave 3: `words.etymology_segments`.
+         */
+        const val CONTENT_DDL_VERSION = 2
+
+        private const val DDL_MARKER_SUFFIX = ".ddl"
+
+        /** The user.db schema the first release ships. Never raise this — see above. */
+        private const val PRE_RELEASE_USER_SCHEMA_VER = 2
     }
 }

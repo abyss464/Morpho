@@ -1,5 +1,6 @@
 package dev.morpho.data.seed
 
+import dev.morpho.data.content.EtymologySegments
 import dev.morpho.data.db.content.ContentDatabase
 import dev.morpho.domain.model.ContentMetaKeys
 
@@ -53,7 +54,8 @@ object DemoSeedWriter {
                     role = word.role,
                     group_id = word.groupId,
                     learning_order = (index + 1).toLong(),
-                    etymology = EtymologyText.encode(word.etymologySegments, word.etymology),
+                    etymology = word.etymology,
+                    etymology_segments = EtymologySegments.encode(word.etymologySegments),
                     image_file = mediaName(IMAGE_DIR, "${word.word}-image", IMAGE_EXT),
                     word_audio_file = mediaName(AUDIO_DIR, "${word.word}-word", AUDIO_EXT),
                 )
@@ -162,38 +164,4 @@ object DemoSeedWriter {
         val hex = java.lang.Long.toHexString(hash).padStart(16, '0')
         return "$dir/$hex.$ext"
     }
-}
-
-/**
- * Encodes and recovers morphological segments carried alongside the etymology prose.
- *
- * `docs/contracts/release-db.sql` has no column for segments, but the design contract
- * asks for `EtymologyChips`. Until the contract gains a column, segments ride on
- * `words.etymology` as `"bene + vol + ent — From Latin ..."`; [parse] recovers them and
- * degrades to plain prose when the prefix is absent, so a real export that writes only
- * prose renders correctly with no code change.
- */
-object EtymologyText {
-
-    private const val SEPARATOR = " — "
-    private const val JOINER = " + "
-
-    fun encode(segments: List<String>, prose: String?): String? = when {
-        segments.isEmpty() -> prose
-        prose.isNullOrBlank() -> segments.joinToString(JOINER)
-        else -> segments.joinToString(JOINER) + SEPARATOR + prose
-    }
-
-    fun parse(raw: String?): Parsed {
-        if (raw.isNullOrBlank()) return Parsed(emptyList(), null)
-        val index = raw.indexOf(SEPARATOR)
-        val head = if (index >= 0) raw.substring(0, index) else raw
-        val tail = if (index >= 0) raw.substring(index + SEPARATOR.length) else null
-        val segments = head.split(JOINER).map { it.trim() }
-        val looksLikeSegments = segments.size >= 2 &&
-            segments.all { it.isNotEmpty() && it.length <= 12 && it.none(Char::isWhitespace) }
-        return if (looksLikeSegments) Parsed(segments, tail) else Parsed(emptyList(), raw)
-    }
-
-    data class Parsed(val segments: List<String>, val prose: String?)
 }

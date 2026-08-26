@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.morpho.di.AppContainer
+import dev.morpho.domain.model.ProgressDefaults
 import dev.morpho.domain.progress.OverallProgress
 import dev.morpho.domain.progress.ProgressTracker
 import dev.morpho.domain.progress.TodayProgress
@@ -18,7 +19,12 @@ import java.time.LocalDate
 data class HomeUiState(
     val loading: Boolean = true,
     val overall: OverallProgress = OverallProgress(0, 0, 0),
-    val today: TodayProgress = TodayProgress(0, 50, 0, 0, null),
+    val today: TodayProgress = TodayProgress(
+        newLearned = 0,
+        dailyGoal = ProgressDefaults.DAILY_GOAL,
+        reviewed = 0,
+        dueReviews = 0,
+    ),
     val streakDays: Int = 0,
     val contentVersion: String? = null,
 ) {

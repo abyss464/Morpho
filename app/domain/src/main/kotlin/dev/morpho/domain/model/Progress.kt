@@ -79,12 +79,24 @@ data class FsrsCard(
     val lastReview: Instant? = null,
 )
 
+/**
+ * One row of `daily_stats`.
+ *
+ * Accuracy is persisted as exact counts rather than a rate (docs/contracts/user-db.sql):
+ * merging a second session into the day is then plain addition, with no re-averaging and
+ * no drift. [correctRate] stays available as a derived value for the UI.
+ */
 data class DailyStats(
     val date: LocalDate,
     val newLearned: Int = 0,
     val reviewed: Int = 0,
-    val correctRate: Double? = null,
-)
+    val correctCount: Int = 0,
+    val answerCount: Int = 0,
+) {
+    /** 0.0..1.0, or null on a day where nothing was answered. */
+    val correctRate: Double?
+        get() = if (answerCount == 0) null else correctCount.toDouble() / answerCount
+}
 
 /** `meta` keys the app writes into user.db. */
 object UserMetaKeys {
@@ -104,6 +116,16 @@ object UserMetaKeys {
 
 object ProgressDefaults {
     const val DAILY_GOAL = 50
-    const val SCHEMA_VER = 1
+
+    /**
+     * user.db schema version.
+     *
+     * 1 — wave 1: `daily_stats.correct_rate REAL`.
+     * 2 — wave 3: `daily_stats.correct_count` + `answer_count`. Pre-release, so the
+     *     schema is simply regenerated; there is no v1 data anywhere to migrate.
+     *
+     * The import flow refuses any file claiming a version above this.
+     */
+    const val SCHEMA_VER = 2
     const val SFX_VOLUME = 0.8f
 }

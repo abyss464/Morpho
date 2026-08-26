@@ -53,6 +53,13 @@ data class Word(
     val groupId: Long,
     val learningOrder: Int,
     val etymology: String?,
+    /**
+     * `words.etymology_segments` verbatim — a JSON array of morph segments such as
+     * `["bene","vol","ent"]`, or null when the release has no segmentation for this
+     * word. Kept as the raw column value so the domain stays free of a JSON parser;
+     * the presentation layer decodes it for `EtymologyChips`.
+     */
+    val etymologySegmentsJson: String?,
     val imageFile: String,
     val wordAudioFile: String,
 )

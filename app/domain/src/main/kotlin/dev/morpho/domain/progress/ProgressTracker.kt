@@ -48,7 +48,8 @@ object ProgressTracker {
         dailyGoal = dailyGoal.coerceAtLeast(1),
         reviewed = stats?.reviewed ?: 0,
         dueReviews = dueReviewCount,
-        correctRate = stats?.correctRate,
+        correctCount = stats?.correctCount ?: 0,
+        answerCount = stats?.answerCount ?: 0,
     )
 
     /**
@@ -75,7 +76,14 @@ object ProgressTracker {
         return count
     }
 
-    /** Folds one session's results into the day's row. */
+    /**
+     * Folds one session's results into the day's row.
+     *
+     * Every field is a count, so merging is pure addition: the third session of a day
+     * lands on exactly the same numbers whether the day is folded session-by-session or
+     * all at once. (The wave-1 row stored a rate and had to reconstruct prior counts to
+     * re-average, which lost precision and mis-weighted sessions of unequal length.)
+     */
     fun mergeSession(
         existing: DailyStats?,
         date: LocalDate,
@@ -83,21 +91,13 @@ object ProgressTracker {
         reviewed: Int,
         correctAnswers: Int,
         totalAnswers: Int,
-    ): DailyStats {
-        val priorReviewed = existing?.reviewed ?: 0
-        val priorNew = existing?.newLearned ?: 0
-        // correct_rate is stored as a rate, so recover the prior counts to re-average.
-        val priorAnswers = priorReviewed + priorNew
-        val priorCorrect = ((existing?.correctRate ?: 0.0) * priorAnswers)
-        val totalAnswered = priorAnswers + totalAnswers
-        val rate = if (totalAnswered == 0) null else (priorCorrect + correctAnswers) / totalAnswered
-        return DailyStats(
-            date = date,
-            newLearned = priorNew + newLearned,
-            reviewed = priorReviewed + reviewed,
-            correctRate = rate,
-        )
-    }
+    ): DailyStats = DailyStats(
+        date = date,
+        newLearned = (existing?.newLearned ?: 0) + newLearned,
+        reviewed = (existing?.reviewed ?: 0) + reviewed,
+        correctCount = (existing?.correctCount ?: 0) + correctAnswers,
+        answerCount = (existing?.answerCount ?: 0) + totalAnswers,
+    )
 }
 
 data class OverallProgress(
@@ -117,8 +117,13 @@ data class TodayProgress(
     val dailyGoal: Int,
     val reviewed: Int,
     val dueReviews: Int,
-    val correctRate: Double?,
+    val correctCount: Int = 0,
+    val answerCount: Int = 0,
 ) {
+    /** Derived from the stored counts, never persisted. */
+    val correctRate: Double?
+        get() = if (answerCount == 0) null else correctCount.toDouble() / answerCount
+
     val remainingNew: Int get() = (dailyGoal - newLearned).coerceAtLeast(0)
     val goalMet: Boolean get() = newLearned >= dailyGoal
     val fraction: Float get() = (newLearned.toFloat() / dailyGoal).coerceIn(0f, 1f)

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import coil3.ImageLoader
 import dev.morpho.BuildConfig
+import dev.morpho.data.backup.ProgressBackup
 import dev.morpho.data.content.ContentStore
 import dev.morpho.data.content.DemoMediaGenerator
 import dev.morpho.data.content.DirectoryContentStore
@@ -50,6 +51,10 @@ class AppContainer(private val context: Context) {
 
     val settingsRepository: SettingsRepository by lazy {
         SettingsRepository(progressRepository)
+    }
+
+    val progressBackup: ProgressBackup by lazy {
+        ProgressBackup(context, databaseProvider)
     }
 
     // --- media --------------------------------------------------------------

@@ -1,6 +1,7 @@
 package dev.morpho.data.seed
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import dev.morpho.data.content.EtymologySegments
 import dev.morpho.data.db.content.ContentDatabase
 import dev.morpho.domain.model.ContentMetaKeys
 import java.io.File
@@ -8,6 +9,7 @@ import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -138,6 +140,58 @@ class DemoFixtureTest {
         val groups = db.wordsQueries.selectPlanSlice().executeAsList()
             .groupBy { it.group_id }
         assertTrue(groups.size >= 2, "the demo needs at least two groups to show carry-over")
+    }
+
+    @Test
+    fun `etymology prose and segments occupy their own columns`() {
+        val (db, content) = seededDatabase()
+        val rows = db.wordsQueries.selectAllOrdered().executeAsList().associateBy { it.word }
+        content.words.forEach { fixture ->
+            val row = rows.getValue(fixture.word)
+            // Prose goes in verbatim -- no encoded prefix riding along with it.
+            assertEquals(fixture.etymology, row.etymology)
+            assertEquals(
+                fixture.etymologySegments,
+                EtymologySegments.parse(row.etymology_segments),
+                "segments round-trip failed for ${fixture.word}",
+            )
+        }
+    }
+
+    @Test
+    fun `a word with no segmentation stores a null column, not an empty array`() {
+        val good = loadFixture()
+        val stripped = good.copy(
+            words = good.words.mapIndexed { index, w ->
+                if (index == 0) w.copy(etymologySegments = emptyList()) else w
+            },
+        )
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        ContentDatabase.Schema.create(driver)
+        val db = ContentDatabase(driver)
+        DemoSeedWriter.seed(db, stripped)
+
+        val row = db.wordsQueries.selectById(DemoSeedWriter.BASE_WORD_ID).executeAsOne()
+        assertNull(row.etymology_segments)
+        assertNotNull(row.etymology)
+    }
+
+    @Test
+    fun `highlight offsets survive multi-byte characters ahead of the target`() {
+        val sentence = "Café — a benevolent host waved us in."
+        val (start, end) = DemoSeedWriter.byteHighlight(sentence, "benevolent")
+        val bytes = sentence.toByteArray(Charsets.UTF_8)
+        assertEquals("benevolent", String(bytes, start, end - start, Charsets.UTF_8))
+    }
+
+    @Test
+    fun `media names are stable and differ per logical key`() {
+        val a = DemoSeedWriter.mediaName("img", "benevolent-image", "png")
+        val b = DemoSeedWriter.mediaName("img", "benevolent-image", "png")
+        val c = DemoSeedWriter.mediaName("img", "malevolent-image", "png")
+        assertEquals(a, b)
+        assertTrue(a != c)
+        assertTrue(a.startsWith("img/") && a.endsWith(".png"))
     }
 
     @Test
