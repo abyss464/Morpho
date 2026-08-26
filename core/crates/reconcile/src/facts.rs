@@ -50,6 +50,25 @@ pub struct Facts {
     /// candidates and still need more, which is the distinction this set draws
     /// and [`Facts::words_with_images`] cannot.
     pub words_with_distinct_images: HashSet<i64>,
+    /// Words holding a usable image candidate that a *library* answered for —
+    /// the same set as [`Facts::words_with_distinct_images`] minus everything
+    /// SDXL contributed.
+    ///
+    /// This is the trigger the generative tier reads. A word whose only picture
+    /// is one it generated has still been left behind by every library, so a
+    /// changed generation template must be able to reach it; asking
+    /// `words_with_distinct_images` instead would say "this word has an image"
+    /// and freeze it on whatever the first template produced.
+    pub words_with_library_images: HashSet<i64>,
+    /// Scene-prompt versions among each word's available SDXL candidates.
+    ///
+    /// One word normally has none or one. It gains a second entry when the
+    /// template version is bumped and the word is generated again, and the old
+    /// candidate stays exactly where it was.
+    pub scene_image_vers: HashMap<i64, HashSet<String>>,
+    /// Text of each word's selected slot-1 example — the sentence the mode-1
+    /// card shows, and the scene a generated picture is asked to depict.
+    pub slot_one_example: HashMap<i64, String>,
     /// Text of each word's selected primary sense, for image search queries
     /// and SDXL prompts.
     pub primary_gloss: HashMap<i64, String>,
@@ -71,7 +90,7 @@ pub struct Facts {
 impl Facts {
     /// Load the whole fact set from one read connection.
     pub fn load(conn: &Connection) -> Result<Self> {
-        let (words_with_images, words_with_distinct_images) = image_coverage(conn)?;
+        let coverage = image_coverage(conn)?;
         Ok(Self {
             active: queries::active_words(conn)?,
             definitions_fetched: queries::source_fetches(conn, FETCH_DEFINITIONS)?,
@@ -90,8 +109,11 @@ impl Facts {
                 conn,
                 "SELECT DISTINCT word_id FROM example_candidates WHERE status = 'available'",
             )?,
-            words_with_images,
-            words_with_distinct_images,
+            words_with_images: coverage.any,
+            words_with_distinct_images: coverage.distinct,
+            words_with_library_images: coverage.library,
+            scene_image_vers: coverage.scene_vers,
+            slot_one_example: slot_one_examples(conn)?,
             primary_gloss: primary_glosses(conn)?,
             primary_gloss_tokens: primary_gloss_tokens(conn)?,
             tts_desired: queries::tts_desired(conn)?,
@@ -116,6 +138,23 @@ impl Facts {
     /// relaxed/widened/SDXL chain until something nobody else holds turns up.
     pub fn needs_image_candidates(&self, word_id: i64) -> bool {
         !self.words_with_distinct_images.contains(&word_id)
+    }
+
+    /// Did every library leave this word without a usable picture?
+    ///
+    /// Weaker than [`Facts::needs_image_candidates`], and deliberately so: a
+    /// word that has already generated something satisfies that one and still
+    /// satisfies this. It is the gate on the generative tier, which is the only
+    /// tier that can serve a word the libraries have nothing for.
+    pub fn needs_library_image(&self, word_id: i64) -> bool {
+        !self.words_with_library_images.contains(&word_id)
+    }
+
+    /// Does this word already hold a scene image made under `prompt_ver`?
+    pub fn has_scene_image(&self, word_id: i64, prompt_ver: &str) -> bool {
+        self.scene_image_vers
+            .get(&word_id)
+            .is_some_and(|vers| vers.contains(prompt_ver))
     }
 
     /// Has this `(kind, word, source)` combination been tried to completion?
@@ -310,31 +349,86 @@ pub(crate) fn is_duplicate_image(
         .is_some_and(|words| words.iter().any(|owner| *owner != word_id))
 }
 
-/// `(words with any available image candidate, words with a usable one)`.
+/// What one scan of `image_candidates` says about who is served.
+#[derive(Debug, Default)]
+struct ImageCoverage {
+    /// Words with any available candidate at all.
+    any: HashSet<i64>,
+    /// Words with an available candidate no other word already shows.
+    distinct: HashSet<i64>,
+    /// The same, restricted to candidates a library answered for.
+    library: HashSet<i64>,
+    /// Scene-prompt versions among each word's available SDXL candidates.
+    scene_vers: HashMap<i64, HashSet<String>>,
+}
+
+/// Who holds a usable picture, and from where.
 ///
 /// Computed from one scan of `image_candidates` and one of `image_selections`
 /// rather than from a correlated `NOT EXISTS`: `image_candidates` is indexed on
 /// `(word_id, file_hash)`, so a lookup by hash alone has no index to walk and
 /// the subquery form would scan the table once per candidate row on every pass.
-fn image_coverage(conn: &Connection) -> Result<(HashSet<i64>, HashSet<i64>)> {
+fn image_coverage(conn: &Connection) -> Result<ImageCoverage> {
     let selected = selected_image_hashes(conn)?;
-    let mut stmt =
-        conn.prepare("SELECT word_id, file_hash FROM image_candidates WHERE status = 'available'")?;
+    let mut stmt = conn.prepare(
+        "SELECT word_id, file_hash, source, source_ref
+         FROM image_candidates WHERE status = 'available'",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let mut coverage = ImageCoverage::default();
+    for (word_id, file_hash, source, source_ref) in rows {
+        coverage.any.insert(word_id);
+        let generated = source == ImageSource::Sdxl.as_str();
+        let scene_ver = generated
+            .then(|| crate::score::scene_prompt_ver(source_ref.as_deref()))
+            .flatten();
+        if let Some(ver) = scene_ver {
+            coverage
+                .scene_vers
+                .entry(word_id)
+                .or_default()
+                .insert(ver.to_string());
+        }
+        // A scene image is a function of one word's own sentence and its own
+        // seed, so two words cannot arrive at the same bytes unless they share
+        // a sentence. Exempting it from the duplicate test keeps the wave-8
+        // reopen — which exists to walk a word whose only photo is somebody
+        // else's back down the library chain — from firing on a picture that
+        // was never anybody else's and has no further chain to walk.
+        if scene_ver.is_some() || !is_duplicate_image(&selected, &file_hash, word_id) {
+            coverage.distinct.insert(word_id);
+            if !generated {
+                coverage.library.insert(word_id);
+            }
+        }
+    }
+    Ok(coverage)
+}
+
+/// Each word's selected slot-1 sentence: the one the mode-1 card shows.
+fn slot_one_examples(conn: &Connection) -> Result<HashMap<i64, String>> {
+    let mut stmt = conn.prepare(
+        "SELECT es.word_id, ec.text
+         FROM example_selections es
+         JOIN example_candidates ec ON ec.ex_cand_id = es.ex_cand_id
+         WHERE es.slot = 1",
+    )?;
     let rows = stmt
         .query_map([], |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-
-    let mut any = HashSet::new();
-    let mut usable = HashSet::new();
-    for (word_id, file_hash) in rows {
-        any.insert(word_id);
-        if !is_duplicate_image(&selected, &file_hash, word_id) {
-            usable.insert(word_id);
-        }
-    }
-    Ok((any, usable))
+    Ok(rows.into_iter().collect())
 }
 
 fn id_set(conn: &Connection, sql: &str) -> Result<HashSet<i64>> {

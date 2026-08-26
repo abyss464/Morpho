@@ -257,6 +257,13 @@ pub async fn morfessor_segment(
 }
 
 /// `sdxl.generate` request.
+///
+/// The three optional fields carry generation settings the engine has an
+/// opinion about — scene mode drives a Turbo checkpoint, which wants four steps
+/// and no guidance rather than the base model's thirty and seven. They are
+/// omitted entirely when unset, so a request the engine has no opinion about is
+/// byte-identical to the one the protocol example shows and an adapter that has
+/// never heard of them behaves exactly as before.
 #[derive(Debug, Serialize)]
 pub struct SdxlRequest<'a> {
     pub prompt: &'a str,
@@ -265,6 +272,15 @@ pub struct SdxlRequest<'a> {
     pub width: u32,
     pub height: u32,
     pub out_path: String,
+    /// Sampler steps.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steps: Option<u32>,
+    /// Classifier-free guidance scale.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cfg: Option<f32>,
+    /// Workflow template name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<&'a str>,
 }
 
 /// `sdxl.generate` result.
@@ -713,6 +729,66 @@ mod tests {
             assert!(probe.state().contains("not on PATH"), "{}", probe.state());
             assert!(!probe.dead_letters.is_empty());
         }
+    }
+
+    /// A request the engine has no opinion about is the one the protocol
+    /// example shows, key for key — no `steps`, no `cfg`, no `workflow`. An
+    /// adapter that has never heard of them must see exactly what it saw
+    /// before they existed.
+    #[test]
+    fn unset_generation_params_are_omitted_entirely() {
+        let request = SdxlRequest {
+            prompt: "a clear photographic scene",
+            negative_prompt: "text, watermark",
+            seed: 42,
+            width: 768,
+            height: 576,
+            out_path: "/tmp/x.webp".to_string(),
+            steps: None,
+            cfg: None,
+            workflow: None,
+        };
+        let json: serde_json::Value = serde_json::to_value(&request).unwrap();
+        let mut keys: Vec<&str> = json
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            vec![
+                "height",
+                "negative_prompt",
+                "out_path",
+                "prompt",
+                "seed",
+                "width"
+            ]
+        );
+    }
+
+    #[test]
+    fn set_generation_params_ride_along_with_the_request() {
+        let request = SdxlRequest {
+            prompt: "photograph illustrating: ...",
+            negative_prompt: "text, watermark",
+            seed: 42,
+            width: 768,
+            height: 576,
+            out_path: "/tmp/x.webp".to_string(),
+            steps: Some(4),
+            cfg: Some(1.0),
+            workflow: Some("sdxl_turbo_v1"),
+        };
+        let json: serde_json::Value = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["steps"], 4);
+        assert!((json["cfg"].as_f64().unwrap() - 1.0).abs() < 1e-9);
+        assert_eq!(json["workflow"], "sdxl_turbo_v1");
+        // The params the protocol already names are untouched by their arrival.
+        assert_eq!(json["seed"], 42);
+        assert_eq!(json["width"], 768);
     }
 
     #[test]

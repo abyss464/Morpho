@@ -58,7 +58,7 @@ use morpho_store::error::Result;
 use crate::config::{IMAGE_PROVIDERS, IMAGE_SECOND_PASSES};
 use crate::engine::EngineContext;
 use crate::facts::{image_source_name, Facts, FetchKind};
-use crate::rule::{JobPayload, JobSpec, Rule, Snapshot};
+use crate::rule::{JobPayload, JobSpec, Rule, ScenePrompt, Snapshot};
 use crate::score::ImageStrategy;
 
 /// Has this image pass finished, one way or another?
@@ -230,6 +230,29 @@ impl Rule for FetchImagesSecondPassRule {
     }
 }
 
+/// Has every library been asked, first pass and second passes alike?
+///
+/// This is the gate on the whole generative tier, and it does not move: a real
+/// photograph of something that exists beats a picture of something that does
+/// not, however the latter was prompted. Only a word every library came back
+/// empty for reaches generation at all.
+fn libraries_spent(facts: &Facts, enabled: &[ImageSource], word_id: i64) -> bool {
+    let strict = IMAGE_PROVIDERS.iter().all(|provider| {
+        // Not enabled => permanently absent => spent.
+        !enabled.contains(&provider.source)
+            || facts.source_exhausted(
+                &FetchKind::Images,
+                JobKind::FetchImages,
+                word_id,
+                image_source_name(provider.source),
+            )
+    });
+    strict
+        && IMAGE_SECOND_PASSES
+            .iter()
+            .all(|pass| !enabled.contains(&pass.source) || pass_spent(facts, word_id, pass.mark))
+}
+
 pub struct GenImageSdxlRule {
     context: Arc<EngineContext>,
 }
@@ -253,6 +276,8 @@ impl Rule for GenImageSdxlRule {
         let enabled = self.context.sources.config.enabled_image_sources();
         let sdxl_name = image_source_name(ImageSource::Sdxl);
 
+        let scene_mode = self.context.images.scene_mode;
+
         let mut jobs = Vec::new();
         for word in &facts.active {
             // "Zero available candidates": a word that already has a picture of
@@ -263,26 +288,18 @@ impl Rule for GenImageSdxlRule {
             if facts.fetched(&FetchKind::Images, word.word_id, sdxl_name) {
                 continue;
             }
-            let all_spent = IMAGE_PROVIDERS.iter().all(|provider| {
-                // Not enabled => permanently absent => spent.
-                !enabled.contains(&provider.source)
-                    || facts.source_exhausted(
-                        &FetchKind::Images,
-                        JobKind::FetchImages,
-                        word.word_id,
-                        image_source_name(provider.source),
-                    )
-            });
-            if !all_spent {
+            // With scene mode on, a word that owns a sentence belongs to the
+            // scene rule instead. Words without one still come through here:
+            // there is nothing to describe, and a bare-concept picture is
+            // better than no picture.
+            if scene_mode && facts.slot_one_example.contains_key(&word.word_id) {
                 continue;
             }
-            // And the second passes too: a real photograph under an awkward
-            // licence still depicts the word, which nothing generated does.
-            // This is what "exhaust the online sources first" means in code.
-            let retries_spent = IMAGE_SECOND_PASSES.iter().all(|pass| {
-                !enabled.contains(&pass.source) || pass_spent(facts, word.word_id, pass.mark)
-            });
-            if !retries_spent {
+            // Every library, first pass and second passes alike, has to be
+            // spent first: a real photograph under an awkward licence still
+            // depicts the word, which nothing generated does. This is what
+            // "exhaust the online sources first" means in code.
+            if !libraries_spent(facts, &enabled, word.word_id) {
                 continue;
             }
             jobs.push(
@@ -300,6 +317,92 @@ impl Rule for GenImageSdxlRule {
                     word_id: word.word_id,
                     lemma: word.lemma.clone(),
                     gloss: facts.primary_gloss.get(&word.word_id).cloned(),
+                    scene: None,
+                }),
+            );
+        }
+        Ok(jobs)
+    }
+}
+
+/// The generative tier, prompted with the word's own sentence.
+///
+/// Same position in the chain as [`GenImageSdxlRule`] and the same gate: every
+/// library asked, every second pass spent, nothing usable to show for it. What
+/// differs is the ask. A bare-concept prompt gives a learner a picture *of a
+/// word*, which for anything abstract is a stock-art abstraction nobody can
+/// answer a quiz on; a prompt built from the sentence the card already shows
+/// gives them a picture of the moment that sentence describes, and the card
+/// becomes one scene read two ways.
+///
+/// A word reaches this rule once per prompt-template version. Bumping
+/// `scene_prompt_ver` moves the job subject, so the pass re-derives against a
+/// subject that has never run — no mark to clear, no dead letter to reset.
+pub struct GenSceneImageRule {
+    context: Arc<EngineContext>,
+}
+
+impl GenSceneImageRule {
+    pub fn new(context: Arc<EngineContext>) -> Self {
+        Self { context }
+    }
+}
+
+impl Rule for GenSceneImageRule {
+    fn name(&self) -> &'static str {
+        "gen_scene_image"
+    }
+
+    fn derive(&self, snapshot: &Snapshot<'_>) -> Result<Vec<JobSpec>> {
+        if !self.context.images.scene_mode || !self.context.sources.has_sdxl() {
+            return Ok(Vec::new());
+        }
+        let facts = snapshot.facts;
+        let enabled = self.context.sources.config.enabled_image_sources();
+        let prompt_ver = self.context.images.scene_prompt_ver();
+        let mark = self.context.images.scene_mark();
+
+        let mut jobs = Vec::new();
+        for word in &facts.active {
+            // `active` already excludes gloss anchors; saying so here as well
+            // costs a pointer comparison and keeps the rule honest if the fact
+            // set ever widens (admin-api.md ruling #18a).
+            if word.zh_gloss.is_some() {
+                continue;
+            }
+            // Generation is the last resort, not the first: a word any library
+            // could serve is served by the library.
+            if !facts.needs_library_image(word.word_id) {
+                continue;
+            }
+            if facts.has_scene_image(word.word_id, prompt_ver) {
+                continue;
+            }
+            if !libraries_spent(facts, &enabled, word.word_id) {
+                continue;
+            }
+            let Some(sentence) = facts.slot_one_example.get(&word.word_id) else {
+                // No sentence, no scene. The bare-concept rule takes the word.
+                continue;
+            };
+            jobs.push(
+                JobSpec::new(
+                    JobKey::new(
+                        JobKind::GenImageSdxl,
+                        SubjectRef::word_source(word.word_id, &mark),
+                    ),
+                    RateKey::Sdxl,
+                    Priority::P3,
+                )
+                .with_tiebreak(word.frequency_rank, word.word_id)
+                .with_payload(JobPayload::GenImageSdxl {
+                    word_id: word.word_id,
+                    lemma: word.lemma.clone(),
+                    gloss: facts.primary_gloss.get(&word.word_id).cloned(),
+                    scene: Some(ScenePrompt {
+                        sentence: sentence.clone(),
+                        prompt_ver: prompt_ver.to_string(),
+                    }),
                 }),
             );
         }

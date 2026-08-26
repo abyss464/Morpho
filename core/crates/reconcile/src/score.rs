@@ -26,6 +26,17 @@ pub const RELAXED_LICENSE: &str = "relaxed-license";
 /// second pass over a keyless provider.
 pub const WIDENED_QUERY: &str = "widened-query";
 
+/// Leading word of the note a scene generation writes: `(scene scene/1)`.
+///
+/// A scene candidate is an SDXL candidate whose prompt described the word's own
+/// slot-1 sentence rather than the bare concept. It is *not* a strategy in the
+/// [`ImageStrategy`] sense — it changes nothing about how the candidate scores,
+/// because a generated picture ranks below a real photograph whatever it was
+/// prompted with. The note exists so the deriving rule can tell whether a word
+/// already holds a scene image made under the current template, and so the
+/// duplicate-image pressure can leave those candidates alone.
+pub const SCENE_NOTE: &str = "scene";
+
 /// How much a second-pass candidate gives up against a first-pass one.
 ///
 /// It has to exceed [`HYSTERESIS_DELTA`], or a second-pass picture sitting in
@@ -128,6 +139,28 @@ fn trailing_note(source_ref: &str) -> Option<&str> {
     let inner = source_ref.trim_end().strip_suffix(')')?;
     let open = inner.rfind('(')?;
     Some(&inner[open + 1..])
+}
+
+/// The scene-prompt version a candidate was generated under, if it is a scene
+/// candidate at all.
+///
+/// Read only from the trailing parenthesised note, for the same reason
+/// [`ImageStrategy::from_source_ref`] is: a Commons file may be *called*
+/// `File:Scene at dawn.jpg`, and a title is not a provenance claim.
+pub fn scene_prompt_ver(source_ref: Option<&str>) -> Option<&str> {
+    let notes = source_ref.and_then(trailing_note)?;
+    notes.split(',').map(str::trim).find_map(|note| {
+        let rest = note.strip_prefix(SCENE_NOTE)?;
+        let ver = rest.trim_start();
+        // `(scene)` with no version is not a version claim, and `(scenery)`
+        // is not a scene note at all.
+        (ver.len() < rest.len() && !ver.is_empty()).then_some(ver)
+    })
+}
+
+/// Was this candidate generated from an example sentence?
+pub fn is_scene_image(source_ref: Option<&str>) -> bool {
+    scene_prompt_ver(source_ref).is_some()
 }
 
 /// How a definition's tokens land against the live lexicon.
@@ -764,6 +797,96 @@ mod tests {
             ImageStrategy::from_source_ref(Some("wikimedia:File:Widened-query (diagram).png")),
             ImageStrategy::Strict
         );
+    }
+
+    // -- scene candidates ---------------------------------------------------
+
+    fn generated(source_ref: &str) -> ImageFacts {
+        ImageFacts {
+            source: ImageSource::Sdxl,
+            width: Some(768),
+            height: Some(576),
+            pos_matches_primary: true,
+            strategy: ImageStrategy::from_source_ref(Some(source_ref)),
+        }
+    }
+
+    #[test]
+    fn the_scene_version_is_read_back_off_the_source_ref() {
+        assert_eq!(
+            scene_prompt_ver(Some("sdxl:1234 (scene scene/1)")),
+            Some("scene/1")
+        );
+        assert_eq!(
+            scene_prompt_ver(Some("sdxl:1234 (scene scene/2)")),
+            Some("scene/2")
+        );
+        // A bare-concept generation carries a JSON blob and no note at all.
+        assert_eq!(
+            scene_prompt_ver(Some(r#"{"prompt":"a clear photographic scene","seed":7}"#)),
+            None
+        );
+        assert_eq!(scene_prompt_ver(None), None);
+    }
+
+    /// A note has to actually be one. `(scene)` claims no version and
+    /// `(scenery)` is a different word.
+    #[test]
+    fn a_note_that_is_not_a_version_claim_is_not_read_as_one() {
+        assert_eq!(scene_prompt_ver(Some("sdxl:1 (scene)")), None);
+        assert_eq!(scene_prompt_ver(Some("sdxl:1 (scenery)")), None);
+        assert_eq!(scene_prompt_ver(Some("sdxl:1 (scene )")), None);
+        // And a title is a title, exactly as it is for the strategies.
+        assert_eq!(
+            scene_prompt_ver(Some("wikimedia:File:Scene scene/1 at dawn.jpg")),
+            None
+        );
+        assert!(!is_scene_image(Some("wikimedia:File:A scene.jpg")));
+        assert!(is_scene_image(Some("sdxl:1 (scene scene/1)")));
+    }
+
+    /// The note is bookkeeping, not merit. Scene mode changes what a generated
+    /// picture *depicts*; it does not change where a generated picture ranks,
+    /// which is below every library and unchanged since ruling #18.
+    #[test]
+    fn a_scene_candidate_scores_exactly_like_any_other_generated_one() {
+        let scene = score_image(&generated("sdxl:1234 (scene scene/1)"));
+        let bare = score_image(&generated(r#"{"prompt":"...","seed":1234}"#));
+        assert_eq!(scene.score, bare.score);
+        assert_eq!(scene.detail.strategy_penalty, None);
+        // 0.45 * 0.5 + 0.35 * 1.0 + 0.20 * 1.0
+        assert!((scene.score - 0.775).abs() < 1e-9, "{scene:?}");
+    }
+
+    /// The ordering the whole tier rests on: a real photograph of something
+    /// that exists beats a picture of something that does not, however well the
+    /// latter was prompted — and by more than the switching margin, so a
+    /// library hit arriving later actually takes the slot back.
+    #[test]
+    fn a_scene_candidate_never_outranks_a_library_photograph() {
+        let scene = score_image(&generated("sdxl:1234 (scene scene/1)")).score;
+        for source in [
+            ImageSource::Manual,
+            ImageSource::Unsplash,
+            ImageSource::Pexels,
+            ImageSource::Pixabay,
+            ImageSource::Wikimedia,
+            ImageSource::Openverse,
+        ] {
+            let library = score_image(&ImageFacts {
+                source,
+                width: Some(768),
+                height: Some(576),
+                pos_matches_primary: true,
+                strategy: ImageStrategy::Strict,
+            })
+            .score;
+            assert!(library > scene, "{source} scored {library} vs {scene}");
+            assert!(
+                should_switch(Some(scene), library),
+                "{source} could not take the slot back"
+            );
+        }
     }
 
     // -- global image uniqueness -------------------------------------------

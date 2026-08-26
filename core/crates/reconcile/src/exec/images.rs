@@ -168,15 +168,30 @@ impl Executor for GenImageSdxlExecutor {
             word_id,
             lemma,
             gloss,
+            scene,
         } = &job.payload
         else {
             return Err(wrong_payload(JobKind::GenImageSdxl));
         };
 
-        let prompt = sdxl_prompt(lemma, gloss.as_deref());
-        // The seed is derived from the prompt, so re-running a generation
-        // reproduces the same picture instead of quietly making a new one.
-        let seed = seed_from(&prompt);
+        let (prompt, seed) = match scene {
+            // A scene generation keys its seed on the word and the template
+            // version rather than on the prompt text, so a sentence that gets
+            // re-selected under the same template reproduces the same picture,
+            // and a template bump produces a different one on purpose.
+            Some(scene) => (
+                scene_prompt(&scene.sentence, lemma, gloss.as_deref()),
+                scene_seed(*word_id, &scene.prompt_ver),
+            ),
+            // The bare-concept prompt seeds from its own text, so re-running a
+            // generation reproduces the same picture instead of quietly making
+            // a new one.
+            None => {
+                let prompt = sdxl_prompt(lemma, gloss.as_deref());
+                let seed = seed_from(&prompt);
+                (prompt, seed)
+            }
+        };
 
         let staging = self
             .context
@@ -185,6 +200,11 @@ impl Executor for GenImageSdxlExecutor {
             .map_err(store_error)?;
         let out_path = staging.out_path("image.webp");
 
+        // Generation settings ride along only when the operator has turned
+        // scene mode on, which is the same switch that says "my ComfyUI is set
+        // up for the fast checkpoint". With it off, the request the adapter
+        // receives is exactly the one it received before this existed.
+        let params = self.context.images.scene_mode.then(|| &self.context.images);
         let result = proc::sdxl_generate(
             &self.context.sources.adapters,
             proc::SdxlRequest {
@@ -194,6 +214,9 @@ impl Executor for GenImageSdxlExecutor {
                 width: images::TARGET_WIDTH,
                 height: images::TARGET_HEIGHT,
                 out_path: out_path.to_string_lossy().into_owned(),
+                steps: params.map(|images| images.sdxl_steps),
+                cfg: params.map(|images| images.sdxl_cfg),
+                workflow: params.map(|images| &*images.sdxl_workflow),
             },
         )
         .await?;
@@ -215,14 +238,24 @@ impl Executor for GenImageSdxlExecutor {
                         width: Some(i64::from(images::TARGET_WIDTH)),
                         height: Some(i64::from(images::TARGET_HEIGHT)),
                         source: ImageSource::Sdxl,
-                        source_ref: Some(
-                            serde_json::json!({
+                        source_ref: Some(match scene {
+                            // The note is what a later pass reads to know this
+                            // word already holds a scene image, and which
+                            // template made it. The prompt is not repeated into
+                            // it — `query_used` below already holds that.
+                            Some(scene) => format!(
+                                "sdxl:{} ({} {})",
+                                result.seed,
+                                crate::score::SCENE_NOTE,
+                                scene.prompt_ver
+                            ),
+                            None => serde_json::json!({
                                 "prompt": prompt,
                                 "seed": result.seed,
                                 "model": result.model,
                             })
                             .to_string(),
-                        ),
+                        }),
                         license: Some("generated".to_string()),
                         query_used: Some(prompt.clone()),
                     }],
@@ -427,6 +460,64 @@ fn sdxl_prompt(lemma: &str, gloss: Option<&str>) -> String {
     }
 }
 
+/// Words of the definition a scene prompt is allowed to borrow as steering.
+///
+/// The sentence is the subject of the picture and the definition is a nudge
+/// about which sense of the word that sentence is using. Past a dozen words a
+/// gloss stops steering and starts competing: the sampler weights the whole
+/// prompt, and a long definition drags the composition towards the dictionary's
+/// abstraction instead of the sentence's scene.
+const SCENE_GLOSS_WORDS: usize = 12;
+
+/// The scene prompt: the sentence first, the word second, the sense last.
+///
+/// Order is the point. Diffusion models weight the front of a prompt hardest,
+/// and what the card needs is a picture of the moment the sentence describes —
+/// so the sentence leads, the lemma follows to keep the subject in frame, and
+/// the trimmed gloss trails as disambiguation for a lemma that has several
+/// senses.
+fn scene_prompt(sentence: &str, lemma: &str, gloss: Option<&str>) -> String {
+    let sentence = collapse_whitespace(sentence);
+    let base = format!("photograph illustrating: {sentence} — depicting the meaning of '{lemma}'");
+    match gloss.map(trim_gloss).filter(|gloss| !gloss.is_empty()) {
+        Some(gloss) => format!("{base} ({gloss})"),
+        None => base,
+    }
+}
+
+/// The first [`SCENE_GLOSS_WORDS`] words of a definition, whitespace collapsed.
+fn trim_gloss(gloss: &str) -> String {
+    gloss
+        .split_whitespace()
+        .take(SCENE_GLOSS_WORDS)
+        .collect::<Vec<&str>>()
+        .join(" ")
+}
+
+fn collapse_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<&str>>().join(" ")
+}
+
+/// Deterministic seed for a scene generation: the word and the template
+/// version, nothing else.
+///
+/// Keying on the word rather than on the prompt is what makes a scene image
+/// per-word unique by construction — two words never draw the same seed, so
+/// they never converge on the same bytes, so the duplicate-image pressure has
+/// nothing to push against. Keying on the version as well is what makes a
+/// template bump produce a genuinely different picture rather than the same one
+/// under a new note.
+fn scene_seed(word_id: i64, prompt_ver: &str) -> u64 {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(&word_id.to_le_bytes());
+    hasher.update(prompt_ver.as_bytes());
+    u64::from_le_bytes(
+        hasher.finalize().as_bytes()[..8]
+            .try_into()
+            .expect("8 bytes"),
+    )
+}
+
 /// Deterministic seed from the prompt.
 fn seed_from(prompt: &str) -> u64 {
     let digest = blake3::hash(prompt.as_bytes());
@@ -576,5 +667,69 @@ mod tests {
     fn the_negative_prompt_blocks_text_in_the_picture() {
         assert!(SDXL_NEGATIVE.contains("text"));
         assert!(SDXL_NEGATIVE.contains("watermark"));
+    }
+
+    // -- the scene prompt --------------------------------------------------
+
+    const SENTENCE: &str = "She had to abandon the car in the flood.";
+
+    #[test]
+    fn the_scene_prompt_describes_the_sentence_first() {
+        let prompt = scene_prompt(SENTENCE, "abandon", Some("to give up completely"));
+        assert!(prompt.starts_with("photograph illustrating: "), "{prompt}");
+        assert!(prompt.contains(SENTENCE), "{prompt}");
+        assert!(prompt.contains("the meaning of 'abandon'"), "{prompt}");
+        assert!(prompt.ends_with("(to give up completely)"), "{prompt}");
+        // The sentence leads, because the sampler weights the front hardest.
+        let sentence_at = prompt.find(SENTENCE).unwrap();
+        assert!(sentence_at < prompt.find("abandon'").unwrap());
+        assert!(sentence_at < prompt.find("give up").unwrap());
+    }
+
+    #[test]
+    fn a_long_definition_is_trimmed_to_steering_length() {
+        let gloss = "to leave a place thing or person usually forever and \
+                     without any intention of coming back to it at all";
+        let prompt = scene_prompt(SENTENCE, "abandon", Some(gloss));
+        let trimmed = trim_gloss(gloss);
+        assert_eq!(trimmed.split_whitespace().count(), SCENE_GLOSS_WORDS);
+        assert_eq!(
+            trimmed,
+            "to leave a place thing or person usually forever and without any"
+        );
+        assert!(prompt.ends_with(&format!("({trimmed})")), "{prompt}");
+        // What got trimmed really is gone, rather than truncated mid-word.
+        assert!(!prompt.contains("coming back"), "{prompt}");
+    }
+
+    #[test]
+    fn a_word_with_no_definition_still_gets_a_scene_prompt() {
+        let prompt = scene_prompt(SENTENCE, "abandon", None);
+        assert!(prompt.contains(SENTENCE), "{prompt}");
+        assert!(prompt.ends_with("the meaning of 'abandon'"), "{prompt}");
+        // An empty parenthetical would read to the sampler as a hole.
+        assert!(!prompt.contains("()"), "{prompt}");
+        assert_eq!(scene_prompt(SENTENCE, "abandon", Some("   ")), prompt);
+    }
+
+    #[test]
+    fn a_ragged_sentence_is_normalized_before_it_reaches_the_sampler() {
+        let prompt = scene_prompt("  She had to\n abandon   the car.  ", "abandon", None);
+        assert!(prompt.contains("She had to abandon the car."), "{prompt}");
+        assert!(!prompt.contains("  "), "{prompt}");
+    }
+
+    /// Two words never draw the same seed, which is what makes a scene image
+    /// per-word unique by construction and keeps the duplicate-image pressure
+    /// with nothing to push against.
+    #[test]
+    fn scene_seeds_are_per_word_and_per_template() {
+        assert_eq!(scene_seed(7, "scene/1"), scene_seed(7, "scene/1"));
+        assert_ne!(scene_seed(7, "scene/1"), scene_seed(8, "scene/1"));
+        // A template bump has to produce a genuinely different picture, not the
+        // same one under a new note.
+        assert_ne!(scene_seed(7, "scene/1"), scene_seed(7, "scene/2"));
+        // And the seed does not move when the sentence is re-selected.
+        assert_ne!(scene_seed(7, "scene/1"), seed_from(SENTENCE));
     }
 }

@@ -120,10 +120,27 @@ pub enum JobPayload {
         word_id: i64,
         lemma: String,
         gloss: Option<String>,
+        /// Present when the scene rule derived this job: the sentence the
+        /// picture must depict, and the template version that phrased the ask.
+        ///
+        /// Carried rather than looked up, for the same reason the image mark
+        /// is: the sentence the rule saw and the sentence the prompt describes
+        /// cannot drift apart across a pass boundary.
+        scene: Option<ScenePrompt>,
     },
     SynthTts {
         desired: DesiredTts,
     },
+}
+
+/// What a scene generation is being asked to depict.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScenePrompt {
+    /// The word's selected slot-1 sentence, verbatim.
+    pub sentence: String,
+    /// The scene-prompt template version, e.g. `scene/1`. It ends up in the
+    /// candidate's `source_ref` and in the seed.
+    pub prompt_ver: String,
 }
 
 /// One unit of work the world is missing.

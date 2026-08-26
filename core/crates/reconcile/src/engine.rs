@@ -21,6 +21,7 @@ use morpho_domain::tts::TtsConfig;
 use morpho_store::queries::JobStateRow;
 use morpho_store::{MediaStore, Result, Store};
 
+use crate::config::ImagesConfig;
 use crate::dispatch::Dispatcher;
 use crate::exec::{default_executors, Executor};
 use crate::facts::Facts;
@@ -39,6 +40,7 @@ pub struct EngineContext {
     pub tts: TtsConfig,
     pub plan: PlanParams,
     pub pipeline: TextPipeline,
+    pub images: ImagesConfig,
 }
 
 impl EngineContext {
@@ -49,7 +51,14 @@ impl EngineContext {
             tts: TtsConfig::default(),
             plan: PlanParams::default(),
             pipeline: TextPipeline::default(),
+            images: ImagesConfig::default(),
         }
+    }
+
+    #[must_use]
+    pub fn with_images(mut self, images: ImagesConfig) -> Self {
+        self.images = images;
+        self
     }
 
     #[must_use]
@@ -175,6 +184,20 @@ impl Reconciler {
         ticker.tick().await;
 
         self.context.sources.log_availability();
+        // Scene mode is a switch an operator flips from the environment, so it
+        // says so out loud: a run that silently ignored `MORPHO_SCENE_MODE`
+        // looks identical to one that honoured it until the first picture
+        // lands, hours later.
+        if self.context.images.scene_mode {
+            tracing::info!(
+                prompt_ver = self.context.images.scene_prompt_ver(),
+                steps = self.context.images.sdxl_steps,
+                cfg = self.context.images.sdxl_cfg,
+                workflow = %*self.context.images.sdxl_workflow,
+                "scene mode on: words the libraries cannot serve are generated \
+                 from their own slot-1 sentence"
+            );
+        }
         if let Err(err) = self.context.media.clean_staging() {
             tracing::warn!(error = %err, "could not clean the staging directory");
         }

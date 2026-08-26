@@ -21,7 +21,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use morpho_domain::tts::TtsConfig;
-use morpho_reconcile::{AdapterConfig, PlanParams, SourcesConfig, ADAPTERS_DIR};
+use morpho_reconcile::{AdapterConfig, ImagesConfig, PlanParams, SourcesConfig, ADAPTERS_DIR};
 
 /// Config file consulted when `--config` is not given.
 pub const DEFAULT_CONFIG_FILE: &str = "morphod.toml";
@@ -43,6 +43,8 @@ pub struct Config {
     pub adapters: AdapterConfig,
     pub tts: TtsConfig,
     pub plan: PlanParams,
+    /// How the image chain behaves once every library is spent.
+    pub images: ImagesConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +79,7 @@ impl Default for Config {
             adapters: AdapterConfig::default(),
             tts: TtsConfig::default(),
             plan: PlanParams::default(),
+            images: ImagesConfig::default(),
         }
     }
 }
@@ -196,6 +199,7 @@ impl Config {
             self.adapters.adapters_root = Some(PathBuf::from(value));
         }
         self.sources.apply_env();
+        self.images.apply_env();
         Ok(())
     }
 
@@ -238,6 +242,7 @@ impl Config {
         )
         .with_tts(self.tts.clone())
         .with_plan_params(self.plan)
+        .with_images(self.images.clone())
         .with_pipeline(self.text_pipeline()))
     }
 
@@ -334,6 +339,28 @@ mod tests {
         assert_eq!(config.tts.text_bitrate_kbps, 32, "unset keys keep defaults");
         assert_eq!(config.plan.group_min, 12);
         assert_eq!(config.adapters.morfessor_batch, 500);
+    }
+
+    /// Scene mode is an operator decision — it points a local GPU at every word
+    /// the libraries left behind — so a config that says nothing leaves it off.
+    #[test]
+    fn the_images_section_parses_and_defaults_to_off() {
+        let config = Config::default();
+        assert!(!config.images.scene_mode);
+        assert_eq!(config.images.scene_prompt_ver(), "scene/1");
+
+        let toml = r#"
+            [images]
+            scene_mode = true
+            scene_prompt_ver = "scene/2"
+        "#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(config.images.scene_mode);
+        assert_eq!(config.images.scene_mark(), "sdxl_scene_2");
+        assert_eq!(config.images.sdxl_steps, 4, "unset keys keep defaults");
+
+        let err = toml::from_str::<Config>("[images]\nnonsense = 1").unwrap_err();
+        assert!(err.to_string().contains("nonsense"));
     }
 
     #[test]

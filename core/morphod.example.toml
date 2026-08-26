@@ -166,6 +166,41 @@ engine = "edge-tts"
 engine_ver = "7"
 
 # ---------------------------------------------------------------------------
+# Images
+#
+# This section is about the LAST link in the image chain only. Every library is
+# still asked first, still asked again on looser terms, and a real photograph
+# still outranks anything generated — none of that moves. What lives here is how
+# a word none of them could answer for gets its picture.
+# ---------------------------------------------------------------------------
+[images]
+# Scene mode. Off: a word that reaches generation is prompted for the bare
+# concept ("a clear photographic scene depicting the concept of 'abandon': ...").
+# On: it is prompted with its own selected slot-1 sentence, so the picture shows
+# the moment the card's sentence describes and the card becomes one scene read
+# two ways. Only words that HAVE a slot-1 sentence take this path; the rest keep
+# the bare-concept prompt.
+#
+# Turning it on points a local GPU at every word the libraries left behind, so it
+# is an explicit decision. Environment: MORPHO_SCENE_MODE=1 (0 turns it back off).
+scene_mode = false
+
+# Version tag of the scene-prompt template. It rides in the candidate's
+# source_ref — "sdxl:<seed> (scene scene/1)" — and in the job subject, so bumping
+# it is how you ask for every scene image to be generated again under a changed
+# template. Nothing is cleared: the old candidates stay, carrying the version
+# that produced them, and the slot only moves if the selector prefers the new one.
+scene_prompt_ver = "scene/1"
+
+# Generation settings, sent to the sdxl adapter only while scene_mode is on. The
+# defaults are SDXL-Turbo's: four steps, no guidance. That is what makes a bulk
+# pass over thousands of words finish in an evening rather than a week. Point
+# these at your own workflow if your ComfyUI runs the base model instead.
+sdxl_steps = 4
+sdxl_cfg = 1.0
+sdxl_workflow = "sdxl_turbo_v1"
+
+# ---------------------------------------------------------------------------
 # Learning plan
 # ---------------------------------------------------------------------------
 [plan]
@@ -182,5 +217,6 @@ group_max = 20
 #   MORPHOD_ADAPTERS_ROOT  overrides adapters.adapters_root
 #   MORPHO_WORDNET_DIR     overrides sources.wordnet_dir
 #   MORPHO_CORPUS_PATH     overrides sources.corpus_path
+#   MORPHO_SCENE_MODE      overrides images.scene_mode (1/true/on, 0/false/off)
 #   UNSPLASH_ACCESS_KEY / PEXELS_API_KEY / PIXABAY_API_KEY / COMFYUI_URL
 #   RUST_LOG               overrides --log

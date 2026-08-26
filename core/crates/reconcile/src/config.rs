@@ -141,6 +141,22 @@ defaulted_string!(
     "Openverse image search endpoint."
 );
 defaulted_string!(
+    ScenePromptVer,
+    "scene/1",
+    "Version tag of the scene-prompt template.\n\n\
+     It rides in the candidate's `source_ref` and in the job subject, so bumping \
+     it is how an operator asks for every scene image to be generated again \
+     under a changed template. Nothing is cleared: the old candidates stay, \
+     carrying the version that produced them."
+);
+defaulted_string!(
+    SdxlWorkflow,
+    "sdxl_turbo_v1",
+    "ComfyUI workflow template the sdxl adapter should render with.\n\n\
+     Passed through as an optional parameter; the adapter owns the file and is \
+     free to ignore a name it does not know."
+);
+defaulted_string!(
     TatoebaUrl,
     "https://tatoeba.org/en/api_v0/search",
     "Tatoeba sentence search endpoint."
@@ -153,6 +169,102 @@ defaulted_string!(
      contact — and answers 403 without it, so this is a functional requirement \
      rather than politeness."
 );
+
+/// How the image chain behaves, as opposed to where it fetches from.
+///
+/// Everything here is about the **last** link in that chain. The libraries are
+/// asked first and asked again on looser terms, and only a word none of them
+/// could answer for reaches generation — that ordering is unchanged, and a real
+/// photograph still outranks anything generated. What scene mode changes is the
+/// quality of the fallback once a word gets there: instead of prompting for the
+/// bare concept, the prompt describes the scene of the word's own slot-1
+/// example sentence, which is the picture the card actually wants beside it.
+///
+/// Off by default. Turning it on is an operator decision, because it points a
+/// local GPU at every word the libraries left behind.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ImagesConfig {
+    /// Generate scene images from the slot-1 sentence rather than the bare
+    /// concept. `MORPHO_SCENE_MODE` overrides it.
+    pub scene_mode: bool,
+    /// Version of the scene-prompt template; see [`ScenePromptVer`].
+    pub scene_prompt_ver: ScenePromptVer,
+    /// Sampler steps sent with a generation request while scene mode is on.
+    /// The default suits SDXL-Turbo, which is what makes a bulk pass over
+    /// thousands of words finish in an evening.
+    pub sdxl_steps: u32,
+    /// Classifier-free guidance scale. Turbo wants 1.0 — it was distilled
+    /// without guidance, and anything higher scorches the image.
+    pub sdxl_cfg: f32,
+    /// Workflow template name the adapter should render with.
+    pub sdxl_workflow: SdxlWorkflow,
+}
+
+impl Default for ImagesConfig {
+    fn default() -> Self {
+        Self {
+            scene_mode: false,
+            scene_prompt_ver: ScenePromptVer::default(),
+            sdxl_steps: 4,
+            sdxl_cfg: 1.0,
+            sdxl_workflow: SdxlWorkflow::default(),
+        }
+    }
+}
+
+impl ImagesConfig {
+    /// Fill unset fields from the environment.
+    pub fn apply_env(&mut self) {
+        let Ok(raw) = std::env::var(SCENE_MODE_ENV) else {
+            return;
+        };
+        match parse_flag(&raw) {
+            Some(value) => self.scene_mode = value,
+            None if raw.trim().is_empty() => {}
+            None => tracing::warn!(
+                value = raw,
+                "{SCENE_MODE_ENV} is not a boolean; leaving scene_mode as configured"
+            ),
+        }
+    }
+
+    /// The current scene-prompt version, as it appears in a `source_ref`.
+    pub fn scene_prompt_ver(&self) -> &str {
+        &self.scene_prompt_ver
+    }
+
+    /// `source_fetch.source` / job subject suffix for the scene pass.
+    ///
+    /// The version is part of it, which is the whole mechanism behind "bump the
+    /// template and every word derives again": a bumped version is a subject
+    /// that has never been dispatched, so no job state, no completion mark and
+    /// no dead letter from the previous template applies to it.
+    pub fn scene_mark(&self) -> String {
+        format!(
+            "sdxl_{}",
+            self.scene_prompt_ver()
+                .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+        )
+    }
+}
+
+/// Environment override for [`ImagesConfig::scene_mode`].
+pub const SCENE_MODE_ENV: &str = "MORPHO_SCENE_MODE";
+
+/// A boolean spelled the way a shell profile spells one.
+///
+/// Both directions are recognised, so an operator who exported the variable
+/// once can turn scene mode back off without editing the profile — and anything
+/// else is neither, which the caller reports rather than silently reading as
+/// false.
+fn parse_flag(raw: &str) -> Option<bool> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
 
 /// One image provider and how to reach it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -739,6 +851,72 @@ mod tests {
             let provider = ImageProvider::for_source(pass.source).unwrap();
             assert_eq!(pass.rate_key, provider.rate_key);
             assert_ne!(pass.strategy, ImageStrategy::Strict);
+        }
+    }
+
+    // -- scene mode ---------------------------------------------------------
+
+    /// Scene mode costs GPU time on every word the libraries left behind, so it
+    /// is never something a checkout falls into.
+    #[test]
+    fn scene_mode_is_off_until_an_operator_says_otherwise() {
+        let images = ImagesConfig::default();
+        assert!(!images.scene_mode);
+        assert_eq!(images.scene_prompt_ver(), "scene/1");
+    }
+
+    /// Turbo's settings, which is what makes a bulk pass finishable.
+    #[test]
+    fn the_generation_defaults_suit_the_fast_checkpoint() {
+        let images = ImagesConfig::default();
+        assert_eq!(images.sdxl_steps, 4);
+        assert!((images.sdxl_cfg - 1.0).abs() < f32::EPSILON);
+        assert_eq!(&*images.sdxl_workflow, "sdxl_turbo_v1");
+    }
+
+    /// The mark carries the version, which is the entire mechanism behind
+    /// "bump the template and every word derives again".
+    #[test]
+    fn the_scene_mark_carries_the_template_version() {
+        let mut images = ImagesConfig::default();
+        assert_eq!(images.scene_mark(), "sdxl_scene_1");
+        images.scene_prompt_ver = ScenePromptVer("scene/2".into());
+        assert_eq!(images.scene_mark(), "sdxl_scene_2");
+        // And a mark is never confusable with a library's own.
+        for source in ImageSource::ALL {
+            assert_ne!(images.scene_mark(), source.as_str());
+        }
+        for pass in IMAGE_SECOND_PASSES {
+            assert_ne!(images.scene_mark(), pass.mark);
+        }
+    }
+
+    /// A mark rides in a job subject of the form `{word_id}:{mark}`, so it must
+    /// not contain anything that would make that ambiguous.
+    #[test]
+    fn the_scene_mark_survives_a_hostile_version_string() {
+        let images = ImagesConfig {
+            scene_prompt_ver: ScenePromptVer("scene: v2/alpha ".into()),
+            ..ImagesConfig::default()
+        };
+        let mark = images.scene_mark();
+        assert_eq!(mark, "sdxl_scene__v2_alpha_");
+        assert!(mark.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+    }
+
+    /// The environment switch reads both ways, and refuses to guess.
+    #[test]
+    fn the_scene_mode_switch_is_a_boolean_in_both_directions() {
+        for raw in ["1", "true", "TRUE", " yes ", "on"] {
+            assert_eq!(parse_flag(raw), Some(true), "{raw:?}");
+        }
+        for raw in ["0", "false", "No", "off"] {
+            assert_eq!(parse_flag(raw), Some(false), "{raw:?}");
+        }
+        // Not "probably true": an operator who typoed gets the configured
+        // value and a warning, not a GPU pass they did not ask for.
+        for raw in ["", "  ", "maybe", "2"] {
+            assert_eq!(parse_flag(raw), None, "{raw:?}");
         }
     }
 

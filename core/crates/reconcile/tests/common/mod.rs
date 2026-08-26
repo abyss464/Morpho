@@ -177,6 +177,61 @@ pub async fn seed_image(
         .unwrap()
 }
 
+/// The same, with the provenance note spelled out — a scene candidate is only
+/// recognisable by what its `source_ref` says.
+pub async fn seed_image_with_ref(
+    store: &Store,
+    media: &MediaStore,
+    word_id: i64,
+    bytes: &[u8],
+    source: morpho_domain::types::ImageSource,
+    source_ref: &str,
+) -> i64 {
+    let stored = media.put_bytes(bytes, MediaKind::Image).unwrap();
+    store
+        .write(
+            Actor::Cli,
+            WriteOp::MintImageCandidate(MintImageCandidate {
+                word_id,
+                pos: None,
+                file_hash: stored.file_hash.clone(),
+                media: Some(morpho_store::ops::MediaRegistration {
+                    file_hash: stored.file_hash,
+                    kind: MediaKind::Image,
+                    rel_path: stored.rel_path,
+                    bytes: stored.bytes,
+                }),
+                width: Some(768),
+                height: Some(576),
+                source,
+                source_ref: Some(source_ref.to_string()),
+                license: Some("generated".into()),
+                query_used: None,
+                created_by: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .result
+        .cand_id()
+        .unwrap()
+}
+
+/// Point one of a word's example slots at a candidate.
+pub async fn select_example(store: &Store, word_id: i64, slot: i64, ex_cand_id: i64) {
+    store
+        .write(
+            Actor::Reconciler,
+            WriteOp::select(
+                morpho_domain::types::SlotRef::Example { word_id, slot },
+                ex_cand_id,
+                morpho_domain::types::SelectedBy::Auto,
+            ),
+        )
+        .await
+        .unwrap();
+}
+
 /// Point a word's image slot at one of its candidates, the way a settled sweep
 /// would have left it.
 pub async fn select_image(store: &Store, word_id: i64, img_cand_id: i64) {

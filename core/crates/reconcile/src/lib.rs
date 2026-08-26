@@ -33,7 +33,7 @@ pub mod sources;
 pub mod stages;
 pub mod text;
 
-pub use config::{AdapterConfig, SourcesConfig, ADAPTERS, ADAPTERS_DIR};
+pub use config::{AdapterConfig, ImagesConfig, SourcesConfig, ADAPTERS, ADAPTERS_DIR};
 pub use dispatch::Dispatcher;
 pub use engine::{EngineContext, PassStats, Reconciler, ReconcilerConfig, Trigger};
 pub use exec::{default_executors, Executor};
@@ -45,7 +45,7 @@ pub use morphy::{
 };
 pub use readiness::{core_blockers, evaluate_all, Readiness, WordFacts};
 pub use registry::{JobRegistry, Lane};
-pub use rule::{JobPayload, JobSpec, Rule, Scope, Snapshot};
+pub use rule::{JobPayload, JobSpec, Rule, ScenePrompt, Scope, Snapshot};
 pub use rules::default_rules;
 pub use sources::proc::{probe_adapters, AdapterProbe};
 pub use sources::SourceSet;
