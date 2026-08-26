@@ -41,6 +41,15 @@ pub struct Facts {
     /// Text of each word's selected primary sense, for image search queries
     /// and SDXL prompts.
     pub primary_gloss: HashMap<i64, String>,
+    /// Content lemmas of each word's selected primary sense: the `def_tokens`
+    /// rows that resolve to a word in the lexicon, in the order they appear.
+    ///
+    /// This is what the gloss-widened second pass searches with. It comes from
+    /// `def_tokens` rather than from splitting [`Facts::primary_gloss`] because
+    /// the extraction has already tokenized, lemmatized and — by joining
+    /// `words` — classified every one of them; a token that resolves to no word
+    /// at all is out of scope for the learner and is no basis for a search.
+    pub primary_gloss_tokens: HashMap<i64, Vec<String>>,
     /// Desired TTS texts resolved against the current voice configuration.
     pub tts_desired: Vec<(TtsKind, String)>,
     /// Existing `tts_assets`, keyed by `input_hash`.
@@ -73,6 +82,7 @@ impl Facts {
                 "SELECT DISTINCT word_id FROM image_candidates WHERE status = 'available'",
             )?,
             primary_gloss: primary_glosses(conn)?,
+            primary_gloss_tokens: primary_gloss_tokens(conn)?,
             tts_desired: queries::tts_desired(conn)?,
             tts_assets: queries::tts_assets(conn)?,
         })
@@ -245,6 +255,39 @@ fn id_set(conn: &Connection, sql: &str) -> Result<HashSet<i64>> {
         .query_map([], |row| row.get::<_, i64>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows.into_iter().collect())
+}
+
+/// In-scope content lemmas of every word's primary gloss, in reading order.
+///
+/// The role filter is the classification the whole product rests on: a base,
+/// target or auxiliary word is one the learner either knows or will know, and a
+/// lemma that matches no row is a token the extraction could not place. Only
+/// the placed ones are worth putting into a search query.
+fn primary_gloss_tokens(conn: &Connection) -> Result<HashMap<i64, Vec<String>>> {
+    let mut stmt = conn.prepare(
+        "SELECT ds.word_id, t.lemma
+         FROM definition_selections ds
+         JOIN def_tokens t ON t.def_cand_id = ds.def_cand_id
+         JOIN words x ON x.lemma = t.lemma
+         WHERE ds.is_primary = 1 AND ds.enabled = 1
+           AND x.role IN ('base', 'target', 'auxiliary')
+         ORDER BY ds.word_id, t.position",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let mut out: HashMap<i64, Vec<String>> = HashMap::new();
+    for (word_id, lemma) in rows {
+        let bucket = out.entry(word_id).or_default();
+        // A gloss that says the same word twice offers one keyword, not two.
+        if !bucket.iter().any(|seen| seen == &lemma) {
+            bucket.push(lemma);
+        }
+    }
+    Ok(out)
 }
 
 fn primary_glosses(conn: &Connection) -> Result<HashMap<i64, String>> {

@@ -66,6 +66,15 @@ wikipedia_url = "https://en.wikipedia.org/api/rest_v1/page/summary"
 
 # Openverse: keyless images, filtered to commercially reusable and modifiable
 # licences. Anonymous quota is low, so a 429 parks the whole lane.
+#
+# A word that both keyless libraries came up empty for is asked again on looser
+# terms before anything is generated: Openverse without the licence filter (every
+# CC licence, NonCommercial and NoDerivatives included, each recorded verbatim on
+# the candidate), then both libraries with a query widened by the primary gloss's
+# content words. Each retry writes a completion mark of its own —
+# openverse_relaxed, wikimedia_widened, openverse_widened — so it runs once per
+# word and never overwrites the record of the first pass. Those candidates score
+# below any first-pass hit, so a strict picture found later still wins the slot.
 openverse_url = "https://api.openverse.org/v1/images/"
 
 # Tatoeba: keyless English example sentences. Each sentence carries its own

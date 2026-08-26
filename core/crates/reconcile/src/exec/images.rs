@@ -23,6 +23,7 @@ use crate::config::ImageProvider;
 use crate::engine::EngineContext;
 use crate::exec::{store_error, wrong_payload, Executor};
 use crate::rule::{JobPayload, JobSpec};
+use crate::score::ImageStrategy;
 use crate::sources::{images, proc};
 
 /// Negative prompt for SDXL. Text in a picture ruins a four-image quiz grid.
@@ -50,18 +51,25 @@ impl Executor for FetchImagesExecutor {
             lemma,
             source,
             gloss,
+            strategy,
+            mark,
+            gloss_tokens,
         } = &job.payload
         else {
             return Err(wrong_payload(JobKind::FetchImages));
         };
 
-        let query = search_query(lemma, gloss.as_deref());
+        let query = match strategy {
+            ImageStrategy::WidenedQuery => widened_query(lemma, gloss_tokens),
+            _ => search_query(lemma, gloss.as_deref()),
+        };
         let photos = match images::search(
             &self.context.sources.http,
             &self.context.sources.config,
             *source,
             lemma,
             &query,
+            *strategy,
         )
         .await
         {
@@ -126,6 +134,11 @@ impl Executor for FetchImagesExecutor {
                     source: *source,
                     images: fetched,
                     media,
+                    // Whatever the pass found — including nothing at all — the
+                    // mark this job was derived against is the one it writes.
+                    // That is what stops the next stage deriving forever and
+                    // what stops this one being derived again.
+                    mark_source: Some(mark.clone()),
                 }),
             )
             .await
@@ -219,6 +232,7 @@ impl Executor for GenImageSdxlExecutor {
                         rel_path: stored.rel_path,
                         bytes: stored.bytes,
                     }],
+                    mark_source: None,
                 }),
             )
             .await
@@ -245,6 +259,162 @@ fn search_query(lemma: &str, gloss: Option<&str>) -> String {
     } else {
         format!("{lemma} {}", extra.join(" "))
     }
+}
+
+/// Content keywords the widened query may borrow from the gloss.
+const WIDENED_KEYWORDS: usize = 2;
+
+/// Function words that appear in a gloss because English needs them, not
+/// because they say anything about the word.
+///
+/// The extraction has already dropped everything that resolves to no word at
+/// all, and every one of these resolves perfectly well — they are base
+/// vocabulary. What disqualifies them is that they describe nothing: a search
+/// for "manner without something" returns the internet. The list is short on
+/// purpose; length already filters most of the rest.
+const GLOSS_STOPWORDS: &[&str] = &[
+    "a",
+    "about",
+    "an",
+    "and",
+    "another",
+    "any",
+    "are",
+    "as",
+    "at",
+    "be",
+    "become",
+    "been",
+    "being",
+    "but",
+    "by",
+    "can",
+    "cause",
+    "come",
+    "do",
+    "does",
+    "each",
+    "for",
+    "from",
+    "get",
+    "give",
+    "go",
+    "had",
+    "has",
+    "have",
+    "having",
+    "he",
+    "her",
+    "him",
+    "his",
+    "how",
+    "in",
+    "into",
+    "is",
+    "it",
+    "its",
+    "like",
+    "make",
+    "many",
+    "may",
+    "more",
+    "most",
+    "much",
+    "must",
+    "not",
+    "of",
+    "on",
+    "one",
+    "onto",
+    "or",
+    "other",
+    "out",
+    "over",
+    "own",
+    "put",
+    "same",
+    "she",
+    "should",
+    "so",
+    "some",
+    "something",
+    "such",
+    "take",
+    "than",
+    "that",
+    "the",
+    "their",
+    "them",
+    "then",
+    "there",
+    "these",
+    "they",
+    "this",
+    "those",
+    "to",
+    "too",
+    "under",
+    "up",
+    "upon",
+    "use",
+    "used",
+    "very",
+    "was",
+    "way",
+    "we",
+    "were",
+    "what",
+    "when",
+    "where",
+    "which",
+    "while",
+    "who",
+    "will",
+    "with",
+    "would",
+    "you",
+    "your",
+];
+
+/// The gloss-widened query: the word, plus the two most contentful words of
+/// what it means.
+///
+/// The strict query already appends gloss words, taken in the order the gloss
+/// happens to say them and filtered on nothing but length — which is how
+/// `desire` ends up searching for "desire wish that something happen". This one
+/// starts from `def_tokens`, so every candidate keyword has been tokenized,
+/// lemmatized and matched against the lexicon, and then picks by length.
+///
+/// Length is a crude salience proxy and an honest one: in a dictionary gloss
+/// the long words are the ones carrying the sense — "condition", "behaviour",
+/// "surface" — and the short ones are the scaffolding holding them together.
+/// Two of them, because a third narrows a full-text search faster than it
+/// sharpens it, and the point of this pass is to find *anything*.
+///
+/// Ties break alphabetically so the query a word gets is a pure function of its
+/// gloss, and re-running the pass asks for the same thing.
+fn widened_query(lemma: &str, gloss_tokens: &[String]) -> String {
+    let mut keywords: Vec<&str> = gloss_tokens
+        .iter()
+        .map(String::as_str)
+        .filter(|token| {
+            token.chars().count() > 2
+                && !token.eq_ignore_ascii_case(lemma)
+                && !GLOSS_STOPWORDS
+                    .iter()
+                    .any(|stop| token.eq_ignore_ascii_case(stop))
+        })
+        .collect();
+    keywords.sort_by(|a, b| b.chars().count().cmp(&a.chars().count()).then(a.cmp(b)));
+    keywords.dedup();
+    keywords.truncate(WIDENED_KEYWORDS);
+
+    if keywords.is_empty() {
+        // Every word in the gloss was scaffolding, or there is no gloss. The
+        // bare lemma is still a different question than the strict pass asked.
+        return lemma.to_string();
+    }
+    format!("{lemma} {}", keywords.join(" "))
 }
 
 /// SDXL prompt, following the shape in `docs/contracts/adapter-protocol.md`.
@@ -290,6 +460,101 @@ mod tests {
     #[test]
     fn a_gloss_of_only_short_words_falls_back_to_the_lemma() {
         assert_eq!(search_query("go", Some("to be on a way")), "go");
+    }
+
+    // -- the widened second-pass query -------------------------------------
+
+    fn tokens(words: &[&str]) -> Vec<String> {
+        words.iter().map(|word| (*word).to_string()).collect()
+    }
+
+    #[test]
+    fn the_widened_query_takes_the_two_longest_content_words() {
+        // "manner": "a way in which a thing is done or happens".
+        let query = widened_query(
+            "manner",
+            &tokens(&[
+                "a", "way", "in", "which", "a", "thing", "be", "do", "or", "happen",
+            ]),
+        );
+        assert_eq!(query, "manner happen thing");
+    }
+
+    #[test]
+    fn the_widened_query_drops_the_scaffolding() {
+        let query = widened_query(
+            "desire",
+            &tokens(&["to", "want", "something", "very", "much"]),
+        );
+        // "something", "very" and "much" are stopwords however long they are.
+        assert_eq!(query, "desire want");
+    }
+
+    #[test]
+    fn the_widened_query_never_takes_more_than_two_keywords() {
+        let query = widened_query(
+            "instance",
+            &tokens(&[
+                "a",
+                "particular",
+                "situation",
+                "example",
+                "or",
+                "occurrence",
+            ]),
+        );
+        assert_eq!(query.split_whitespace().count(), 1 + WIDENED_KEYWORDS);
+        assert_eq!(query, "instance occurrence particular");
+    }
+
+    #[test]
+    fn the_widened_query_never_repeats_the_word_it_is_searching_for() {
+        let query = widened_query(
+            "surface",
+            &tokens(&["the", "outer", "surface", "of", "a", "structure"]),
+        );
+        assert_eq!(query.matches("surface").count(), 1, "{query}");
+        assert_eq!(query, "surface structure outer");
+    }
+
+    #[test]
+    fn a_gloss_of_pure_scaffolding_leaves_the_bare_word() {
+        assert_eq!(
+            widened_query("go", &tokens(&["to", "be", "on", "a", "way"])),
+            "go"
+        );
+        assert_eq!(widened_query("go", &[]), "go");
+    }
+
+    /// Same gloss, same query — a pass that gets retried asks for exactly what
+    /// it asked for the first time, whatever order the tokens arrive in.
+    #[test]
+    fn the_widened_query_is_a_pure_function_of_the_gloss() {
+        let gloss = tokens(&["condition", "behaviour", "person", "state"]);
+        let once = widened_query("temper", &gloss);
+        assert_eq!(once, widened_query("temper", &gloss));
+        let reversed: Vec<String> = gloss.iter().rev().cloned().collect();
+        assert_eq!(once, widened_query("temper", &reversed));
+        // "condition" and "behaviour" are both nine letters; the tie is broken
+        // alphabetically rather than by arrival.
+        assert_eq!(once, "temper behaviour condition");
+    }
+
+    /// The two queries are different questions, which is the entire reason the
+    /// second pass is worth a request.
+    #[test]
+    fn the_widened_query_differs_from_the_strict_one() {
+        let gloss = "a way in which a thing is done or happens";
+        let strict = search_query("manner", Some(gloss));
+        let widened = widened_query(
+            "manner",
+            &tokens(&[
+                "a", "way", "in", "which", "a", "thing", "be", "do", "or", "happen",
+            ]),
+        );
+        assert_ne!(strict, widened);
+        assert!(strict.contains("which"), "{strict}");
+        assert!(!widened.contains("which"), "{widened}");
     }
 
     #[test]

@@ -12,7 +12,9 @@ use std::sync::Arc;
 
 use common::{derive, harness, job_subjects, mark_fetched, seed_image, seed_word};
 use morpho_domain::types::{ImageSource, Role};
-use morpho_reconcile::rules::{FetchExamplesRule, FetchImagesRule, GenImageSdxlRule};
+use morpho_reconcile::rules::{
+    FetchExamplesRule, FetchImagesRule, FetchImagesSecondPassRule, GenImageSdxlRule,
+};
 use morpho_reconcile::sources::SourceSet;
 use morpho_reconcile::{AdapterConfig, EngineContext, Rule, SourcesConfig};
 use morpho_store::MediaStore;
@@ -20,6 +22,22 @@ use morpho_store::MediaStore;
 /// Marker kinds, spelled as `source_fetch.kind` holds them.
 const IMAGES: &str = "images";
 const DEFINITIONS: &str = "definitions";
+
+/// The strict image passes, as `source_fetch.source` holds them.
+const STRICT_KEYLESS: &[&str] = &["wikimedia", "openverse"];
+/// The second passes, in the order a word walks them.
+const SECOND_PASSES: &[&str] = &[
+    "openverse_relaxed",
+    "wikimedia_widened",
+    "openverse_widened",
+];
+
+/// Mark every pass in the online chain as answered and empty.
+async fn exhaust_the_online_chain(store: &morpho_store::Store, word_id: i64) {
+    for source in STRICT_KEYLESS.iter().chain(SECOND_PASSES) {
+        mark_fetched(store, IMAGES, word_id, source, 0).await;
+    }
+}
 
 fn engine(data_dir: &std::path::Path, sources: SourcesConfig) -> Arc<EngineContext> {
     let set = SourceSet::load(sources, AdapterConfig::default()).expect("source set");
@@ -139,11 +157,45 @@ async fn sdxl_waits_for_the_keyless_libraries_to_answer() {
     );
 
     mark_fetched(&store, IMAGES, word_id, "openverse", 0).await;
+    assert!(
+        derive(&store, rule()).await.is_empty(),
+        "the second passes have not been tried"
+    );
+
+    for pass in SECOND_PASSES {
+        mark_fetched(&store, IMAGES, word_id, pass, 0).await;
+    }
     assert_eq!(
         job_subjects(&derive(&store, rule()).await),
         vec![format!("gen_image_sdxl/{word_id}:sdxl")],
-        "both open libraries came back empty; now it may generate"
+        "every online pass came back empty; now it may generate"
     );
+}
+
+/// The whole point of the second passes: a picture of something that exists
+/// beats one of something that does not, so the generator waits behind every
+/// retry, not just behind the first attempt.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sdxl_waits_for_the_second_passes_too() {
+    let fixture = harness();
+    let store = fixture.store.clone();
+    let word_id = seed_word(&store, "serene", Role::Target).await;
+    for source in STRICT_KEYLESS {
+        mark_fetched(&store, IMAGES, word_id, source, 0).await;
+    }
+
+    let context = engine(fixture.dir.path(), keyless_with_sdxl());
+    let rule = || Arc::new(GenImageSdxlRule::new(context.clone())) as Arc<dyn Rule>;
+
+    // One at a time, and none of them alone is enough.
+    for pass in SECOND_PASSES {
+        assert!(
+            derive(&store, rule()).await.is_empty(),
+            "{pass} has not been tried yet"
+        );
+        mark_fetched(&store, IMAGES, word_id, pass, 0).await;
+    }
+    assert_eq!(derive(&store, rule()).await.len(), 1);
 }
 
 /// A keyed library that was never configured is spent from the start, so its
@@ -153,9 +205,7 @@ async fn an_unconfigured_stock_library_never_blocks_the_fallback() {
     let fixture = harness();
     let store = fixture.store.clone();
     let word_id = seed_word(&store, "serene", Role::Target).await;
-    for source in ["wikimedia", "openverse"] {
-        mark_fetched(&store, IMAGES, word_id, source, 0).await;
-    }
+    exhaust_the_online_chain(&store, word_id).await;
 
     // Unsplash has a key and has not answered: the fallback stays shut.
     let keyed = engine(
@@ -202,9 +252,7 @@ async fn a_word_that_already_has_a_picture_is_never_generated_for() {
         ImageSource::Wikimedia,
     )
     .await;
-    for source in ["wikimedia", "openverse"] {
-        mark_fetched(&store, IMAGES, word_id, source, 0).await;
-    }
+    exhaust_the_online_chain(&store, word_id).await;
 
     let context = engine(fixture.dir.path(), keyless_with_sdxl());
     assert!(derive(
@@ -222,9 +270,7 @@ async fn no_comfyui_means_no_generative_fallback() {
     let fixture = harness();
     let store = fixture.store.clone();
     let word_id = seed_word(&store, "serene", Role::Target).await;
-    for source in ["wikimedia", "openverse"] {
-        mark_fetched(&store, IMAGES, word_id, source, 0).await;
-    }
+    exhaust_the_online_chain(&store, word_id).await;
 
     let context = engine(fixture.dir.path(), SourcesConfig::default());
     assert!(derive(
@@ -233,6 +279,162 @@ async fn no_comfyui_means_no_generative_fallback() {
     )
     .await
     .is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Second passes over the keyless libraries
+// ---------------------------------------------------------------------------
+
+/// Nothing is retried until everything has been tried once — a word still
+/// waiting on a first pass may yet be answered by it, and a strict hit is worth
+/// more than anything the retries can find.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_second_pass_waits_for_every_strict_pass() {
+    let fixture = harness();
+    let store = fixture.store.clone();
+    let word_id = seed_word(&store, "serene", Role::Target).await;
+
+    let context = engine(fixture.dir.path(), SourcesConfig::default());
+    let rule = || Arc::new(FetchImagesSecondPassRule::new(context.clone())) as Arc<dyn Rule>;
+
+    assert!(
+        derive(&store, rule()).await.is_empty(),
+        "the first passes have not run"
+    );
+
+    mark_fetched(&store, IMAGES, word_id, "wikimedia", 0).await;
+    assert!(
+        derive(&store, rule()).await.is_empty(),
+        "openverse has not answered"
+    );
+
+    mark_fetched(&store, IMAGES, word_id, "openverse", 0).await;
+    assert_eq!(
+        job_subjects(&derive(&store, rule()).await),
+        vec![format!("fetch_images/{word_id}:openverse_relaxed")]
+    );
+}
+
+/// One request at a time, in the documented order. Each stage derives only once
+/// the stage before it has written its own completion mark.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_second_passes_derive_one_stage_at_a_time() {
+    let fixture = harness();
+    let store = fixture.store.clone();
+    let word_id = seed_word(&store, "serene", Role::Target).await;
+    for source in STRICT_KEYLESS {
+        mark_fetched(&store, IMAGES, word_id, source, 0).await;
+    }
+
+    let context = engine(fixture.dir.path(), SourcesConfig::default());
+    let rule = || Arc::new(FetchImagesSecondPassRule::new(context.clone())) as Arc<dyn Rule>;
+
+    for pass in SECOND_PASSES {
+        assert_eq!(
+            job_subjects(&derive(&store, rule()).await),
+            vec![format!("fetch_images/{word_id}:{pass}")],
+            "expected {pass} and nothing else"
+        );
+        mark_fetched(&store, IMAGES, word_id, pass, 0).await;
+    }
+
+    assert!(
+        derive(&store, rule()).await.is_empty(),
+        "the chain is spent, and nothing is asked a third time"
+    );
+}
+
+/// A second pass rides the lane of the provider it retries, so it cannot outrun
+/// the rate limit the first pass respects.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_second_pass_rides_its_providers_lane() {
+    let fixture = harness();
+    let store = fixture.store.clone();
+    let word_id = seed_word(&store, "serene", Role::Target).await;
+    for source in STRICT_KEYLESS {
+        mark_fetched(&store, IMAGES, word_id, source, 0).await;
+    }
+
+    let context = engine(fixture.dir.path(), SourcesConfig::default());
+    let rule = || Arc::new(FetchImagesSecondPassRule::new(context.clone())) as Arc<dyn Rule>;
+
+    for (pass, lane) in SECOND_PASSES
+        .iter()
+        .zip(["openverse", "wikimedia", "openverse"])
+    {
+        let jobs = derive(&store, rule()).await;
+        assert_eq!(jobs[0].rate_key.to_string(), lane, "{pass}");
+        mark_fetched(&store, IMAGES, word_id, pass, 0).await;
+    }
+}
+
+/// The trigger is "zero available candidates", the same one the generator
+/// reads. A picture arriving mid-chain stops the remaining retries dead.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_picture_found_mid_chain_ends_the_retries() {
+    let fixture = harness();
+    let store = fixture.store.clone();
+    let word_id = seed_word(&store, "serene", Role::Target).await;
+    for source in STRICT_KEYLESS {
+        mark_fetched(&store, IMAGES, word_id, source, 0).await;
+    }
+    mark_fetched(&store, IMAGES, word_id, "openverse_relaxed", 1).await;
+
+    let context = engine(fixture.dir.path(), SourcesConfig::default());
+    let rule = || Arc::new(FetchImagesSecondPassRule::new(context.clone())) as Arc<dyn Rule>;
+    assert_eq!(
+        job_subjects(&derive(&store, rule()).await),
+        vec![format!("fetch_images/{word_id}:wikimedia_widened")],
+        "a marker is not a candidate; the chain continues on its own"
+    );
+
+    let media = MediaStore::new(fixture.dir.path());
+    seed_image(
+        &store,
+        &media,
+        word_id,
+        b"pretend webp bytes",
+        ImageSource::Openverse,
+    )
+    .await;
+    assert!(
+        derive(&store, rule()).await.is_empty(),
+        "the word has a picture; there is nothing left to widen for"
+    );
+}
+
+/// The completion marks are what makes this deployable on a database that has
+/// already been searched: none of the second-pass marks collides with a strict
+/// one, so every word re-enters the chain without an operator clearing anything.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_already_searched_word_re_enters_through_a_fresh_mark() {
+    let fixture = harness();
+    let store = fixture.store.clone();
+    let word_id = seed_word(&store, "manner", Role::Target).await;
+    // The state a live database is in today: both strict passes answered, and
+    // answered with nothing.
+    for source in STRICT_KEYLESS {
+        mark_fetched(&store, IMAGES, word_id, source, 0).await;
+    }
+
+    let context = engine(fixture.dir.path(), SourcesConfig::default());
+    // The strict rule is finished with this word and stays finished.
+    assert!(derive(
+        &store,
+        Arc::new(FetchImagesRule::new(context.clone())) as Arc<dyn Rule>
+    )
+    .await
+    .is_empty());
+    // The second-pass rule picks it straight up.
+    assert_eq!(
+        derive(
+            &store,
+            Arc::new(FetchImagesSecondPassRule::new(context)) as Arc<dyn Rule>
+        )
+        .await
+        .len(),
+        1
+    );
 }
 
 // ---------------------------------------------------------------------------

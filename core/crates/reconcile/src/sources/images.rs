@@ -18,6 +18,14 @@
 //! to picture them. Either way the asset is a Commons file and its licence is
 //! read from Commons, so nothing enters the library unattributed.
 //!
+//! Some words survive all of that with nothing, and for them the keyless
+//! providers are asked a second time on looser terms — Openverse without its
+//! licence filter, both of them with a query widened by the primary gloss's
+//! content words. A second pass differs from the first only in what it asks
+//! for; it records the same provider, the licence the result actually states,
+//! and a note in `source_ref` saying which pass found it, which is what keeps
+//! the scorer able to rank it below a first-pass hit.
+//!
 //! Every provider gets its own dispatcher lane. Every downloaded photo is
 //! decoded, fitted into the 768×576 box from README Part 5 and re-encoded as
 //! WebP before it ever reaches the content-addressed store, whatever it came
@@ -29,6 +37,7 @@ use morpho_domain::error::{ErrorKind, TaskError};
 use morpho_domain::types::ImageSource;
 
 use crate::config::SourcesConfig;
+use crate::score::ImageStrategy;
 use crate::sources::http;
 
 /// Candidates requested per word from a keyed stock provider.
@@ -99,12 +108,17 @@ pub struct EncodedImage {
 /// `lemma` is the bare word; `query` is the same word widened with the gloss's
 /// content words. Most providers only ever see the query — Wikimedia also needs
 /// the lemma, because an article title is a word, not a search phrase.
+///
+/// `strategy` selects the pass. The first one is [`ImageStrategy::Strict`] and
+/// is what every word gets; the others are retries for a word the strict passes
+/// left with nothing, and only the keyless providers have them.
 pub async fn search(
     client: &reqwest::Client,
     config: &SourcesConfig,
     source: ImageSource,
     lemma: &str,
     query: &str,
+    strategy: ImageStrategy,
 ) -> Result<Vec<PhotoRef>, TaskError> {
     let encoded = http::encode_query(query);
     let context = format!("{source} search {query}");
@@ -112,12 +126,20 @@ pub async fn search(
     // The keyless half of ruling #18 first: nothing to look up, nothing to fail.
     match source {
         ImageSource::Wikimedia => {
-            return search_wikimedia(client, config, lemma, &encoded, &context).await
+            return search_wikimedia(client, config, lemma, &encoded, &context, strategy).await
         }
         ImageSource::Openverse => {
-            return search_openverse(client, config, &encoded, &context).await
+            return search_openverse(client, config, &encoded, &context, strategy).await
         }
         _ => {}
+    }
+
+    // A stock library has one pass and no second one; a job asking for another
+    // is a rule and executor disagreeing, which no retry fixes.
+    if strategy != ImageStrategy::Strict {
+        return Err(TaskError::permanent(format!(
+            "{source} has no {strategy:?} pass"
+        )));
     }
 
     let Some(key) = config.image_key(source) else {
@@ -227,15 +249,21 @@ pub async fn search(
 /// is asked as well. A word the first strategy already filled costs no extra
 /// request, and the search phrase is not reused for it: an article is found by
 /// its title, which is the bare word, not by the gloss-widened query.
+///
+/// The widened second pass runs the namespace search alone. The article lead is
+/// found by title, and the title is the bare lemma whatever the query says — so
+/// a second lookup would fetch the same summary and reach the same picture the
+/// strict pass already decided about, for the price of two more requests.
 async fn search_wikimedia(
     client: &reqwest::Client,
     config: &SourcesConfig,
     lemma: &str,
     encoded_query: &str,
     context: &str,
+    strategy: ImageStrategy,
 ) -> Result<Vec<PhotoRef>, TaskError> {
-    let mut photos = search_commons_files(client, config, encoded_query, context).await?;
-    if photos.len() < KEYLESS_RESULTS_PER_WORD {
+    let mut photos = search_commons_files(client, config, encoded_query, context, strategy).await?;
+    if strategy == ImageStrategy::Strict && photos.len() < KEYLESS_RESULTS_PER_WORD {
         match article_lead(client, config, lemma, context).await {
             Ok(Some(photo)) => {
                 // The article's picture is often also the top namespace hit.
@@ -274,6 +302,7 @@ async fn search_commons_files(
     config: &SourcesConfig,
     encoded_query: &str,
     context: &str,
+    strategy: ImageStrategy,
 ) -> Result<Vec<PhotoRef>, TaskError> {
     let url = format!(
         "{}?action=query&format=json&formatversion=2\
@@ -297,7 +326,7 @@ async fn search_commons_files(
             let meta = &info.extmetadata;
             Some(PhotoRef {
                 source: ImageSource::Wikimedia,
-                source_ref: format!("wikimedia:{}", page.title),
+                source_ref: annotate(&format!("wikimedia:{}", page.title), &[strategy.note()]),
                 download_url: info.thumburl.or(info.url)?,
                 license: Some(attribution(
                     commons_license(meta).as_deref(),
@@ -348,7 +377,26 @@ async fn article_lead(
     let Some(page) = commons_file_page(client, config, &file, context).await? else {
         return Ok(None);
     };
-    Ok(licensed_candidate(page, ARTICLE_LEAD))
+    Ok(licensed_candidate(page, &[Some(ARTICLE_LEAD)]))
+}
+
+/// Attach provenance notes to a `source_ref`.
+///
+/// The notes ride in one trailing parenthesised group — `wikimedia:File:A.jpg
+/// (article-lead)`, `openverse:abc (relaxed-license)` — which is the form the
+/// scorer reads back to tell a first-pass candidate from a second-pass one, and
+/// the form the console already renders. A pass with nothing to declare leaves
+/// the reference exactly as the first wave wrote it.
+fn annotate(base: &str, notes: &[Option<&str>]) -> String {
+    let notes: Vec<&str> = notes
+        .iter()
+        .filter_map(|note| note.filter(|value| !value.is_empty()))
+        .collect();
+    if notes.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base} ({})", notes.join(", "))
+    }
 }
 
 /// The picture an article leads with, if it is one worth looking up.
@@ -456,7 +504,7 @@ async fn commons_file_page(
 /// silent and says so in the attribution line. Here the picture was reached
 /// sideways, through an article, so "licence unstated" would be a claim about a
 /// file this code never looked up properly rather than a fact about the file.
-fn licensed_candidate(page: CommonsPage, strategy: &str) -> Option<PhotoRef> {
+fn licensed_candidate(page: CommonsPage, notes: &[Option<&str>]) -> Option<PhotoRef> {
     let title = page.title.clone();
     let info = page.imageinfo.into_iter().next()?;
     if is_vector(&title) {
@@ -478,7 +526,7 @@ fn licensed_candidate(page: CommonsPage, strategy: &str) -> Option<PhotoRef> {
         source: ImageSource::Wikimedia,
         // Same shape the namespace search records, plus which strategy found
         // it, so a console reviewer can tell the two apart.
-        source_ref: format!("wikimedia:{title} ({strategy})"),
+        source_ref: annotate(&format!("wikimedia:{title}"), notes),
         // The 960-wide rendering of the very file the article leads with: the
         // original is the right picture and the wrong number of bytes. The
         // bytes that get fetched must be decodable whatever the file is, which
@@ -532,16 +580,29 @@ fn percent_decode(value: &str) -> String {
 /// Search Openverse.
 ///
 /// `license_type=commercial,modification` is the aggregator's own filter for
-/// "reusable and remixable", which is the only kind of picture that may ship
-/// inside a release bundle.
+/// "reusable and remixable", and it is what the strict pass asks for.
+///
+/// The relaxed pass drops the parameter entirely, which widens the answer to
+/// every Creative Commons licence Openverse indexes — NonCommercial and
+/// NoDerivatives included. That is a real change in what a candidate *is*, so
+/// nothing about it is inferred: each result already states its own licence and
+/// version in the payload, and that is what gets recorded, verbatim, on the
+/// candidate. A word that reaches this pass has already come up empty
+/// everywhere else, and a picture whose terms are recorded honestly is a
+/// decision a human can make later — one that was never fetched is not.
 async fn search_openverse(
     client: &reqwest::Client,
     config: &SourcesConfig,
     encoded_query: &str,
     context: &str,
+    strategy: ImageStrategy,
 ) -> Result<Vec<PhotoRef>, TaskError> {
+    let license_filter = match strategy {
+        ImageStrategy::RelaxedLicense => "",
+        _ => "&license_type=commercial,modification",
+    };
     let url = format!(
-        "{}?q={encoded_query}&license_type=commercial,modification&page_size={OPENVERSE_PAGE_SIZE}",
+        "{}?q={encoded_query}{license_filter}&page_size={OPENVERSE_PAGE_SIZE}",
         config.openverse_url.trim_end_matches('/')
     );
     let body: OpenverseResponse = http::get_json(client, &url, &[], context).await?;
@@ -562,7 +623,7 @@ async fn search_openverse(
             };
             Some(PhotoRef {
                 source: ImageSource::Openverse,
-                source_ref: format!("openverse:{}", hit.id),
+                source_ref: annotate(&format!("openverse:{}", hit.id), &[strategy.note()]),
                 download_url,
                 license: Some(attribution(
                     license.as_deref(),
@@ -982,6 +1043,7 @@ mod tests {
             ImageSource::Unsplash,
             "serene",
             "serene calm",
+            ImageStrategy::Strict,
         )
         .await
         .unwrap_err();
@@ -997,9 +1059,16 @@ mod tests {
         };
         let client = http::build_client(&config).unwrap();
         for source in [ImageSource::Sdxl, ImageSource::Manual] {
-            let err = search(&client, &config, source, "serene", "serene calm")
-                .await
-                .unwrap_err();
+            let err = search(
+                &client,
+                &config,
+                source,
+                "serene",
+                "serene calm",
+                ImageStrategy::Strict,
+            )
+            .await
+            .unwrap_err();
             assert_eq!(err.kind(), morpho_domain::error::ErrorKind::Permanent);
         }
     }
@@ -1300,14 +1369,14 @@ mod tests {
 
         // A real diagram: kept, and fetched as Commons' own PNG rendering
         // rather than as the SVG the decoder cannot read.
-        let photo = licensed_candidate(file_page(26_978), ARTICLE_LEAD).unwrap();
+        let photo = licensed_candidate(file_page(26_978), &[Some(ARTICLE_LEAD)]).unwrap();
         assert!(photo.download_url.ends_with(".png"), "{photo:?}");
         assert_eq!(
             photo.source_ref,
             "wikimedia:File:DNA simple2.svg (article-lead)"
         );
         // A wordmark at the weight of `Commons-logo.svg`: refused.
-        assert!(licensed_candidate(file_page(932), ARTICLE_LEAD).is_none());
+        assert!(licensed_candidate(file_page(932), &[Some(ARTICLE_LEAD)]).is_none());
         // Weight unstated is treated as weightless, which is the safe way
         // round for a filter that exists to keep logos out.
         let unweighed: CommonsPage = serde_json::from_str(
@@ -1315,7 +1384,7 @@ mod tests {
                 "extmetadata": {"LicenseShortName": {"value": "CC BY-SA 3.0"}}}]}"#,
         )
         .unwrap();
-        assert!(licensed_candidate(unweighed, ARTICLE_LEAD).is_none());
+        assert!(licensed_candidate(unweighed, &[Some(ARTICLE_LEAD)]).is_none());
     }
 
     #[test]
@@ -1328,7 +1397,7 @@ mod tests {
                 "extmetadata": {"LicenseShortName": {"value": "CC0 1.0"}}}]}"#,
         )
         .unwrap();
-        assert!(licensed_candidate(page, ARTICLE_LEAD).is_none());
+        assert!(licensed_candidate(page, &[Some(ARTICLE_LEAD)]).is_none());
     }
 
     #[test]
@@ -1364,7 +1433,7 @@ mod tests {
                                                "Artist": {"value": "<a href=\"//x\">Dan &amp; Ust</a>"}}}]}"#,
         )
         .unwrap();
-        let photo = licensed_candidate(page, ARTICLE_LEAD).unwrap();
+        let photo = licensed_candidate(page, &[Some(ARTICLE_LEAD)]).unwrap();
         assert_eq!(
             photo.source_ref,
             "wikimedia:File:Lake Serene.jpg (article-lead)"
@@ -1392,14 +1461,14 @@ mod tests {
             ))
             .unwrap();
             assert!(
-                licensed_candidate(page, ARTICLE_LEAD).is_none(),
+                licensed_candidate(page, &[Some(ARTICLE_LEAD)]).is_none(),
                 "{imageinfo}"
             );
         }
         // A missing page carries no imageinfo at all.
         let page: CommonsPage =
             serde_json::from_str(r#"{"title": "File:Nope.jpg", "missing": true}"#).unwrap();
-        assert!(licensed_candidate(page, ARTICLE_LEAD).is_none());
+        assert!(licensed_candidate(page, &[Some(ARTICLE_LEAD)]).is_none());
     }
 
     // -- the two strategies together, over loopback -------------------------
@@ -1443,11 +1512,12 @@ mod tests {
             self.seen().iter().any(|line| line.contains(needle))
         }
 
-        /// A config whose two Wikimedia endpoints point here.
+        /// A config whose keyless endpoints all point here.
         fn config(&self) -> SourcesConfig {
             SourcesConfig {
                 wikimedia_url: crate::config::WikimediaUrl(format!("{}/w/api.php", self.base)),
                 wikipedia_url: crate::config::WikipediaUrl(format!("{}/summary", self.base)),
+                openverse_url: crate::config::OpenverseUrl(format!("{}/v1/images/", self.base)),
                 ..SourcesConfig::default()
             }
         }
@@ -1504,9 +1574,27 @@ mod tests {
     }
 
     async fn wikimedia(server: &Mock, lemma: &str) -> Vec<PhotoRef> {
+        search_as(
+            server,
+            ImageSource::Wikimedia,
+            lemma,
+            lemma,
+            ImageStrategy::Strict,
+        )
+        .await
+    }
+
+    /// Run one pass of one provider against the loopback server.
+    async fn search_as(
+        server: &Mock,
+        source: ImageSource,
+        lemma: &str,
+        query: &str,
+        strategy: ImageStrategy,
+    ) -> Vec<PhotoRef> {
         let config = server.config();
         let client = http::build_client(&config).unwrap();
-        search(&client, &config, ImageSource::Wikimedia, lemma, lemma)
+        search(&client, &config, source, lemma, query, strategy)
             .await
             .unwrap()
     }
@@ -1649,5 +1737,183 @@ mod tests {
         let photos = wikimedia(&server, "serene").await;
         assert_eq!(photos.len(), 1, "{photos:?}");
         assert_eq!(photos[0].source_ref, "wikimedia:File:Lake Serene.jpg");
+    }
+
+    // -- the second passes ---------------------------------------------------
+
+    #[test]
+    fn a_source_ref_carries_only_the_notes_it_has() {
+        assert_eq!(annotate("openverse:abc", &[None]), "openverse:abc");
+        assert_eq!(
+            annotate("openverse:abc", &[Some("relaxed-license")]),
+            "openverse:abc (relaxed-license)"
+        );
+        assert_eq!(
+            annotate("wikimedia:File:A.jpg", &[Some("article-lead"), None]),
+            "wikimedia:File:A.jpg (article-lead)"
+        );
+        assert_eq!(
+            annotate(
+                "wikimedia:File:A.jpg",
+                &[Some("article-lead"), Some("widened-query")]
+            ),
+            "wikimedia:File:A.jpg (article-lead, widened-query)"
+        );
+        // And what it produces is what the scorer reads back.
+        assert_eq!(
+            ImageStrategy::from_source_ref(Some(&annotate(
+                "openverse:abc",
+                &[ImageStrategy::RelaxedLicense.note()]
+            ))),
+            ImageStrategy::RelaxedLicense
+        );
+    }
+
+    /// The relaxed pass is defined by what it stops asking for.
+    #[tokio::test]
+    async fn the_relaxed_pass_drops_the_licence_filter() {
+        let server = mock(&[("/v1/images", OPENVERSE)]).await;
+        let photos = search_as(
+            &server,
+            ImageSource::Openverse,
+            "desire",
+            "desire",
+            ImageStrategy::RelaxedLicense,
+        )
+        .await;
+
+        assert!(
+            !server.asked_for("license_type"),
+            "the filter survived: {:?}",
+            server.seen()
+        );
+        assert!(server.asked_for("q=desire"), "{:?}", server.seen());
+        assert_eq!(photos.len(), 1, "{photos:?}");
+        assert_eq!(
+            photos[0].source_ref,
+            "openverse:b806336a-71eb-408f-8ee3-72d27d1d1823 (relaxed-license)"
+        );
+        // The licence is the one the payload stated, not a claim about what the
+        // dropped filter would have allowed.
+        assert_eq!(
+            photos[0].license.as_deref(),
+            Some("CC BY 2.0; by PiktourUK (Openverse)")
+        );
+        assert_eq!(photos[0].source, ImageSource::Openverse);
+    }
+
+    /// A licence the release bundle may not ship still arrives with its terms
+    /// on the record, which is the only reason relaxing the filter is safe.
+    #[tokio::test]
+    async fn a_noncommercial_result_records_the_licence_it_actually_has() {
+        let server = mock(&[(
+            "/v1/images",
+            r#"{"results":[{"id":"nc-1","url":"https://host/pic.jpg",
+                "creator":"Ada","license":"by-nc-nd","license_version":"4.0"}]}"#,
+        )])
+        .await;
+        let photos = search_as(
+            &server,
+            ImageSource::Openverse,
+            "manner",
+            "manner",
+            ImageStrategy::RelaxedLicense,
+        )
+        .await;
+        assert_eq!(
+            photos[0].license.as_deref(),
+            Some("CC BY-NC-ND 4.0; by Ada (Openverse)")
+        );
+    }
+
+    #[tokio::test]
+    async fn the_strict_and_widened_openverse_passes_keep_the_filter() {
+        for strategy in [ImageStrategy::Strict, ImageStrategy::WidenedQuery] {
+            let server = mock(&[("/v1/images", OPENVERSE)]).await;
+            let photos = search_as(
+                &server,
+                ImageSource::Openverse,
+                "desire",
+                "desire wish longing",
+                strategy,
+            )
+            .await;
+            assert!(
+                server.asked_for("license_type=commercial%2Cmodification")
+                    || server.asked_for("license_type=commercial,modification"),
+                "{strategy:?} lost the filter: {:?}",
+                server.seen()
+            );
+            let expected = match strategy {
+                ImageStrategy::WidenedQuery => {
+                    "openverse:b806336a-71eb-408f-8ee3-72d27d1d1823 (widened-query)"
+                }
+                _ => "openverse:b806336a-71eb-408f-8ee3-72d27d1d1823",
+            };
+            assert_eq!(photos[0].source_ref, expected);
+        }
+    }
+
+    /// The widened Wikimedia pass searches the namespace with the new query and
+    /// stops there: the article is found by title, and the title has not
+    /// changed since the strict pass looked it up.
+    #[tokio::test]
+    async fn the_widened_wikimedia_pass_never_asks_the_article_again() {
+        let server = mock(&[
+            ("generator=search", COMMONS),
+            ("/summary/", SUMMARY),
+            ("titles=File", FILE_PAGE),
+        ])
+        .await;
+        let photos = search_as(
+            &server,
+            ImageSource::Wikimedia,
+            "desire",
+            "desire wish longing",
+            ImageStrategy::WidenedQuery,
+        )
+        .await;
+
+        assert_eq!(photos.len(), 2, "{photos:?}");
+        assert!(
+            !server.asked_for("/summary/"),
+            "the article was asked twice: {:?}",
+            server.seen()
+        );
+        assert!(
+            server.asked_for("gsrsearch=desire+wish+longing"),
+            "{:?}",
+            server.seen()
+        );
+        for photo in &photos {
+            assert!(
+                photo.source_ref.ends_with("(widened-query)"),
+                "{photo:?} does not declare its pass"
+            );
+        }
+    }
+
+    /// A stock library has one pass. Asking it for another is a wiring bug, and
+    /// a retry would only ask again.
+    #[tokio::test]
+    async fn a_keyed_provider_has_no_second_pass() {
+        let config = SourcesConfig {
+            unsplash_access_key: Some("k".into()),
+            ..SourcesConfig::default()
+        };
+        let client = http::build_client(&config).unwrap();
+        for strategy in [ImageStrategy::RelaxedLicense, ImageStrategy::WidenedQuery] {
+            let err = search(
+                &client,
+                &config,
+                ImageSource::Unsplash,
+                "serene",
+                "serene calm",
+                strategy,
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::Permanent);
+        }
     }
 }

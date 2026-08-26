@@ -19,6 +19,99 @@ use morpho_domain::version::SCORER_ALGO_VER;
 /// candidates a thousandth apart would trade the slot on every pass.
 pub const HYSTERESIS_DELTA: f64 = 0.05;
 
+/// Marker written into `image_candidates.source_ref` by the relaxed-licence
+/// second pass over Openverse.
+pub const RELAXED_LICENSE: &str = "relaxed-license";
+/// Marker written into `image_candidates.source_ref` by the gloss-widened
+/// second pass over a keyless provider.
+pub const WIDENED_QUERY: &str = "widened-query";
+
+/// How much a second-pass candidate gives up against a first-pass one.
+///
+/// It has to exceed [`HYSTERESIS_DELTA`], or a second-pass picture sitting in
+/// the image slot would be immune to the strict hit that arrives later: the
+/// selector only switches past the margin, so a penalty of a hundredth would
+/// merely reorder the ranking without ever moving the slot.
+///
+/// It is subtracted rather than folded into the weighted sum on purpose. Every
+/// candidate already in the library came from a strict pass, so a subtraction
+/// that is zero for `Strict` leaves all of their scores bit-for-bit identical —
+/// which is what makes this change safe without a `scorer_ver` bump and the
+/// full rescore that comes with one.
+pub const STRATEGY_PENALTY: f64 = 0.10;
+
+/// The penalty is useless at or below the switching margin: see above.
+const _: () = assert!(STRATEGY_PENALTY > HYSTERESIS_DELTA);
+
+/// Which search strategy produced an image candidate.
+///
+/// A word with no candidate after the first pass is searched again on looser
+/// terms — Openverse without its licence filter, the keyless providers with a
+/// query widened by the gloss's content words. Those hits are real pictures and
+/// worth having, and they are still weaker evidence than a hit on the word
+/// itself under a licence the bundle may ship: the licence is looser, or the
+/// query drifted away from the word. So they are ranked below.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ImageStrategy {
+    /// The first pass: exact terms, publishable licence only.
+    #[default]
+    Strict,
+    /// Openverse again, without `license_type` — every CC licence, NC and ND
+    /// included. The licence the result actually carries is recorded verbatim.
+    RelaxedLicense,
+    /// A keyless provider again, asked for the word plus the content words of
+    /// its primary gloss.
+    WidenedQuery,
+}
+
+impl ImageStrategy {
+    /// The note this strategy leaves in `source_ref`, or `None` for the first
+    /// pass, which annotates nothing.
+    pub const fn note(self) -> Option<&'static str> {
+        match self {
+            Self::Strict => None,
+            Self::RelaxedLicense => Some(RELAXED_LICENSE),
+            Self::WidenedQuery => Some(WIDENED_QUERY),
+        }
+    }
+
+    /// Read the strategy back off a stored `source_ref`.
+    ///
+    /// Only the trailing parenthesised note is consulted, never the whole
+    /// string: a Commons file may legitimately be *called*
+    /// `File:Relaxed-license terms.jpg`, and that is a title, not a provenance
+    /// claim.
+    pub fn from_source_ref(source_ref: Option<&str>) -> Self {
+        let Some(notes) = source_ref.and_then(trailing_note) else {
+            return Self::Strict;
+        };
+        for note in notes.split(',').map(str::trim) {
+            if note == RELAXED_LICENSE {
+                return Self::RelaxedLicense;
+            }
+            if note == WIDENED_QUERY {
+                return Self::WidenedQuery;
+            }
+        }
+        Self::Strict
+    }
+
+    /// Marks deducted from the weighted total.
+    pub const fn penalty(self) -> f64 {
+        match self {
+            Self::Strict => 0.0,
+            Self::RelaxedLicense | Self::WidenedQuery => STRATEGY_PENALTY,
+        }
+    }
+}
+
+/// The contents of a trailing `(…)` group, if the string ends in one.
+fn trailing_note(source_ref: &str) -> Option<&str> {
+    let inner = source_ref.trim_end().strip_suffix(')')?;
+    let open = inner.rfind('(')?;
+    Some(&inner[open + 1..])
+}
+
 /// How a definition's tokens land against the live lexicon.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TokenCoverage {
@@ -145,6 +238,11 @@ pub struct ScoreDetail {
     pub out_of_scope_tokens: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token_count: Option<usize>,
+    /// Marks a second-pass image candidate gave up. Absent — not zero — on a
+    /// first-pass candidate, so the breakdown of everything the strict passes
+    /// produced is unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy_penalty: Option<f64>,
 }
 
 /// What a definition candidate looks like to the scorer.
@@ -228,6 +326,8 @@ pub struct ImageFacts {
     /// The candidate's `pos` hint matches the word's primary sense (or it
     /// carries no hint at all, which is neutral).
     pub pos_matches_primary: bool,
+    /// Which pass found it. Read back from `source_ref`.
+    pub strategy: ImageStrategy,
 }
 
 /// Target render size (README Part 5: WebP 768×576).
@@ -249,8 +349,9 @@ pub fn score_image(facts: &ImageFacts) -> Scored {
         _ => 0.8,
     };
     let pos_match = if facts.pos_matches_primary { 1.0 } else { 0.7 };
+    let penalty = facts.strategy.penalty();
 
-    let total = 0.45 * prior + 0.35 * resolution + 0.20 * pos_match;
+    let total = 0.45 * prior + 0.35 * resolution + 0.20 * pos_match - penalty;
     Scored {
         score: clamp(total),
         detail: ScoreDetail {
@@ -258,6 +359,7 @@ pub fn score_image(facts: &ImageFacts) -> Scored {
             source_prior: Some(prior),
             resolution: Some(resolution),
             pos_match: Some(pos_match),
+            strategy_penalty: (penalty > 0.0).then_some(penalty),
             ..ScoreDetail::default()
         },
     }
@@ -416,6 +518,7 @@ mod tests {
             width: Some(1600),
             height: Some(1200),
             pos_matches_primary: true,
+            strategy: ImageStrategy::Strict,
         };
         let ranked: Vec<f64> = [
             ImageSource::Manual,
@@ -457,12 +560,14 @@ mod tests {
             width: Some(960),
             height: Some(720),
             pos_matches_primary: true,
+            strategy: ImageStrategy::Strict,
         });
         let generated = score_image(&ImageFacts {
             source: ImageSource::Sdxl,
             width: Some(768),
             height: Some(576),
             pos_matches_primary: true,
+            strategy: ImageStrategy::Strict,
         });
         assert!(commons.score > generated.score);
     }
@@ -474,12 +579,14 @@ mod tests {
             width: Some(1600),
             height: Some(1200),
             pos_matches_primary: true,
+            strategy: ImageStrategy::Strict,
         });
         let small = score_image(&ImageFacts {
             source: ImageSource::Pexels,
             width: Some(320),
             height: Some(240),
             pos_matches_primary: true,
+            strategy: ImageStrategy::Strict,
         });
         assert!(big.score > small.score);
         assert_eq!(big.detail.resolution, Some(1.0));
@@ -500,6 +607,7 @@ mod tests {
             width: Some(-5),
             height: Some(0),
             pos_matches_primary: false,
+            strategy: ImageStrategy::Strict,
         });
         assert!((0.0..=1.0).contains(&weird.score));
     }
@@ -517,6 +625,106 @@ mod tests {
         assert!(
             parsed.get("resolution").is_none(),
             "unused fields are omitted"
+        );
+    }
+
+    // -- second-pass strategies --------------------------------------------
+
+    fn keyless(strategy: ImageStrategy) -> ImageFacts {
+        ImageFacts {
+            source: ImageSource::Openverse,
+            width: Some(1600),
+            height: Some(1200),
+            pos_matches_primary: true,
+            strategy,
+        }
+    }
+
+    #[test]
+    fn a_second_pass_candidate_ranks_below_the_strict_pass() {
+        let strict = score_image(&keyless(ImageStrategy::Strict)).score;
+        for strategy in [ImageStrategy::RelaxedLicense, ImageStrategy::WidenedQuery] {
+            let relaxed = score_image(&keyless(strategy)).score;
+            assert!(
+                relaxed < strict,
+                "{strategy:?} scored {relaxed} vs {strict}"
+            );
+        }
+    }
+
+    /// The point of the penalty: a strict hit arriving later must be able to
+    /// take the slot off a second-pass incumbent, which means clearing the
+    /// hysteresis margin rather than merely outranking it.
+    #[test]
+    fn a_later_strict_hit_displaces_a_second_pass_incumbent() {
+        let incumbent = score_image(&keyless(ImageStrategy::WidenedQuery)).score;
+        let challenger = score_image(&keyless(ImageStrategy::Strict)).score;
+        assert!(should_switch(Some(incumbent), challenger));
+    }
+
+    /// Every candidate in the library predates the second passes, so a strict
+    /// score has to come out exactly as it did before — no rescore, no
+    /// `scorer_ver` bump, no churn on a live database.
+    #[test]
+    fn a_strict_candidate_scores_exactly_what_it_always_did() {
+        let facts = keyless(ImageStrategy::Strict);
+        // 0.45 * 0.7 + 0.35 * 1.0 + 0.20 * 1.0
+        let scored = score_image(&facts);
+        assert!((scored.score - 0.865).abs() < 1e-9, "{scored:?}");
+        assert_eq!(scored.detail.strategy_penalty, None);
+        let json: serde_json::Value = serde_json::from_str(&scored.detail_json()).unwrap();
+        assert!(json.get("strategy_penalty").is_none());
+    }
+
+    #[test]
+    fn a_second_pass_candidate_says_so_in_its_breakdown() {
+        let scored = score_image(&keyless(ImageStrategy::RelaxedLicense));
+        assert_eq!(scored.detail.strategy_penalty, Some(STRATEGY_PENALTY));
+        let json: serde_json::Value = serde_json::from_str(&scored.detail_json()).unwrap();
+        assert!((json["strategy_penalty"].as_f64().unwrap() - STRATEGY_PENALTY).abs() < 1e-9);
+        assert!((json["total"].as_f64().unwrap() - scored.score).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_strategy_is_read_back_off_the_source_ref() {
+        assert_eq!(
+            ImageStrategy::from_source_ref(Some("openverse:abc (relaxed-license)")),
+            ImageStrategy::RelaxedLicense
+        );
+        assert_eq!(
+            ImageStrategy::from_source_ref(Some("wikimedia:File:Lake.jpg (widened-query)")),
+            ImageStrategy::WidenedQuery
+        );
+        // The first pass annotates nothing, and the article-lead note is a
+        // first-pass strategy that must not be penalised.
+        assert_eq!(
+            ImageStrategy::from_source_ref(Some("wikimedia:File:Lake.jpg")),
+            ImageStrategy::Strict
+        );
+        assert_eq!(
+            ImageStrategy::from_source_ref(Some("wikimedia:File:Lake.jpg (article-lead)")),
+            ImageStrategy::Strict
+        );
+        assert_eq!(ImageStrategy::from_source_ref(None), ImageStrategy::Strict);
+        // Composed notes still resolve.
+        assert_eq!(
+            ImageStrategy::from_source_ref(Some(
+                "wikimedia:File:A.jpg (article-lead, widened-query)"
+            )),
+            ImageStrategy::WidenedQuery
+        );
+    }
+
+    /// A file whose *title* contains a strategy word is a title, not a claim.
+    #[test]
+    fn only_the_trailing_note_is_read_as_provenance() {
+        assert_eq!(
+            ImageStrategy::from_source_ref(Some("wikimedia:File:Relaxed-license terms.jpg")),
+            ImageStrategy::Strict
+        );
+        assert_eq!(
+            ImageStrategy::from_source_ref(Some("wikimedia:File:Widened-query (diagram).png")),
+            ImageStrategy::Strict
         );
     }
 

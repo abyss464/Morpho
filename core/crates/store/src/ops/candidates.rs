@@ -84,6 +84,17 @@ pub struct IngestImages {
     pub source: ImageSource,
     pub images: Vec<FetchedImage>,
     pub media: Vec<MediaRegistration>,
+    /// `source_fetch.source` for the completion marker, when it is not the
+    /// candidates' own source.
+    ///
+    /// A second pass over a provider — the same library asked again on looser
+    /// terms — has to mark itself separately, or it would overwrite the record
+    /// of the first pass and the two would be indistinguishable ever after.
+    /// The candidates it produces still name the provider they came from:
+    /// `image_candidates.source` carries a `CHECK` union that these marks are
+    /// not part of, and the picture really did come from that library.
+    /// `source_fetch.source` is free text precisely so this can be recorded.
+    pub mark_source: Option<String>,
 }
 
 /// Completion-marker kinds written to `source_fetch.kind`.
@@ -405,7 +416,7 @@ pub(super) fn ingest_images(req: IngestImages, ctx: &mut OpCtx<'_, '_>) -> Resul
         ctx,
         FETCH_IMAGES,
         req.word_id,
-        req.source.as_str(),
+        req.mark_source.as_deref().unwrap_or(req.source.as_str()),
         req.images.len(),
         created,
     )?;

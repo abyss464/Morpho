@@ -230,6 +230,7 @@ impl Fixture {
                         rel_path: stored.rel_path,
                         bytes: stored.bytes,
                     }],
+                    mark_source: None,
                 }),
             )
             .await

@@ -9,12 +9,12 @@ use morpho_domain::change::EntityType;
 use morpho_domain::event::{Action, Actor};
 use morpho_domain::job::{JobKey, JobKind, JobStatus, RateKey, SubjectRef};
 use morpho_domain::types::{
-    CandidateKind, CreatedBy, DefinitionSource, ExtractedToken, Role, SelectedBy, SlotRef,
-    WordImport,
+    CandidateKind, CreatedBy, DefinitionSource, ExtractedToken, FetchedImage, ImageSource, Role,
+    SelectedBy, SlotRef, WordImport,
 };
 use morpho_store::ops::{
-    CreateWord, MintDefinitionCandidate, OovResolution, RecordDefExtraction, SetApproval,
-    SetSelection, UpsertJobState,
+    CreateWord, IngestImages, MintDefinitionCandidate, OovResolution, RecordDefExtraction,
+    SetApproval, SetSelection, UpsertJobState,
 };
 use morpho_store::{Store, StoreConfig, StoreError, WriteOp};
 
@@ -1013,6 +1013,137 @@ async fn source_fetch_marker_records_zero_results() {
     assert_eq!(
         count(&store, "SELECT result_count FROM source_fetch").await,
         0
+    );
+}
+
+/// A second pass over a provider marks itself under its own name, and an empty
+/// answer is still an answer: the mark lands, the strict one is untouched, and
+/// the chain that reads it can move on.
+#[tokio::test]
+async fn a_second_pass_marks_itself_even_when_it_finds_nothing() {
+    let (_dir, store) = fixture();
+    let word_id = seed_word(&store, "manner", Role::Target).await;
+
+    let ingest = |source: ImageSource, mark: Option<&str>, images: Vec<FetchedImage>| {
+        WriteOp::IngestImages(IngestImages {
+            word_id,
+            source,
+            images,
+            media: Vec::new(),
+            mark_source: mark.map(str::to_string),
+        })
+    };
+
+    store
+        .write(
+            Actor::Worker(JobKind::FetchImages),
+            ingest(ImageSource::Openverse, None, Vec::new()),
+        )
+        .await
+        .unwrap();
+    store
+        .write(
+            Actor::Worker(JobKind::FetchImages),
+            ingest(
+                ImageSource::Openverse,
+                Some("openverse_relaxed"),
+                Vec::new(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    let marks = store
+        .read(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT source, result_count FROM source_fetch
+                 WHERE kind = 'images' ORDER BY source",
+            )?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        marks,
+        vec![
+            ("openverse".to_string(), 0),
+            ("openverse_relaxed".to_string(), 0)
+        ]
+    );
+}
+
+/// The mark is free text; `image_candidates.source` is not. A second pass
+/// records the provider the picture really came from and marks itself
+/// separately — anything else would either break the `CHECK` or lie about where
+/// the bytes are from.
+#[tokio::test]
+async fn a_second_pass_candidate_still_names_its_provider() {
+    let (_dir, store) = fixture();
+    let word_id = seed_word(&store, "desire", Role::Target).await;
+    let dir = tempfile::tempdir().unwrap();
+    let media = morpho_store::MediaStore::new(dir.path());
+    let stored = media
+        .put_bytes(b"RIFF-pretend-webp", morpho_domain::types::MediaKind::Image)
+        .unwrap();
+
+    store
+        .write(
+            Actor::Worker(JobKind::FetchImages),
+            WriteOp::IngestImages(IngestImages {
+                word_id,
+                source: ImageSource::Openverse,
+                images: vec![FetchedImage {
+                    file_hash: stored.file_hash.clone(),
+                    width: Some(1024),
+                    height: Some(768),
+                    source: ImageSource::Openverse,
+                    source_ref: Some("openverse:abc (relaxed-license)".into()),
+                    license: Some("CC BY-NC 4.0; by Ada (Openverse)".into()),
+                    query_used: Some("desire".into()),
+                }],
+                media: vec![morpho_store::ops::MediaRegistration {
+                    file_hash: stored.file_hash,
+                    kind: morpho_domain::types::MediaKind::Image,
+                    rel_path: stored.rel_path,
+                    bytes: stored.bytes,
+                }],
+                mark_source: Some("openverse_relaxed".into()),
+            }),
+        )
+        .await
+        .unwrap();
+
+    let (source, source_ref, license) = store
+        .read(|conn| {
+            Ok(conn.query_row(
+                "SELECT source, source_ref, license FROM image_candidates",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )?)
+        })
+        .await
+        .unwrap();
+    assert_eq!(source, "openverse");
+    assert_eq!(source_ref, "openverse:abc (relaxed-license)");
+    assert_eq!(license, "CC BY-NC 4.0; by Ada (Openverse)");
+    assert_eq!(
+        count(
+            &store,
+            "SELECT COUNT(*) FROM source_fetch WHERE source = 'openverse_relaxed'"
+        )
+        .await,
+        1
     );
 }
 

@@ -24,6 +24,7 @@ use morpho_domain::types::{DefinitionSource, ExampleSource, ImageSource};
 use morpho_store::error::Result;
 
 use crate::facts::Facts;
+use crate::score::ImageStrategy;
 
 /// What a pass is allowed to look at.
 ///
@@ -102,6 +103,18 @@ pub enum JobPayload {
         source: ImageSource,
         /// Selected primary gloss, used to make the search query specific.
         gloss: Option<String>,
+        /// Which pass this job is. The first pass over every provider is
+        /// `Strict`; the rest are retries for a word that pass left empty.
+        strategy: ImageStrategy,
+        /// `source_fetch.source` this job writes when it completes.
+        ///
+        /// The provider's own name for a strict pass, the strategy's own mark
+        /// for a second pass — carried rather than looked up, so the mark the
+        /// rule waited on and the mark the executor writes cannot drift apart.
+        mark: String,
+        /// In-scope content lemmas of the primary gloss, from `def_tokens`.
+        /// Only a widened pass reads them.
+        gloss_tokens: Vec<String>,
     },
     GenImageSdxl {
         word_id: i64,

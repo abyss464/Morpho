@@ -33,7 +33,8 @@ use morpho_store::{Store, WriteOp};
 
 use crate::engine::EngineContext;
 use crate::score::{
-    self, DefinitionFacts, ExampleFacts, ImageFacts, Scored, TokenCoverage, HYSTERESIS_DELTA,
+    self, DefinitionFacts, ExampleFacts, ImageFacts, ImageStrategy, Scored, TokenCoverage,
+    HYSTERESIS_DELTA,
 };
 use crate::text::TextPipeline;
 
@@ -150,7 +151,8 @@ fn collect_scores(conn: &Connection, pipeline: &TextPipeline) -> Result<Vec<Scor
     let mut stmt = conn.prepare(
         "SELECT ic.img_cand_id, ic.source, ic.width, ic.height, ic.pos,
                 (SELECT ds.pos FROM definition_selections ds
-                  WHERE ds.word_id = ic.word_id AND ds.is_primary = 1)
+                  WHERE ds.word_id = ic.word_id AND ds.is_primary = 1),
+                ic.source_ref
          FROM image_candidates ic
          WHERE ic.status = 'available'
            AND (ic.scorer_ver IS NULL OR ic.scorer_ver <> ?1)",
@@ -164,21 +166,27 @@ fn collect_scores(conn: &Connection, pipeline: &TextPipeline) -> Result<Vec<Scor
                 row.get::<_, Option<i64>>(3)?,
                 row.get::<_, Option<String>>(4)?,
                 row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    for (img_cand_id, source, width, height, pos, primary_pos) in rows {
+    for (img_cand_id, source, width, height, pos, primary_pos, source_ref) in rows {
         let source = source.parse::<ImageSource>().unwrap_or(ImageSource::Manual);
         // No hint is neutral, not wrong.
         let pos_matches_primary = match (&pos, &primary_pos) {
             (Some(hint), Some(primary)) => hint == primary,
             _ => true,
         };
+        // Which pass found it lives in `source_ref` rather than in a column of
+        // its own: the provider is the source, and the strategy is provenance
+        // about how it was asked, which is what that field already records.
+        let strategy = ImageStrategy::from_source_ref(source_ref.as_deref());
         let scored = score::score_image(&ImageFacts {
             source,
             width,
             height,
             pos_matches_primary,
+            strategy,
         });
         updates.push(update(CandidateKind::Image, img_cand_id, &scored));
     }

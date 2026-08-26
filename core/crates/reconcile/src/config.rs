@@ -30,6 +30,8 @@ use serde::{Deserialize, Serialize};
 
 use morpho_domain::types::ImageSource;
 
+use crate::score::ImageStrategy;
+
 /// Everything the engine needs to know about the outside world.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -233,6 +235,57 @@ pub const IMAGE_PROVIDERS: &[ImageProvider] = &[
         // The files come from whichever third party Openverse indexed, so the
         // load is spread; a smaller gap is enough to stay polite.
         download_spacing_ms: 400,
+    },
+];
+
+/// One second-pass image search: the same provider, asked again on looser
+/// terms after the first pass left a word with nothing.
+///
+/// Each pass owns a **completion mark of its own** (`source_fetch.source`),
+/// which is the whole reason the second passes can be added to a database that
+/// has already been searched: the strict marks stay exactly where they are, and
+/// every word re-enters through a mark that has never been written. The
+/// candidate a pass produces still records the provider it came from —
+/// `image_candidates.source` has a `CHECK` union that these names are not part
+/// of, and lying to it would be a schema error as well as a false provenance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImageSecondPass {
+    /// Provider queried, and the candidate's `source`.
+    pub source: ImageSource,
+    /// `source_fetch.source` this pass writes.
+    pub mark: &'static str,
+    pub strategy: ImageStrategy,
+    pub rate_key: morpho_domain::job::RateKey,
+}
+
+/// The second passes, in the order a word with no picture walks them.
+///
+/// Relaxed licence before widened query, because a hit that still names the
+/// word is more likely to depict it than a hit on the gloss's vocabulary — and
+/// Wikimedia before Openverse for the same reason ruling #18 orders them that
+/// way, Commons being the more deliberately catalogued of the two.
+///
+/// Every entry is keyless. A second pass over a stock library would be a second
+/// request against a metered account for a word the library has already said it
+/// has nothing for.
+pub const IMAGE_SECOND_PASSES: &[ImageSecondPass] = &[
+    ImageSecondPass {
+        source: ImageSource::Openverse,
+        mark: "openverse_relaxed",
+        strategy: ImageStrategy::RelaxedLicense,
+        rate_key: morpho_domain::job::RateKey::Openverse,
+    },
+    ImageSecondPass {
+        source: ImageSource::Wikimedia,
+        mark: "wikimedia_widened",
+        strategy: ImageStrategy::WidenedQuery,
+        rate_key: morpho_domain::job::RateKey::Wikimedia,
+    },
+    ImageSecondPass {
+        source: ImageSource::Openverse,
+        mark: "openverse_widened",
+        strategy: ImageStrategy::WidenedQuery,
+        rate_key: morpho_domain::job::RateKey::Openverse,
     },
 ];
 
@@ -648,6 +701,45 @@ mod tests {
                 .collect::<Vec<_>>(),
             KEYLESS.to_vec()
         );
+    }
+
+    /// A second pass writes its own completion mark, and that mark must not
+    /// collide with any strict one — otherwise it would overwrite the record of
+    /// the first pass instead of adding to it.
+    #[test]
+    fn every_second_pass_mark_is_its_own() {
+        let mut marks: Vec<&str> = IMAGE_SECOND_PASSES.iter().map(|pass| pass.mark).collect();
+        let count = marks.len();
+        marks.sort_unstable();
+        marks.dedup();
+        assert_eq!(marks.len(), count, "two passes share a mark");
+        for source in ImageSource::ALL {
+            assert!(
+                !marks.contains(&source.as_str()),
+                "{source} would have its strict mark overwritten"
+            );
+        }
+    }
+
+    /// Only the open collections get a second pass: a keyed library is metered
+    /// by an account, and asking it twice for a word it has nothing for spends
+    /// that account's quota on a certain miss.
+    #[test]
+    fn the_second_passes_are_keyless_and_lane_matched() {
+        let config = SourcesConfig::default();
+        for pass in IMAGE_SECOND_PASSES {
+            assert!(
+                KEYLESS.contains(&pass.source),
+                "{} takes a key",
+                pass.source
+            );
+            assert!(config.enabled_image_sources().contains(&pass.source));
+            // The pass rides its provider's own lane, so a second pass cannot
+            // outrun the rate limit the first pass respects.
+            let provider = ImageProvider::for_source(pass.source).unwrap();
+            assert_eq!(pass.rate_key, provider.rate_key);
+            assert_ne!(pass.strategy, ImageStrategy::Strict);
+        }
     }
 
     #[test]

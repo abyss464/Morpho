@@ -15,6 +15,12 @@
 //! are never "never configured" — which means the generative image fallback now
 //! waits for libraries that genuinely answered, and a checkout with no accounts
 //! still reaches real content instead of the end of every chain.
+//!
+//! The image chain has one more link than the others: a provider that answered
+//! and found nothing is asked again on looser terms before anything is
+//! generated. Those retries are staged exactly like a fallback — each one waits
+//! for the mark of the one before it — so a word costs one extra request per
+//! pass rather than a burst of them (see [`images`]).
 
 mod definitions;
 mod etymology;
@@ -29,7 +35,7 @@ pub use definitions::FetchDefinitionsRule;
 pub use etymology::{FetchEtymologyRule, SegmentMorphologyRule};
 pub use examples::FetchExamplesRule;
 pub use extract_tokens::ExtractTokensRule;
-pub use images::{FetchImagesRule, GenImageSdxlRule};
+pub use images::{FetchImagesRule, FetchImagesSecondPassRule, GenImageSdxlRule};
 pub use tts::SynthTtsRule;
 
 use crate::engine::EngineContext;
@@ -44,6 +50,7 @@ pub fn default_rules(context: Arc<EngineContext>) -> Vec<Arc<dyn Rule>> {
         Arc::new(FetchEtymologyRule::new(context.clone())),
         Arc::new(SegmentMorphologyRule::new(context.clone())),
         Arc::new(FetchImagesRule::new(context.clone())),
+        Arc::new(FetchImagesSecondPassRule::new(context.clone())),
         Arc::new(GenImageSdxlRule::new(context.clone())),
         Arc::new(SynthTtsRule::new(context)),
     ]
