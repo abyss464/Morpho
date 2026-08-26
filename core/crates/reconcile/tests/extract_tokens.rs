@@ -19,8 +19,8 @@ use morpho_reconcile::{
 };
 use morpho_store::WriteOp;
 
-const TOKENIZER_VER: &str = "simple-tokenizer/1";
-const LEMMATIZER_VER: &str = "lowercase-lemmatizer/1";
+const TOKENIZER_VER: &str = "simple-tokenizer/2";
+const LEMMATIZER_VER: &str = "morphy-lemmatizer/1";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn extracts_tokens_then_becomes_a_noop() {

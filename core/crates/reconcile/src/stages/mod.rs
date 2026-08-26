@@ -68,6 +68,11 @@ pub async fn run(
     context: &EngineContext,
     clocks: &SweepClocks,
 ) -> Result<SweepStats> {
+    // Before anything reads a lemma: the lemmatizer validates candidates
+    // against this set, and every stage below plus the `ExtractTokens` rule
+    // derived after the sweep must see the same one.
+    refresh_lexicon(store, context).await?;
+
     let scored = score_candidates(store, context).await?;
     let selected = auto_select(store, context).await?;
     let (oos_opened, oos_closed) = oos::sync(store).await?;
@@ -98,6 +103,19 @@ pub async fn run(
     }
 
     Ok(stats)
+}
+
+/// Re-read `words.lemma` into the pipeline's lexicon cache.
+///
+/// Not a stage: it writes nothing and changes no desired state. It is the
+/// pass's first act because the whole point of a level-triggered loop is that
+/// every derivation in a pass sees one consistent world, and a lemma the
+/// lemmatizer may point a token at is part of that world.
+pub async fn refresh_lexicon(store: &Store, context: &EngineContext) -> Result<usize> {
+    let cache = context.pipeline.lexicon();
+    let count = store.read(move |conn| cache.refresh(conn)).await?;
+    tracing::trace!(lemmas = count, "lexicon snapshot refreshed");
+    Ok(count)
 }
 
 /// Debounce state for the stages that do not run every pass.

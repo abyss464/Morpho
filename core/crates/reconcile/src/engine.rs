@@ -58,6 +58,16 @@ impl EngineContext {
         self
     }
 
+    /// Replace the tokenizer/lemmatizer pair.
+    ///
+    /// The exporter has to be handed the same one (`Config::text_pipeline`), or
+    /// its staleness comparison would call every word behind.
+    #[must_use]
+    pub fn with_pipeline(mut self, pipeline: TextPipeline) -> Self {
+        self.pipeline = pipeline;
+        self
+    }
+
     #[must_use]
     pub fn with_plan_params(mut self, plan: PlanParams) -> Self {
         self.plan = plan;

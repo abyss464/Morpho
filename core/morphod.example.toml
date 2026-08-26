@@ -72,10 +72,16 @@ user_agent = "Morpho/0.1 vocabulary content builder (+https://github.com/morpho)
 # Per-request HTTP timeout.
 http_timeout_secs = 20
 
-# WNdb data files (data.noun, index.noun, ...). Enables two things at once:
-# the WordNet gloss fallback for definitions, and the semantic clustering stage
-# of the learning plan. Unset -> both are skipped, not approximated.
-# wordnet_dir = "/usr/share/wordnet"
+# WNdb data files (data.noun, index.noun, {noun,verb,adj,adv}.exc, ...). Enables
+# three things at once: the WordNet gloss fallback for definitions, the semantic
+# clustering stage of the learning plan, and the lemmatizer's exception lists.
+# Unset -> the first two are skipped rather than approximated, and the lemmatizer
+# falls back to its compiled-in irregular table.
+#
+# The .exc files change how definitions lemmatize, so they change the recorded
+# `lemmatizer_ver` too: turning this key on or off re-extracts every definition
+# candidate once, by design.
+# wordnet_dir = "data/wordnet/dict"
 
 # Exam-corpus JSONL, one object per line:
 #   {"word": "benevolent", "sentence": "The benevolent donor funded the library."}

@@ -237,13 +237,24 @@ impl Config {
             morpho_store::MediaStore::new(&self.data_dir),
         )
         .with_tts(self.tts.clone())
-        .with_plan_params(self.plan))
+        .with_plan_params(self.plan)
+        .with_pipeline(self.text_pipeline()))
+    }
+
+    /// The tokenizer/lemmatizer pair this configuration implies.
+    ///
+    /// One method, because the engine and the exporter must agree: the
+    /// lemmatizer reports a different version when WordNet's exception files
+    /// are loaded, and an exporter that assumed otherwise would call every word
+    /// stale.
+    pub fn text_pipeline(&self) -> morpho_reconcile::TextPipeline {
+        morpho_reconcile::TextPipeline::from_wordnet_dir(self.sources.wordnet_dir())
     }
 
     /// Settings for the exporter. The tokenizer/lemmatizer versions must match
     /// the engine's, or every word would look stale.
     pub fn export_settings(&self) -> morpho_export::ExportSettings {
-        let pipeline = morpho_reconcile::TextPipeline::default();
+        let pipeline = self.text_pipeline();
         morpho_export::ExportSettings {
             tts: self.tts.clone(),
             tokenizer_ver: pipeline.tokenizer_ver().to_string(),
@@ -421,9 +432,41 @@ mod tests {
     fn export_settings_track_the_engine_pipeline() {
         let config = Config::default();
         let settings = config.export_settings();
-        let pipeline = morpho_reconcile::TextPipeline::default();
+        let pipeline = config.text_pipeline();
         assert_eq!(settings.tokenizer_ver, pipeline.tokenizer_ver());
         assert_eq!(settings.lemmatizer_ver, pipeline.lemmatizer_ver());
         assert!(settings.exporter.starts_with("morphod/"));
+    }
+
+    /// Loading WordNet's exception lists changes how definitions lemmatize, so
+    /// it has to change the recorded version too — and the exporter has to
+    /// follow, or every word would read as stale.
+    #[test]
+    fn a_wordnet_dictionary_changes_the_lemmatizer_version_on_both_sides() {
+        let plain = Config::default();
+        assert_eq!(
+            plain.text_pipeline().lemmatizer_ver(),
+            morpho_reconcile::MORPHY_LEMMATIZER_VER
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        // `wordnet_dir()` gates on data.noun; the lemmatizer wants the .exc files.
+        std::fs::write(dir.path().join("data.noun"), b"").unwrap();
+        std::fs::write(dir.path().join("verb.exc"), b"gribbled gribble\n").unwrap();
+        let mut config = Config::default();
+        config.sources.wordnet_dir = Some(dir.path().to_path_buf());
+
+        assert_eq!(
+            config.text_pipeline().lemmatizer_ver(),
+            morpho_reconcile::MORPHY_LEMMATIZER_WNDB_VER
+        );
+        assert_eq!(
+            config.export_settings().lemmatizer_ver,
+            config.text_pipeline().lemmatizer_ver()
+        );
+        assert_ne!(
+            config.export_settings().lemmatizer_ver,
+            plain.export_settings().lemmatizer_ver
+        );
     }
 }
