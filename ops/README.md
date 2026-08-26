@@ -9,5 +9,8 @@ point them there when the engine runs under Docker. CLIP scripts need
 - `bulk_approve.py` — approve every ready definition/example/image selection
 - `unapprove_auto.py` — release the pins approval put on auto-selected slots, so
   a `scorer_ver` bump can actually re-select (re-approve afterwards)
+- `fix_primary_pos.py` — move a primary sense onto the part of speech the
+  corpus uses, for words an earlier triage pass collapsed onto the wrong one
+  (rule 6 will not move a primary onto a disabled slot). `--dry-run` first
 - `clip_rematch.py` — CLIP-re-match images to slot-1 sentences (needs the venv)
 - `mine_subs.py` — mine OpenSubtitles for per-lemma example sentences
