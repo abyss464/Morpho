@@ -8,28 +8,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.MenuBook
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.rounded.BarChart
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,21 +32,19 @@ import dev.morpho.R
 import dev.morpho.data.sound.SfxEvent
 import dev.morpho.di.AppContainer
 import dev.morpho.di.StartupReport
-import dev.morpho.ui.designsystem.component.ProgressRing
+import dev.morpho.domain.model.ActivityChartStyle
+import dev.morpho.domain.model.DailyActivity
+import dev.morpho.domain.model.GreetingPeriod
+import dev.morpho.domain.model.HeatmapCell
+import dev.morpho.domain.model.HeatmapData
+import dev.morpho.domain.progress.OverallProgress
+import dev.morpho.domain.progress.TodayProgress
 import dev.morpho.ui.designsystem.component.StatTile
-import dev.morpho.ui.designsystem.component.StreakBadge
 import dev.morpho.ui.designsystem.component.ThemePreviews
 import dev.morpho.ui.designsystem.component.PreviewBox
 import dev.morpho.ui.designsystem.theme.MorphoTheme
-import dev.morpho.domain.progress.OverallProgress
-import dev.morpho.domain.progress.TodayProgress
+import java.time.LocalDate
 
-/**
- * Home: overall progress ring, today's task card, streak, and the single call to
- * action that starts whichever queue is due first (reviews before new words,
- * README Part 1, "每日流程").
- */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     container: AppContainer,
@@ -73,26 +61,9 @@ fun HomeScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.home_title)) },
-                actions = {
-                    IconButton(onClick = {
-                        container.playSfx(SfxEvent.TAP)
-                        onOpenSettings()
-                    }) {
-                        Icon(
-                            Icons.Rounded.Settings,
-                            contentDescription = stringResource(R.string.action_settings),
-                        )
-                    }
-                },
-            )
-        },
     ) { padding ->
         HomeContent(
             state = state,
-            wordCount = startup.wordCount,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
@@ -104,6 +75,14 @@ fun HomeScreen(
                 container.playSfx(SfxEvent.TAP)
                 onStartReview()
             },
+            onOpenSettings = {
+                container.playSfx(SfxEvent.TAP)
+                onOpenSettings()
+            },
+            onToggleChartStyle = { style ->
+                container.playSfx(SfxEvent.TAP)
+                viewModel.setActivityChartStyle(style)
+            },
         )
     }
 }
@@ -111,9 +90,10 @@ fun HomeScreen(
 @Composable
 private fun HomeContent(
     state: HomeUiState,
-    wordCount: Int,
     onStartLearning: () -> Unit,
     onStartReview: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onToggleChartStyle: (ActivityChartStyle) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MorphoTheme.spacing
@@ -122,186 +102,97 @@ private fun HomeContent(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.screenGutter)
             .padding(bottom = spacing.xxl),
-        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(spacing.xl),
     ) {
         Spacer(Modifier.height(spacing.xs))
 
-        ProgressRing(
-            progress = state.overall.fraction,
-            // Grouped, like the caption beneath it: against a four-thousand-word release
-            // these counters run to four digits and a bare "4253" over "of 4,253 learned"
-            // reads as two different quantities.
-            centerLabel = formatCount(state.overall.learnedWords),
-            centerCaption = stringResource(
-                R.string.home_ring_caption,
-                formatCount(state.overall.totalWords),
-            ),
-            accessibilityLabel = stringResource(
-                R.string.cd_progress_ring,
-                state.overall.learnedWords,
-                state.overall.totalWords,
-            ),
+        GreetingHeader(
+            greetingPeriod = state.greetingPeriod,
+            streakDays = state.streakDays,
+            onOpenSettings = onOpenSettings,
         )
 
-        if (state.streakDays > 0) {
-            StreakBadge(days = state.streakDays)
+        ActionCard(
+            today = state.today,
+            hasContent = state.hasContent,
+            onStartLearning = onStartLearning,
+            onStartReview = onStartReview,
+        )
+
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.home_section_this_week),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                IconButton(
+                    onClick = {
+                        val next = when (state.activityChartStyle) {
+                            ActivityChartStyle.BAR -> ActivityChartStyle.HEATMAP
+                            ActivityChartStyle.HEATMAP -> ActivityChartStyle.BAR
+                        }
+                        onToggleChartStyle(next)
+                    },
+                    modifier = Modifier.size(spacing.minTouchTarget),
+                ) {
+                    Icon(
+                        imageVector = when (state.activityChartStyle) {
+                            ActivityChartStyle.BAR -> Icons.Rounded.GridView
+                            ActivityChartStyle.HEATMAP -> Icons.Rounded.BarChart
+                        },
+                        contentDescription = stringResource(R.string.settings_activity_chart),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            when (state.activityChartStyle) {
+                ActivityChartStyle.BAR -> WeeklyBarChart(activity = state.weeklyActivity)
+                ActivityChartStyle.HEATMAP -> ActivityHeatmap(data = state.heatmapData)
+            }
         }
+
+        JourneyProgress(
+            overall = state.overall,
+            estimatedDaysRemaining = state.estimatedDaysRemaining,
+        )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
+            val wordsToday = state.today.newLearned + state.today.reviewed
+            val accuracy = state.today.correctRate
             StatTile(
-                value = formatCount(state.overall.learnedWords),
-                label = stringResource(R.string.home_stat_learned),
-                icon = Icons.Rounded.AutoAwesome,
+                value = formatCount(wordsToday),
+                label = stringResource(R.string.home_stat_words_today),
+                modifier = Modifier.weight(1f),
+            )
+            StatTile(
+                value = if (accuracy != null) "${(accuracy * 100).toInt()}%" else "—",
+                label = stringResource(R.string.home_stat_accuracy),
                 modifier = Modifier.weight(1f),
             )
             StatTile(
                 value = formatCount(state.overall.inFlightWords),
                 label = stringResource(R.string.home_stat_in_progress),
-                icon = Icons.Rounded.MenuBook,
-                modifier = Modifier.weight(1f),
-            )
-            StatTile(
-                value = formatCount(state.overall.remainingWords),
-                label = stringResource(R.string.home_stat_remaining),
                 modifier = Modifier.weight(1f),
             )
         }
 
-        TodayCard(
-            today = state.today,
-            hasContent = wordCount > 0,
-            onStartLearning = onStartLearning,
-            onStartReview = onStartReview,
+        QuickAccessRow(
+            onFeatureClick = { feature ->
+                when (feature) {
+                    HomeFeature.Learning -> onStartLearning()
+                    HomeFeature.Review -> onStartReview()
+                }
+            },
         )
-    }
-}
-
-@Composable
-private fun TodayCard(
-    today: TodayProgress,
-    hasContent: Boolean,
-    onStartLearning: () -> Unit,
-    onStartReview: () -> Unit,
-) {
-    val spacing = MorphoTheme.spacing
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MorphoTheme.radii.shapeLg,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        elevation = CardDefaults.elevatedCardElevation(
-            defaultElevation = MorphoTheme.elevations.card,
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(spacing.xl),
-            verticalArrangement = Arrangement.spacedBy(spacing.md),
-        ) {
-            Text(
-                text = stringResource(R.string.home_today_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-
-            if (!hasContent) {
-                Text(
-                    text = stringResource(R.string.home_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                return@Column
-            }
-
-            Text(
-                text = stringResource(
-                    R.string.home_today_goal_progress,
-                    today.newLearned,
-                    today.dailyGoal,
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            LinearProgressIndicator(
-                progress = { today.fraction },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = MorphoTheme.sizes.groupBarHeight),
-                // The M3 default track resolves to the secondary container, which is
-                // teal in this brand and reads as a second value rather than an
-                // empty track. Use the neutral ring track instead.
-                trackColor = MorphoTheme.accents.ringTrack,
-                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
-            )
-
-            if (today.dueReviews > 0) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                ) {
-                    Icon(
-                        Icons.Rounded.Refresh,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                    )
-                    Text(
-                        text = stringResource(R.string.home_today_reviews, today.dueReviews),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-
-            if (!today.hasWork) {
-                Text(
-                    text = stringResource(R.string.home_today_all_done),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary,
-                )
-            }
-
-            Spacer(Modifier.height(spacing.xxs))
-
-            // Reviews come first when anything is due; the CTA reflects that order.
-            if (today.dueReviews > 0) {
-                Button(
-                    onClick = onStartReview,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = spacing.minTouchTarget),
-                    shape = MorphoTheme.radii.shapeLg,
-                    colors = ButtonDefaults.buttonColors(),
-                ) {
-                    Text(stringResource(R.string.home_start_review))
-                }
-                OutlinedButton(
-                    onClick = onStartLearning,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = spacing.minTouchTarget),
-                    shape = MorphoTheme.radii.shapeLg,
-                ) {
-                    Text(stringResource(R.string.home_start_learning))
-                }
-            } else {
-                Button(
-                    onClick = onStartLearning,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = spacing.minTouchTarget),
-                    shape = MorphoTheme.radii.shapeLg,
-                    enabled = !today.goalMet || today.remainingNew > 0,
-                ) {
-                    Text(stringResource(R.string.home_start_learning))
-                }
-            }
-        }
     }
 }
 
@@ -312,6 +203,7 @@ internal fun formatCount(value: Int): String =
 @ThemePreviews
 @Composable
 private fun HomeContentPreview() {
+    val today = LocalDate.now()
     PreviewBox {
         Box(Modifier.fillMaxWidth()) {
             HomeContent(
@@ -328,10 +220,32 @@ private fun HomeContentPreview() {
                     ),
                     streakDays = 12,
                     contentVersion = "2026.08.26+ff7fd531",
+                    greetingPeriod = GreetingPeriod.EVENING,
+                    weeklyActivity = (6 downTo 0).map { daysAgo ->
+                        DailyActivity(
+                            date = today.minusDays(daysAgo.toLong()),
+                            wordsStudied = listOf(12, 45, 30, 0, 55, 20, 38)[6 - daysAgo],
+                            newLearned = listOf(8, 20, 15, 0, 25, 10, 18)[6 - daysAgo],
+                            reviewed = listOf(4, 25, 15, 0, 30, 10, 20)[6 - daysAgo],
+                        )
+                    },
+                    heatmapData = HeatmapData(
+                        cells = (0 until 112).map { i ->
+                            HeatmapCell(
+                                date = today.minusDays((111 - i).toLong()),
+                                intensity = listOf(0, 1, 2, 3, 4, 0, 1, 2, 3, 0)[i % 10],
+                            )
+                        },
+                        weeks = 16,
+                        maxActivity = 50,
+                    ),
+                    estimatedDaysRemaining = 43,
+                    activityChartStyle = ActivityChartStyle.BAR,
                 ),
-                wordCount = 4253,
                 onStartLearning = {},
                 onStartReview = {},
+                onOpenSettings = {},
+                onToggleChartStyle = {},
             )
         }
     }

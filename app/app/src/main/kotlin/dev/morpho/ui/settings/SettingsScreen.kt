@@ -16,6 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,6 +46,7 @@ import dev.morpho.data.repository.SettingsRepository
 import dev.morpho.data.sound.SfxEvent
 import dev.morpho.di.AppContainer
 import dev.morpho.di.StartupReport
+import dev.morpho.domain.model.ActivityChartStyle
 import dev.morpho.ui.designsystem.component.PreviewBox
 import dev.morpho.ui.designsystem.component.ThemePreviews
 import dev.morpho.ui.designsystem.theme.MorphoTheme
@@ -102,6 +105,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding),
             onDailyGoalChange = viewModel::setDailyGoal,
+            onActivityChartStyleChange = viewModel::setActivityChartStyle,
             onSoundChange = viewModel::setSoundEnabled,
             onVolumeChange = viewModel::setSfxVolume,
             onHapticsChange = viewModel::setHapticsEnabled,
@@ -215,6 +219,7 @@ private fun SettingsContent(
     contentVersion: String?,
     backupStatus: String?,
     onDailyGoalChange: (Int) -> Unit,
+    onActivityChartStyleChange: (ActivityChartStyle) -> Unit,
     onSoundChange: (Boolean) -> Unit,
     onVolumeChange: (Float) -> Unit,
     onHapticsChange: (Boolean) -> Unit,
@@ -247,6 +252,25 @@ private fun SettingsContent(
                     SettingsRepository.DAILY_GOAL_STEP - 1,
                 colors = morphoSliderColors(),
                 modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        SectionHeader(stringResource(R.string.settings_section_display))
+
+        SettingRow(title = stringResource(R.string.settings_activity_chart))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            ChartStyleOption(
+                label = stringResource(R.string.settings_activity_chart_bar),
+                selected = settings.activityChartStyle == ActivityChartStyle.BAR,
+                onClick = { onActivityChartStyleChange(ActivityChartStyle.BAR) },
+            )
+            ChartStyleOption(
+                label = stringResource(R.string.settings_activity_chart_heatmap),
+                selected = settings.activityChartStyle == ActivityChartStyle.HEATMAP,
+                onClick = { onActivityChartStyleChange(ActivityChartStyle.HEATMAP) },
             )
         }
 
@@ -405,6 +429,24 @@ private fun ToggleRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChartStyleOption(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+    )
+}
+
 @ThemePreviews
 @Composable
 private fun SettingsPreview() {
@@ -415,6 +457,7 @@ private fun SettingsPreview() {
             contentVersion = "2026.08.26+ff7fd531",
             backupStatus = null,
             onDailyGoalChange = {},
+            onActivityChartStyleChange = {},
             onSoundChange = {},
             onVolumeChange = {},
             onHapticsChange = {},
