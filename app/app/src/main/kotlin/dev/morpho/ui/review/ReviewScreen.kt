@@ -3,10 +3,8 @@ package dev.morpho.ui.review
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -40,12 +38,13 @@ import dev.morpho.ui.designsystem.component.AnswerFeedbackOverlay
 import dev.morpho.ui.designsystem.component.AudioChipButton
 import dev.morpho.ui.designsystem.component.DetailSheet
 import dev.morpho.ui.designsystem.component.PosChip
-import dev.morpho.ui.designsystem.component.PreviewBox
+import dev.morpho.ui.designsystem.component.QuizLayout
 import dev.morpho.ui.designsystem.component.QuizTextOptions
+import dev.morpho.ui.designsystem.component.ScreenPreviewBox
+import dev.morpho.ui.designsystem.component.ScreenPreviews
 import dev.morpho.ui.designsystem.component.SpellInput
 import dev.morpho.ui.designsystem.component.SpellState
 import dev.morpho.ui.designsystem.component.TextOption
-import dev.morpho.ui.designsystem.component.ThemePreviews
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
 /**
@@ -150,6 +149,11 @@ fun ReviewScreen(
     }
 }
 
+/**
+ * Same skeleton as the learning screen, for the same reason: whatever the user has to
+ * touch — the four word cards, or the spell input and its check button — belongs at the
+ * bottom of the viewport, and the thing they read sits above it.
+ */
 @Composable
 private fun ReviewBody(
     state: ReviewUiState,
@@ -162,31 +166,70 @@ private fun ReviewBody(
     val spacing = MorphoTheme.spacing
     val question = state.question ?: return
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = spacing.screenGutter),
-        verticalArrangement = Arrangement.spacedBy(spacing.lg),
-    ) {
-        LinearProgressIndicator(
-            progress = { if (state.total == 0) 0f else state.index.toFloat() / state.total },
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = MorphoTheme.sizes.groupBarHeight),
-            // Neutral track: the M3 default resolves to the teal secondary container.
-            trackColor = MorphoTheme.accents.ringTrack,
-            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
-        )
+    QuizLayout(
+        modifier = modifier,
+        header = {
+            LinearProgressIndicator(
+                progress = { if (state.total == 0) 0f else state.index.toFloat() / state.total },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = MorphoTheme.sizes.groupBarHeight),
+                // Neutral track: the M3 default resolves to the teal secondary container.
+                trackColor = MorphoTheme.accents.ringTrack,
+                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
+            )
+        },
+        prompt = {
+            when (question.type) {
+                ReviewQuestionType.DEFINITION_TO_WORD -> {
+                    Text(
+                        text = stringResource(R.string.review_definition_prompt),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    DefinitionPrompt(pos = question.pos, definition = question.definition)
+                }
 
-        when (question.type) {
-            ReviewQuestionType.DEFINITION_TO_WORD -> {
+                ReviewQuestionType.LISTENING_SPELL -> {
+                    Text(
+                        text = stringResource(R.string.review_spell_prompt),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                    ) {
+                        AudioChipButton(
+                            onClick = onReplay,
+                            playing = state.nowPlayingFile == question.wordAudioFile,
+                            contentDescription = stringResource(R.string.action_replay_audio),
+                        )
+                        Text(
+                            text = stringResource(R.string.review_spell_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        },
+        // The miss verdict used to hang below the check button, which pushed the button
+        // itself down the moment it appeared. Above the answer zone it changes nothing
+        // the thumb is aiming at.
+        banner = {
+            if (state.revealed && state.spellState == SpellState.WRONG) {
                 Text(
-                    text = stringResource(R.string.review_definition_prompt),
+                    text = stringResource(R.string.review_wrong, question.word),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.error,
                 )
-                DefinitionPrompt(pos = question.pos, definition = question.definition)
-                QuizTextOptions(
+            }
+        },
+        answers = {
+            when (question.type) {
+                ReviewQuestionType.DEFINITION_TO_WORD -> QuizTextOptions(
                     options = question.wordOptions,
                     onSelect = onSelect,
                     selectedIndex = state.selectedIndex,
@@ -194,61 +237,34 @@ private fun ReviewBody(
                     revealed = state.revealed,
                     enabled = !state.revealed,
                 )
-            }
 
-            ReviewQuestionType.LISTENING_SPELL -> {
-                Text(
-                    text = stringResource(R.string.review_spell_prompt),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Column(
+                ReviewQuestionType.LISTENING_SPELL -> Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(spacing.md),
                 ) {
-                    AudioChipButton(
-                        onClick = onReplay,
-                        playing = state.nowPlayingFile == question.wordAudioFile,
-                        contentDescription = stringResource(R.string.action_replay_audio),
+                    SpellInput(
+                        target = question.word,
+                        value = state.spelling,
+                        onValueChange = onSpellingChanged,
+                        onSubmit = onSubmit,
+                        state = state.spellState,
+                        enabled = !state.revealed,
+                        revealAnswer = state.revealed,
                     )
-                    Text(
-                        text = stringResource(R.string.review_spell_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                SpellInput(
-                    target = question.word,
-                    value = state.spelling,
-                    onValueChange = onSpellingChanged,
-                    onSubmit = onSubmit,
-                    state = state.spellState,
-                    enabled = !state.revealed,
-                    revealAnswer = state.revealed,
-                )
-                Button(
-                    onClick = onSubmit,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = spacing.minTouchTarget),
-                    shape = MorphoTheme.radii.shapeLg,
-                    enabled = !state.revealed && state.spelling.isNotBlank(),
-                ) {
-                    Text(stringResource(R.string.action_check))
-                }
-                if (state.revealed && state.spellState == SpellState.WRONG) {
-                    Text(
-                        text = stringResource(R.string.review_wrong, question.word),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                    Button(
+                        onClick = onSubmit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = spacing.minTouchTarget),
+                        shape = MorphoTheme.radii.shapeLg,
+                        enabled = !state.revealed && state.spelling.isNotBlank(),
+                    ) {
+                        Text(stringResource(R.string.action_check))
+                    }
                 }
             }
-        }
-
-        Spacer(Modifier.height(spacing.md))
-    }
+        },
+    )
 }
 
 @Composable
@@ -299,10 +315,10 @@ private val previewDefinitionQuestion = ReviewQuestionUi(
     correctIndex = 1,
 )
 
-@ThemePreviews
+@ScreenPreviews
 @Composable
 private fun ReviewDefinitionPreview() {
-    PreviewBox {
+    ScreenPreviewBox {
         ReviewBody(
             state = ReviewUiState(
                 loading = false,
@@ -318,10 +334,10 @@ private fun ReviewDefinitionPreview() {
     }
 }
 
-@ThemePreviews
+@ScreenPreviews
 @Composable
 private fun ReviewSpellPreview() {
-    PreviewBox {
+    ScreenPreviewBox {
         ReviewBody(
             state = ReviewUiState(
                 loading = false,

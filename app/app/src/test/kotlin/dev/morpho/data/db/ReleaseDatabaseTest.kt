@@ -54,7 +54,7 @@ class ReleaseDatabaseTest {
     @Test
     fun `meta identifies the release the app was built against`() {
         assertEquals(
-            "2026.08.26+ff7fd531",
+            "2026.08.26+b9e562a3",
             db.metaQueries.selectValue(ContentMetaKeys.CONTENT_VERSION).executeAsOneOrNull(),
         )
         assertNotNull(db.metaQueries.selectValue(ContentMetaKeys.PLAN_ID).executeAsOneOrNull())

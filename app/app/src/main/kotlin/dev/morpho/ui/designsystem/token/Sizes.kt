@@ -15,6 +15,12 @@ data class Sizes(
     val progressRingStroke: Dp = 14.dp,
     val groupBarHeight: Dp = 6.dp,
     val quizCellMinHeight: Dp = 132.dp,
+    /**
+     * Floor for the image band of a bottom-anchored grid. Below this the picture stops
+     * carrying the meaning, so a cramped screen scrolls its prompt instead of shrinking
+     * the answer further.
+     */
+    val quizImageMinBand: Dp = 96.dp,
     val spellBox: Dp = 40.dp,
     val spellBoxTall: Dp = 52.dp,
     val checkBadge: Dp = 28.dp,

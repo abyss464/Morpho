@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -38,6 +39,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.morpho.ui.designsystem.motion.correctSpring
 import dev.morpho.ui.designsystem.motion.floatAnimatable
@@ -46,6 +48,9 @@ import dev.morpho.ui.designsystem.theme.MorphoTheme
 
 /** Aspect ratio of a quiz image cell, matching the shipped 768x576 media. */
 private const val QUIZ_IMAGE_ASPECT = 4f / 3f
+
+/** Mode-2 captions are a fixed two-line band, so all four cells line up. */
+private const val CAPTION_LINES = 2
 
 /** One cell of an image-based quiz. */
 data class ImageOption(
@@ -63,6 +68,9 @@ data class ImageOption(
  * a correct pick springs a blue ring plus a check badge and fades the others to 0.4,
  * a wrong pick shakes +/-8dp. Every cell keeps a >=48dp touch target and a content
  * description so TalkBack reads the grid in visual order.
+ *
+ * Pass the [space] handed down by `QuizLayout` and the cells size themselves to fit the
+ * bottom-anchored answer zone; omit it and each cell falls back to its natural 4:3.
  */
 @Composable
 fun QuizImageGrid(
@@ -73,6 +81,7 @@ fun QuizImageGrid(
     correctIndex: Int? = null,
     revealed: Boolean = false,
     enabled: Boolean = true,
+    space: QuizAnswerSpace? = null,
 ) {
     QuizGridScaffold(
         options = options,
@@ -83,6 +92,7 @@ fun QuizImageGrid(
         enabled = enabled,
         onSelect = onSelect,
         showCaptions = false,
+        space = space,
     )
 }
 
@@ -99,6 +109,7 @@ fun QuizImageDefGrid(
     correctIndex: Int? = null,
     revealed: Boolean = false,
     enabled: Boolean = true,
+    space: QuizAnswerSpace? = null,
 ) {
     QuizGridScaffold(
         options = options,
@@ -109,6 +120,7 @@ fun QuizImageDefGrid(
         enabled = enabled,
         onSelect = onSelect,
         showCaptions = true,
+        space = space,
     )
 }
 
@@ -122,8 +134,11 @@ private fun QuizGridScaffold(
     enabled: Boolean,
     onSelect: (Int) -> Unit,
     showCaptions: Boolean,
+    space: QuizAnswerSpace?,
 ) {
     val gutter = MorphoTheme.spacing.sm
+    val captionBand = if (showCaptions) captionBandHeight() else 0.dp
+    val imageBand = space?.let { imageBandHeight(it, gutter, captionBand) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(gutter),
@@ -138,6 +153,8 @@ private fun QuizGridScaffold(
                         option = options[index],
                         state = optionState(index, selectedIndex, correctIndex, revealed),
                         showCaption = showCaptions,
+                        captionBand = captionBand,
+                        imageBand = imageBand,
                         enabled = enabled,
                         onClick = { onSelect(index) },
                         modifier = Modifier.weight(1f),
@@ -147,6 +164,36 @@ private fun QuizGridScaffold(
             }
         }
     }
+}
+
+/**
+ * Two lines of caption plus its padding, measured off the live text style so the band
+ * still fits at a 2x font scale instead of clipping.
+ */
+@Composable
+private fun captionBandHeight(): Dp {
+    val lineHeight = MorphoTheme.reading.definitionCaption.lineHeight
+    val lines = with(LocalDensity.current) { lineHeight.toDp() } * CAPTION_LINES
+    return lines + MorphoTheme.spacing.sm * 2
+}
+
+/**
+ * Height of one image band so that two rows plus their gutter and captions fit inside
+ * [space]. Never taller than the media's own 4:3 — a roomier envelope must not stretch a
+ * 768x576 photo — and never shrunk past [Sizes.quizImageMinBand], the point below which
+ * the picture stops carrying the meaning and the prompt should scroll instead. A cell
+ * narrow enough that its own 4:3 falls under that floor keeps the ratio: the floor is a
+ * limit on shrinking, not a licence to grow.
+ */
+@Composable
+private fun imageBandHeight(space: QuizAnswerSpace, gutter: Dp, captionBand: Dp): Dp {
+    val cellWidth = ((space.maxWidth - gutter) / 2).coerceAtLeast(0.dp)
+    val natural = cellWidth / QUIZ_IMAGE_ASPECT
+    val budget = (space.maxHeight - gutter) / 2 - captionBand
+    val floor = MorphoTheme.sizes.quizImageMinBand.coerceAtMost(natural)
+    return natural
+        .coerceAtMost(budget)
+        .coerceAtLeast(floor)
 }
 
 internal fun optionState(
@@ -167,6 +214,8 @@ private fun QuizImageCell(
     option: ImageOption,
     state: QuizOptionState,
     showCaption: Boolean,
+    captionBand: Dp,
+    imageBand: Dp?,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -244,10 +293,18 @@ private fun QuizImageCell(
         Box(
             Modifier
                 .fillMaxWidth()
-                // Release images are 768x576; holding 4:3 keeps the 2x2 grid square-ish
-                // and stops a cell from eating the rest of the screen.
-                .aspectRatio(QUIZ_IMAGE_ASPECT)
-                .heightIn(min = tokens.sizes.quizCellMinHeight),
+                // Release images are 768x576. Inside a bottom-anchored answer zone the
+                // band is handed down already sized to the space (and the image crops to
+                // fill it); standalone, the cell holds 4:3 so it cannot eat the screen.
+                .then(
+                    if (imageBand != null) {
+                        Modifier.height(imageBand)
+                    } else {
+                        Modifier
+                            .aspectRatio(QUIZ_IMAGE_ASPECT)
+                            .heightIn(min = tokens.sizes.quizCellMinHeight)
+                    },
+                ),
         ) {
             ContentImage(
                 file = option.imageFile,
@@ -267,23 +324,31 @@ private fun QuizImageCell(
             }
         }
         if (showCaption && option.caption != null) {
-            // Same rule as the mode-3 cards: the cell is an answer button, so the gloss
-            // hangs off a long press and a tap always picks the option.
-            GlossedText(
-                text = option.caption,
-                style = MorphoTheme.reading.definitionCaption,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Start,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                trigger = GlossTrigger.LongPress,
-                enabled = enabled,
-                onPlainTap = onClick,
-                pressInteractionSource = interactionSource,
+            // A fixed two-line band rather than wrap-content: four cells of differing
+            // caption length would otherwise sit at four different heights, and the grid
+            // as a whole must have a height the layout can predict.
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(captionBand)
                     .padding(tokens.spacing.sm),
-            )
+            ) {
+                // Same rule as the mode-3 cards: the cell is an answer button, so the
+                // gloss hangs off a long press and a tap always picks the option.
+                GlossedText(
+                    text = option.caption,
+                    style = MorphoTheme.reading.definitionCaption,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Start,
+                    maxLines = CAPTION_LINES,
+                    overflow = TextOverflow.Ellipsis,
+                    trigger = GlossTrigger.LongPress,
+                    enabled = enabled,
+                    onPlainTap = onClick,
+                    pressInteractionSource = interactionSource,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }

@@ -6,16 +6,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -48,13 +44,14 @@ import dev.morpho.ui.designsystem.component.GroupProgressBar
 import dev.morpho.ui.designsystem.component.GroupSegmentState
 import dev.morpho.ui.designsystem.component.ImageOption
 import dev.morpho.ui.designsystem.component.ModePips
-import dev.morpho.ui.designsystem.component.PreviewBox
 import dev.morpho.ui.designsystem.component.QuizImageDefGrid
 import dev.morpho.ui.designsystem.component.QuizImageGrid
+import dev.morpho.ui.designsystem.component.QuizLayout
 import dev.morpho.ui.designsystem.component.QuizTextOptions
+import dev.morpho.ui.designsystem.component.ScreenPreviewBox
+import dev.morpho.ui.designsystem.component.ScreenPreviews
 import dev.morpho.ui.designsystem.component.SentenceCard
 import dev.morpho.ui.designsystem.component.TextOption
-import dev.morpho.ui.designsystem.component.ThemePreviews
 import dev.morpho.ui.designsystem.component.WordHeader
 import dev.morpho.ui.designsystem.motion.rememberSharedAxis
 import dev.morpho.ui.designsystem.theme.MorphoTheme
@@ -149,6 +146,15 @@ fun LearnScreen(
     }
 }
 
+/**
+ * Prompt on top, options in the thumb zone.
+ *
+ * `QuizLayout` owns the geometry — see its KDoc for why the answer zone is bottom-
+ * anchored and why the retry hint sits between the prompt and the grid. Here the only
+ * thing worth noting is that the stimulus and the options ride *two* `AnimatedContent`s
+ * keyed on the same question: they live in different layout bands now, and driving both
+ * off one shared-axis spec keeps them travelling together.
+ */
 @Composable
 private fun QuestionBody(
     state: LearnUiState,
@@ -160,40 +166,57 @@ private fun QuestionBody(
     val axis = rememberSharedAxis()
     val question = state.question ?: return
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = spacing.screenGutter),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
-    ) {
-        GroupProgressBar(segments = state.groupSegments)
+    QuizLayout(
+        modifier = modifier,
+        header = { GroupProgressBar(segments = state.groupSegments) },
+        prompt = {
+            AnimatedContent(
+                targetState = question,
+                transitionSpec = { axis.transform(forward = true) },
+                label = "stimulus",
+                contentKey = { it.wordId to it.mode },
+            ) { current ->
+                Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+                    Stimulus(
+                        question = current,
+                        nowPlayingFile = state.nowPlayingFile,
+                        onPlay = onPlay,
+                    )
 
-        AnimatedContent(
-            targetState = question,
-            transitionSpec = { axis.transform(forward = true) },
-            label = "question",
-            contentKey = { it.wordId to it.mode },
-        ) { current ->
-            Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                Stimulus(
-                    question = current,
-                    nowPlayingFile = state.nowPlayingFile,
-                    onPlay = onPlay,
-                )
-
-                Text(
-                    text = stringResource(
-                        when (current.mode) {
-                            LearnMode.SENTENCE_IMAGE -> R.string.learn_mode_1_prompt
-                            LearnMode.WORD_IMAGE_DEF -> R.string.learn_mode_2_prompt
-                            LearnMode.WORD_TEXT_DEF -> R.string.learn_mode_3_prompt
-                        },
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
+                    Text(
+                        text = stringResource(
+                            when (current.mode) {
+                                LearnMode.SENTENCE_IMAGE -> R.string.learn_mode_1_prompt
+                                LearnMode.WORD_IMAGE_DEF -> R.string.learn_mode_2_prompt
+                                LearnMode.WORD_TEXT_DEF -> R.string.learn_mode_3_prompt
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        // Wrong answer: the English definition appears as help and the user must pick
+        // again before moving on (README Part 1, "选错 -> 显示英文释义辅助"). It lands
+        // above the options, in the slack the prompt was using, so the grid does not
+        // move out from under the thumb that just tapped it.
+        banner = {
+            AnimatedVisibility(
+                visible = state.mustRetry,
+                enter = fadeIn(tween(MorphoTheme.durations.fade)),
+                exit = fadeOut(tween(MorphoTheme.durations.fade)),
+            ) {
+                RetryHint(definition = question.primaryDefinition)
+            }
+        },
+        answers = { space ->
+            AnimatedContent(
+                targetState = question,
+                transitionSpec = { axis.transform(forward = true) },
+                label = "options",
+                contentKey = { it.wordId to it.mode },
+            ) { current ->
                 when (current.mode) {
                     LearnMode.SENTENCE_IMAGE -> QuizImageGrid(
                         options = current.imageOptions,
@@ -202,6 +225,7 @@ private fun QuestionBody(
                         correctIndex = current.correctIndex,
                         revealed = state.revealed,
                         enabled = !state.revealed || state.mustRetry,
+                        space = space,
                     )
 
                     LearnMode.WORD_IMAGE_DEF -> QuizImageDefGrid(
@@ -211,8 +235,11 @@ private fun QuestionBody(
                         correctIndex = current.correctIndex,
                         revealed = state.revealed,
                         enabled = !state.revealed || state.mustRetry,
+                        space = space,
                     )
 
+                    // Text cards cannot shrink to a height envelope the way an image
+                    // cell can; the answer zone scrolls them instead.
                     LearnMode.WORD_TEXT_DEF -> QuizTextOptions(
                         options = current.textOptions,
                         onSelect = onSelect,
@@ -223,20 +250,8 @@ private fun QuestionBody(
                     )
                 }
             }
-        }
-
-        // Wrong answer: the English definition appears as help and the user must pick
-        // again before moving on (README Part 1, "选错 -> 显示英文释义辅助").
-        AnimatedVisibility(
-            visible = state.mustRetry,
-            enter = fadeIn(tween(MorphoTheme.durations.fade)),
-            exit = fadeOut(tween(MorphoTheme.durations.fade)),
-        ) {
-            RetryHint(definition = question.primaryDefinition)
-        }
-
-        Spacer(Modifier.height(spacing.md))
-    }
+        },
+    )
 }
 
 @Composable
@@ -338,10 +353,10 @@ private val previewQuestionMode1 = QuestionUi(
     primaryDefinition = "kind and generous towards other people",
 )
 
-@ThemePreviews
+@ScreenPreviews
 @Composable
 private fun LearnMode1Preview() {
-    PreviewBox {
+    ScreenPreviewBox {
         QuestionBody(
             state = LearnUiState(
                 loading = false,
@@ -356,10 +371,10 @@ private fun LearnMode1Preview() {
     }
 }
 
-@ThemePreviews
+@ScreenPreviews
 @Composable
 private fun LearnMode2Preview() {
-    PreviewBox {
+    ScreenPreviewBox {
         QuestionBody(
             state = LearnUiState(
                 loading = false,
@@ -372,10 +387,10 @@ private fun LearnMode2Preview() {
     }
 }
 
-@ThemePreviews
+@ScreenPreviews
 @Composable
 private fun LearnMode3WrongPreview() {
-    PreviewBox {
+    ScreenPreviewBox {
         QuestionBody(
             state = LearnUiState(
                 loading = false,

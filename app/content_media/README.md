@@ -1,8 +1,8 @@
 # `content_media` asset pack
 
 Install-time Play Asset Delivery pack holding every image and audio file `release.db`
-references. As of wave 3b it carries the real export: 4,011 images and 21,600 audio
-clips, ~470 MB, content-addressed.
+references. As of wave 3c it carries the real export: 4,246 images and 21,600 audio
+clips, ~485 MB, content-addressed.
 
 ## Dropping the media in
 
@@ -11,10 +11,13 @@ The payload is **not in git** (see `../.gitignore`) — it is a derived artifact
 export lands, repopulate it:
 
 ```sh
-export=data/releases/export-20260826T080617034Z          # whichever release you build against
+export=data/releases/export-20260826T095928362Z          # whichever release you build against
 rsync -a "$export"/img "$export"/audio app/content_media/src/main/assets/content_media/
 cp "$export"/release.db app/app/src/main/assets/release.db
 ```
+
+Add `--delete` to the `rsync` when an export *drops* media (a reselected image leaves its
+old file behind): the pack must hold exactly the files `manifest.json` lists, no more.
 
 The tree must end up looking like this:
 
