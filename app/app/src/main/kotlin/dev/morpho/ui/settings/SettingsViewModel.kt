@@ -12,6 +12,7 @@ import dev.morpho.data.repository.MorphoSettings
 import dev.morpho.data.repository.SettingsRepository
 import dev.morpho.data.sound.SfxEvent
 import dev.morpho.di.AppContainer
+import dev.morpho.domain.model.ActivityChartStyle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,6 +58,10 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setReducedMotion(value: Boolean?) {
         viewModelScope.launch { repo.setReducedMotion(value) }
+    }
+
+    fun setActivityChartStyle(value: ActivityChartStyle) {
+        viewModelScope.launch { repo.setActivityChartStyle(value) }
     }
 
     // ---------------------------------------------------------------- backup

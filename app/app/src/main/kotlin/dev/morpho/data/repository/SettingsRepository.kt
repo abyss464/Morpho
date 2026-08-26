@@ -1,5 +1,6 @@
 package dev.morpho.data.repository
 
+import dev.morpho.domain.model.ActivityChartStyle
 import dev.morpho.domain.model.ProgressDefaults
 import dev.morpho.domain.model.UserMetaKeys
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +21,7 @@ data class MorphoSettings(
     val hapticsEnabled: Boolean = true,
     val sfxVolume: Float = ProgressDefaults.SFX_VOLUME,
     val reducedMotion: Boolean? = null,
+    val activityChartStyle: ActivityChartStyle = ActivityChartStyle.BAR,
 )
 
 class SettingsRepository(private val progress: ProgressRepository) {
@@ -39,6 +41,9 @@ class SettingsRepository(private val progress: ProgressRepository) {
                 ?: ProgressDefaults.SFX_VOLUME,
             reducedMotion = progress.metaValue(UserMetaKeys.REDUCED_MOTION_OVERRIDE)
                 ?.toBooleanStrictOrNull(),
+            activityChartStyle = progress.metaValue(UserMetaKeys.ACTIVITY_CHART_STYLE)
+                ?.let { ActivityChartStyle.fromDb(it) }
+                ?: ActivityChartStyle.BAR,
         )
         state.value = loaded
         return loaded
@@ -69,6 +74,11 @@ class SettingsRepository(private val progress: ProgressRepository) {
     suspend fun setReducedMotion(value: Boolean?) {
         progress.setMeta(UserMetaKeys.REDUCED_MOTION_OVERRIDE, value?.toString() ?: "")
         state.value = state.value.copy(reducedMotion = value)
+    }
+
+    suspend fun setActivityChartStyle(value: ActivityChartStyle) {
+        progress.setMeta(UserMetaKeys.ACTIVITY_CHART_STYLE, value.dbValue)
+        state.value = state.value.copy(activityChartStyle = value)
     }
 
     companion object {

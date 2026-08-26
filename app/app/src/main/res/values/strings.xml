@@ -37,6 +37,20 @@
     <string name="home_stat_remaining">remaining</string>
     <string name="home_streak">day streak</string>
     <string name="home_empty">No content installed yet.</string>
+    <string name="home_greeting_morning">Good morning</string>
+    <string name="home_greeting_afternoon">Good afternoon</string>
+    <string name="home_greeting_evening">Good evening</string>
+    <string name="home_section_this_week">This week</string>
+    <string name="home_section_journey">Journey</string>
+    <string name="home_reviews_due">Reviews due</string>
+    <string name="home_new_words">New words</string>
+    <string name="home_journey_of">of %1$s words</string>
+    <string name="home_journey_complete">%1$d%% complete</string>
+    <string name="home_journey_days_left">~%1$d days left</string>
+    <string name="home_journey_done">Complete</string>
+    <string name="home_stat_words_today">words today</string>
+    <string name="home_stat_accuracy">accuracy</string>
+    <string name="home_all_done">All done for today</string>
 
     <!-- Learn -->
     <string name="learn_title">Learning</string>
@@ -95,6 +109,10 @@
     <string name="settings_content_version">Content version</string>
     <string name="settings_app_version">App version</string>
     <string name="settings_word_count">Words in this release</string>
+    <string name="settings_section_display">Display</string>
+    <string name="settings_activity_chart">Activity chart style</string>
+    <string name="settings_activity_chart_bar">Weekly bars</string>
+    <string name="settings_activity_chart_heatmap">Contribution grid</string>
 
     <!-- Backup: export -->
     <string name="backup_working">Working…</string>
