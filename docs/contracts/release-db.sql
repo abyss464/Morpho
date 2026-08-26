@@ -72,6 +72,16 @@ CREATE TABLE distractors (
     PRIMARY KEY (word_id, rank)
 );
 
+-- Wave-7: Chinese gloss anchors — words referenced inside shipped definitions
+-- that are not themselves learnable. The app renders matching tokens in
+-- definition text as tappable, revealing the gloss in a popover (English
+-- immersion preserved; Chinese as grounding modality, like images).
+CREATE TABLE gloss_anchors (
+    word_id  INTEGER PRIMARY KEY,   -- stable working-db id
+    word     TEXT NOT NULL,         -- lemma as it appears in definition tokens
+    zh_gloss TEXT NOT NULL
+);
+
 CREATE TABLE meta (
     key   TEXT PRIMARY KEY,   -- content_version, plan_id, exported_at, schema_ver
     value TEXT NOT NULL

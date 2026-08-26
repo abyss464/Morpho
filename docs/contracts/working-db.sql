@@ -26,6 +26,14 @@ CREATE TABLE words (
     frequency_rank   INTEGER,
     etymology        TEXT,
     etymology_source TEXT CHECK (etymology_source IN ('wiktionary','morfessor','manual')),
+    -- Gloss anchor (wave-7 ruling): a short Chinese gloss grounding a word that
+    -- is REFERENCED by definitions but is not itself learnable. A word with a
+    -- non-NULL approved gloss terminates the readability chain exactly like a
+    -- base word: dependencies on it are satisfied, closure edges into it do not
+    -- drag, and it ships into release.db's gloss_anchors table instead of the
+    -- learnable words table.
+    zh_gloss         TEXT,
+    zh_gloss_source  TEXT CHECK (zh_gloss_source IN ('manual','cedict')),
     -- Derived caches, reconciler-owned (recomputed inline every pass):
     ready            INTEGER NOT NULL DEFAULT 0,
     core_ready       INTEGER NOT NULL DEFAULT 0,   -- readiness minus the distractor recursion
