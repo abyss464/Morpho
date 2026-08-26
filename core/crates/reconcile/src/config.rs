@@ -9,12 +9,18 @@
 //!
 //! * no `wordnet_dir` → the WordNet definition fallback and the semantic
 //!   grouping stage are simply not part of the desired state;
-//! * no `corpus_path` → example fetching is not part of the desired state, and
-//!   every word honestly reports `missing_example`;
-//! * no image API key → that provider is skipped, and if all three are absent
-//!   the SDXL fallback becomes the live path;
+//! * no `corpus_path` → the exam-corpus example source is absent, and only the
+//!   keyless ones remain;
+//! * no image API key → that stock provider is skipped;
 //! * no ComfyUI URL → SDXL is absent too, and words honestly report
 //!   `missing_image`.
+//!
+//! The keyless sources are the other half of the rule (admin-api.md ruling
+//! #18). Free Dictionary, Wiktionary, Wikimedia Commons, Openverse and Tatoeba
+//! have no credentials to be missing, so they are never disabled — only
+//! reachable or not, which is a retry, not an absence. That is what makes an
+//! installation with no accounts at all still produce real definitions,
+//! sentences and pictures.
 //!
 //! Nothing here ever substitutes placeholder content for a missing source.
 
@@ -32,10 +38,17 @@ pub struct SourcesConfig {
     pub freedict_url: FreedictUrl,
     /// Wiktionary MediaWiki API endpoint.
     pub wiktionary_url: WiktionaryUrl,
+    /// Wikimedia Commons MediaWiki API endpoint (keyless image source).
+    pub wikimedia_url: WikimediaUrl,
+    /// Openverse image search endpoint (keyless image source).
+    pub openverse_url: OpenverseUrl,
+    /// Tatoeba sentence search endpoint (keyless example source).
+    pub tatoeba_url: TatoebaUrl,
     /// Directory holding WNdb data files (`data.noun`, `index.noun`, …).
     /// Empty means WordNet is not installed and both WordNet stages are off.
     pub wordnet_dir: Option<PathBuf>,
-    /// Exam-corpus JSONL file. Empty means example fetching is off.
+    /// Exam-corpus JSONL file. Empty means that one example source is off; the
+    /// keyless ones carry on regardless.
     pub corpus_path: Option<PathBuf>,
     pub unsplash_access_key: Option<String>,
     pub pexels_api_key: Option<String>,
@@ -53,6 +66,9 @@ impl Default for SourcesConfig {
         Self {
             freedict_url: FreedictUrl::default(),
             wiktionary_url: WiktionaryUrl::default(),
+            wikimedia_url: WikimediaUrl::default(),
+            openverse_url: OpenverseUrl::default(),
+            tatoeba_url: TatoebaUrl::default(),
             wordnet_dir: None,
             corpus_path: None,
             unsplash_access_key: None,
@@ -98,31 +114,110 @@ defaulted_string!(
     "English Wiktionary MediaWiki API endpoint."
 );
 defaulted_string!(
+    WikimediaUrl,
+    "https://commons.wikimedia.org/w/api.php",
+    "Wikimedia Commons MediaWiki API endpoint."
+);
+defaulted_string!(
+    OpenverseUrl,
+    "https://api.openverse.org/v1/images/",
+    "Openverse image search endpoint."
+);
+defaulted_string!(
+    TatoebaUrl,
+    "https://tatoeba.org/en/api_v0/search",
+    "Tatoeba sentence search endpoint."
+);
+defaulted_string!(
     UserAgent,
-    "morphod/0.1 (Morpho content engine; +https://github.com/morpho)",
-    "User-Agent header sent to every HTTP source."
+    "Morpho/0.1 vocabulary content builder (+https://github.com/morpho)",
+    "User-Agent header sent to every HTTP source.\n\n\
+     Wikimedia's policy requires a real one — a tool name and a way to make \
+     contact — and answers 403 without it, so this is a functional requirement \
+     rather than politeness."
 );
 
-/// One stock-photo provider and its key.
+/// One image provider and how to reach it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageProvider {
     pub source: ImageSource,
     pub rate_key: morpho_domain::job::RateKey,
+    /// `true` for the stock libraries, which are absent without a key; `false`
+    /// for the open collections, which are always available (ruling #18).
+    pub needs_key: bool,
+    /// Minimum gap between this provider's *photo downloads*, in milliseconds.
+    ///
+    /// The dispatcher's lane meters jobs, and one image job is a search plus up
+    /// to four downloads — five requests, often to a different host than the
+    /// search. Left unpaced, a lane running at its seeded 60 jobs a minute puts
+    /// three hundred requests a minute on the file host, which is how a live
+    /// run against Wikimedia spends its time collecting 429s instead of
+    /// pictures. Spacing them inside the job is what turns the lane's job
+    /// budget into a request budget the file host will actually serve.
+    pub download_spacing_ms: u64,
 }
 
-/// The three stock-photo providers, in the order README Part 2 lists them.
+impl ImageProvider {
+    pub const fn download_spacing(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.download_spacing_ms)
+    }
+
+    /// The provider record for one source, if it is one that gets searched.
+    pub fn for_source(source: ImageSource) -> Option<&'static Self> {
+        IMAGE_PROVIDERS
+            .iter()
+            .find(|provider| provider.source == source)
+    }
+}
+
+/// Every image provider, in priority order (admin-api.md ruling #18): keyed
+/// stock libraries first when they are configured, then the open collections,
+/// with SDXL behind all of them as the generative fallback.
 pub const IMAGE_PROVIDERS: &[ImageProvider] = &[
     ImageProvider {
         source: ImageSource::Unsplash,
         rate_key: morpho_domain::job::RateKey::Unsplash,
+        needs_key: true,
+        // A paid CDN serving exactly this traffic, and the key already meters
+        // the account.
+        download_spacing_ms: 0,
     },
     ImageProvider {
         source: ImageSource::Pexels,
         rate_key: morpho_domain::job::RateKey::Pexels,
+        needs_key: true,
+        download_spacing_ms: 0,
     },
     ImageProvider {
         source: ImageSource::Pixabay,
         rate_key: morpho_domain::job::RateKey::Pixabay,
+        needs_key: true,
+        download_spacing_ms: 0,
+    },
+    ImageProvider {
+        source: ImageSource::Wikimedia,
+        rate_key: morpho_domain::job::RateKey::Wikimedia,
+        needs_key: false,
+        // `upload.wikimedia.org` is a donated file host with no account behind
+        // the request, and it answers 429 long before the API does — measured
+        // against a live run, the API served every search while the thumbnails
+        // throttled. It will hold about a request a second in total, and the
+        // lane runs `max_concurrency` jobs at once, so the gap inside one job
+        // is that budget divided among them.
+        //
+        // The 429 handling is still the backstop and still correct; this only
+        // stops the lane spending its time parked. Going from no gap to 1.2 s
+        // cut the parks from three a second to one a minute, and the second
+        // second removes them.
+        download_spacing_ms: 2_000,
+    },
+    ImageProvider {
+        source: ImageSource::Openverse,
+        rate_key: morpho_domain::job::RateKey::Openverse,
+        needs_key: false,
+        // The files come from whichever third party Openverse indexed, so the
+        // load is spread; a smaller gap is enough to stay polite.
+        download_spacing_ms: 400,
     },
 ];
 
@@ -158,23 +253,31 @@ impl SourcesConfig {
         }
     }
 
-    /// API key of one stock-photo provider, if configured.
+    /// API key of one image provider, if it takes one and it is configured.
     pub fn image_key(&self, source: ImageSource) -> Option<&str> {
         let key = match source {
             ImageSource::Unsplash => self.unsplash_access_key.as_deref(),
             ImageSource::Pexels => self.pexels_api_key.as_deref(),
             ImageSource::Pixabay => self.pixabay_api_key.as_deref(),
-            ImageSource::Sdxl | ImageSource::Manual => None,
+            // The keyless providers, and the two that are not searched at all.
+            ImageSource::Wikimedia
+            | ImageSource::Openverse
+            | ImageSource::Sdxl
+            | ImageSource::Manual => None,
         };
         key.map(str::trim).filter(|value| !value.is_empty())
     }
 
-    /// Stock-photo providers that actually have a key.
+    /// Image providers that will actually answer, in priority order.
+    ///
+    /// A keyed library is here only when its key is set; the keyless ones are
+    /// always here, which is what ruling #18 means by "wikimedia and openverse
+    /// always enabled".
     pub fn enabled_image_sources(&self) -> Vec<ImageSource> {
         IMAGE_PROVIDERS
             .iter()
-            .map(|p| p.source)
-            .filter(|source| self.image_key(*source).is_some())
+            .filter(|provider| !provider.needs_key || self.image_key(provider.source).is_some())
+            .map(|provider| provider.source)
             .collect()
     }
 
@@ -233,6 +336,9 @@ impl SourcesConfig {
         vec![
             ("freedict", self.freedict_url.0.clone()),
             ("wiktionary", self.wiktionary_url.0.clone()),
+            ("wikimedia", self.wikimedia_url.0.clone()),
+            ("openverse", self.openverse_url.0.clone()),
+            ("tatoeba", self.tatoeba_url.0.clone()),
             (
                 "wordnet",
                 state(
@@ -411,16 +517,37 @@ impl AdapterConfig {
 mod tests {
     use super::*;
 
+    /// Every provider that takes a key.
+    const KEYED: &[ImageSource] = &[
+        ImageSource::Unsplash,
+        ImageSource::Pexels,
+        ImageSource::Pixabay,
+    ];
+    /// Every provider that does not (ruling #18).
+    const KEYLESS: &[ImageSource] = &[ImageSource::Wikimedia, ImageSource::Openverse];
+
     #[test]
-    fn defaults_disable_every_optional_source() {
+    fn defaults_disable_every_credentialed_source() {
         let config = SourcesConfig::default();
         assert!(config.wordnet_dir().is_none());
         assert!(config.corpus_path().is_none());
-        assert!(config.enabled_image_sources().is_empty());
         assert!(config.comfyui_url().is_none());
-        // The two keyless HTTP sources are always available.
+        for source in KEYED {
+            assert!(config.image_key(*source).is_none(), "{source}");
+        }
+    }
+
+    /// Ruling #18: with no credentials anywhere, the keyless sources are still
+    /// live — that is the difference between "no accounts" and "no content".
+    #[test]
+    fn the_keyless_sources_survive_an_empty_configuration() {
+        let config = SourcesConfig::default();
+        assert_eq!(config.enabled_image_sources(), KEYLESS.to_vec());
         assert!(config.freedict_url.contains("dictionaryapi.dev"));
         assert!(config.wiktionary_url.contains("wiktionary.org"));
+        assert!(config.wikimedia_url.contains("commons.wikimedia.org"));
+        assert!(config.openverse_url.contains("api.openverse.org"));
+        assert!(config.tatoeba_url.contains("tatoeba.org"));
     }
 
     #[test]
@@ -432,11 +559,13 @@ mod tests {
         };
         assert!(config.image_key(ImageSource::Unsplash).is_none());
         assert!(config.image_key(ImageSource::Pexels).is_none());
-        assert!(config.enabled_image_sources().is_empty());
+        assert_eq!(config.enabled_image_sources(), KEYLESS.to_vec());
     }
 
+    /// Ruling #18's priority order: keyed stock libraries ahead of the open
+    /// collections, and a provider only appears once its key exists.
     #[test]
-    fn configured_keys_enable_providers_in_contract_order() {
+    fn configured_keys_enable_providers_in_priority_order() {
         let config = SourcesConfig {
             pixabay_api_key: Some("k1".into()),
             unsplash_access_key: Some("k2".into()),
@@ -444,7 +573,63 @@ mod tests {
         };
         assert_eq!(
             config.enabled_image_sources(),
-            vec![ImageSource::Unsplash, ImageSource::Pixabay]
+            vec![
+                ImageSource::Unsplash,
+                ImageSource::Pixabay,
+                ImageSource::Wikimedia,
+                ImageSource::Openverse,
+            ]
+        );
+    }
+
+    /// A lane meters jobs; a job makes several requests. The open collections
+    /// have no account behind them and answer 429 first, so they are the ones
+    /// that need the gap.
+    #[test]
+    fn the_keyless_providers_pace_their_downloads() {
+        for source in KEYLESS {
+            let provider = ImageProvider::for_source(*source).unwrap();
+            assert!(
+                !provider.download_spacing().is_zero(),
+                "{source} would hammer its file host"
+            );
+        }
+        for source in KEYED {
+            assert!(
+                ImageProvider::for_source(*source)
+                    .unwrap()
+                    .download_spacing()
+                    .is_zero(),
+                "{source} is metered by its own key"
+            );
+        }
+        assert!(ImageProvider::for_source(ImageSource::Sdxl).is_none());
+        assert!(ImageProvider::for_source(ImageSource::Manual).is_none());
+    }
+
+    #[test]
+    fn the_provider_table_agrees_with_the_key_lookup() {
+        let all = SourcesConfig {
+            unsplash_access_key: Some("k".into()),
+            pexels_api_key: Some("k".into()),
+            pixabay_api_key: Some("k".into()),
+            ..SourcesConfig::default()
+        };
+        for provider in IMAGE_PROVIDERS {
+            assert_eq!(
+                provider.needs_key,
+                all.image_key(provider.source).is_some(),
+                "{} disagrees with its key lookup",
+                provider.source
+            );
+        }
+        assert_eq!(
+            IMAGE_PROVIDERS
+                .iter()
+                .filter(|p| !p.needs_key)
+                .map(|p| p.source)
+                .collect::<Vec<_>>(),
+            KEYLESS.to_vec()
         );
     }
 
@@ -542,6 +727,9 @@ mod tests {
             vec![
                 "freedict",
                 "wiktionary",
+                "wikimedia",
+                "openverse",
+                "tatoeba",
                 "wordnet",
                 "exam_corpus",
                 "unsplash",
@@ -551,5 +739,16 @@ mod tests {
             ]
         );
         assert!(described.iter().any(|(_, state)| state == "disabled"));
+        // The keyless sources report an endpoint, never "disabled".
+        for name in [
+            "freedict",
+            "wiktionary",
+            "wikimedia",
+            "openverse",
+            "tatoeba",
+        ] {
+            let (_, state) = described.iter().find(|(n, _)| *n == name).unwrap();
+            assert!(state.starts_with("https://"), "{name} reported {state}");
+        }
     }
 }

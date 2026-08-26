@@ -26,6 +26,26 @@ pub fn build_client(config: &SourcesConfig) -> reqwest::Result<reqwest::Client> 
         .build()
 }
 
+/// Percent-encode a value for use in a query string (form style: a space
+/// becomes `+`).
+///
+/// Search queries are lemmas and short glosses, so this only has to survive
+/// spaces and the occasional apostrophe; anything outside the unreserved set is
+/// escaped rather than guessed at.
+pub fn encode_query(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*byte as char)
+            }
+            b' ' => out.push('+'),
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
+}
+
 /// Classify a transport-level failure.
 pub fn transport_error(err: &reqwest::Error) -> TaskError {
     // Everything at this layer — DNS, TLS, connect, read timeout — is the kind
@@ -201,10 +221,26 @@ mod tests {
     }
 
     #[test]
-    fn the_client_carries_a_user_agent() {
-        // Wikimedia rejects requests without one, so this is load-bearing.
+    fn the_client_carries_a_descriptive_user_agent() {
+        // Wikimedia rejects anonymous requests and asks for a tool name plus a
+        // way to make contact, so this is load-bearing rather than politeness.
         let config = SourcesConfig::default();
         assert!(build_client(&config).is_ok());
-        assert!(config.user_agent.starts_with("morphod/"));
+        assert!(
+            config
+                .user_agent
+                .starts_with("Morpho/0.1 vocabulary content builder"),
+            "{}",
+            config.user_agent.0
+        );
+        assert!(config.user_agent.contains("https://"), "no contact URL");
+    }
+
+    #[test]
+    fn query_encoding_is_form_style() {
+        assert_eq!(encode_query("serene"), "serene");
+        assert_eq!(encode_query("ad hoc"), "ad+hoc");
+        assert_eq!(encode_query("a&b"), "a%26b");
+        assert_eq!(encode_query("don't"), "don%27t");
     }
 }

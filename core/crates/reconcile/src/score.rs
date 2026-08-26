@@ -76,19 +76,32 @@ const fn definition_prior(source: DefinitionSource) -> f64 {
 }
 
 const fn example_prior(source: ExampleSource) -> f64 {
-    // README: exam_corpus > llm.
+    // Ruling #18: manual > exam_corpus > freedict > tatoeba > llm.
+    //
+    // An exam sentence was written for exactly this purpose; a dictionary's own
+    // usage line was written to illustrate the sense it sits under; a Tatoeba
+    // sentence merely contains the word; a generated one merely looks like it
+    // does. The ordering follows how much the sentence was chosen *for the
+    // word*, which is what the mode-1 card needs.
     match source {
         ExampleSource::Manual => 1.0,
         ExampleSource::ExamCorpus => 0.85,
-        ExampleSource::Llm => 0.6,
+        ExampleSource::Freedict => 0.72,
+        ExampleSource::Tatoeba => 0.64,
+        ExampleSource::Llm => 0.55,
     }
 }
 
 const fn image_prior(source: ImageSource) -> f64 {
-    // README: manual > stock library > sdxl.
+    // Ruling #18: manual > keyed stock > wikimedia/openverse > sdxl.
+    //
+    // The stock libraries are curated and shot to illustrate a concept; the
+    // open collections are indexed, not curated, so a hit is more often merely
+    // topical. Both beat a picture that depicts nothing that ever existed.
     match source {
         ImageSource::Manual => 1.0,
         ImageSource::Unsplash | ImageSource::Pexels | ImageSource::Pixabay => 0.8,
+        ImageSource::Wikimedia | ImageSource::Openverse => 0.7,
         ImageSource::Sdxl => 0.5,
     }
 }
@@ -371,35 +384,87 @@ mod tests {
         assert!(good.score - broken.score >= 0.24);
     }
 
+    /// Ruling #18's example ordering, end to end.
     #[test]
-    fn exam_corpus_outranks_generated_examples() {
+    fn example_source_priors_follow_the_ruling() {
         let facts = |source| ExampleFacts {
             source,
             coverage: coverage(10, 2, 0),
             highlight_valid: true,
         };
+        let ranked: Vec<f64> = [
+            ExampleSource::Manual,
+            ExampleSource::ExamCorpus,
+            ExampleSource::Freedict,
+            ExampleSource::Tatoeba,
+            ExampleSource::Llm,
+        ]
+        .into_iter()
+        .map(|source| score_example(&facts(source)).score)
+        .collect();
         assert!(
-            score_example(&facts(ExampleSource::ExamCorpus)).score
-                > score_example(&facts(ExampleSource::Llm)).score
+            ranked.windows(2).all(|pair| pair[0] > pair[1]),
+            "manual > exam_corpus > freedict > tatoeba > llm, got {ranked:?}"
         );
     }
 
+    /// Ruling #18's image ordering, end to end.
     #[test]
-    fn stock_photos_outrank_generated_ones() {
+    fn image_source_priors_follow_the_ruling() {
         let facts = |source| ImageFacts {
             source,
             width: Some(1600),
             height: Some(1200),
             pos_matches_primary: true,
         };
+        let ranked: Vec<f64> = [
+            ImageSource::Manual,
+            ImageSource::Unsplash,
+            ImageSource::Wikimedia,
+            ImageSource::Sdxl,
+        ]
+        .into_iter()
+        .map(|source| score_image(&facts(source)).score)
+        .collect();
         assert!(
-            score_image(&facts(ImageSource::Unsplash)).score
-                > score_image(&facts(ImageSource::Sdxl)).score
+            ranked.windows(2).all(|pair| pair[0] > pair[1]),
+            "manual > stock > keyless > sdxl, got {ranked:?}"
         );
-        assert!(
-            score_image(&facts(ImageSource::Manual)).score
-                > score_image(&facts(ImageSource::Unsplash)).score
-        );
+        // The three stock libraries tie with each other, as do the two open
+        // collections: the source is evidence about curation, not about which
+        // brand it came from.
+        for pair in [
+            [ImageSource::Unsplash, ImageSource::Pexels],
+            [ImageSource::Pexels, ImageSource::Pixabay],
+            [ImageSource::Wikimedia, ImageSource::Openverse],
+        ] {
+            assert_eq!(
+                score_image(&facts(pair[0])).score,
+                score_image(&facts(pair[1])).score,
+                "{} and {} should tie",
+                pair[0],
+                pair[1]
+            );
+        }
+    }
+
+    /// A keyless picture that is actually there beats a generated one, and a
+    /// readable sentence beats a prior — the prior is a tiebreak, not a veto.
+    #[test]
+    fn a_real_photo_outranks_a_generated_one_even_at_lower_resolution() {
+        let commons = score_image(&ImageFacts {
+            source: ImageSource::Wikimedia,
+            width: Some(960),
+            height: Some(720),
+            pos_matches_primary: true,
+        });
+        let generated = score_image(&ImageFacts {
+            source: ImageSource::Sdxl,
+            width: Some(768),
+            height: Some(576),
+            pos_matches_primary: true,
+        });
+        assert!(commons.score > generated.score);
     }
 
     #[test]

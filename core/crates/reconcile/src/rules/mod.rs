@@ -7,8 +7,14 @@
 //! The fallback chains are all expressed the same way: a fallback rule derives
 //! nothing until its primary is *exhausted*, where exhausted means tried and
 //! empty, dead, waived, or never configured at all. That is the single
-//! mechanism behind "Wiktionary 被豁免 → Morfessor 上" and "三个图库全部标记/
+//! mechanism behind "Wiktionary 被豁免 → Morfessor 上" and "图库全部标记/
 //! 死信/豁免 → SDXL 上" (README Part 4 §"任务生命周期").
+//!
+//! Ruling #18 changes which sources can be missing rather than how the chains
+//! work. Wikimedia Commons, Openverse and Tatoeba take no credentials, so they
+//! are never "never configured" — which means the generative image fallback now
+//! waits for libraries that genuinely answered, and a checkout with no accounts
+//! still reaches real content instead of the end of every chain.
 
 mod definitions;
 mod etymology;

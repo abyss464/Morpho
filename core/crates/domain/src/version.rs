@@ -40,7 +40,10 @@ pub const RELEASE_SCHEMA_VER: &str = "1";
 /// * 1 — wave-1 shape.
 /// * 2 — wave-2: `words.core_ready`, normative `rate_limits` seeds.
 /// * 3 — wave-3: `releases.word_count` (admin-api.md ruling #15).
-pub const SCHEMA_USER_VERSION: i32 = 3;
+/// * 4 — wave-4: the `example_candidates.source` and `image_candidates.source`
+///   CHECK unions widen for the keyless sources, and three lanes join the
+///   `rate_limits` seeds (admin-api.md ruling #18).
+pub const SCHEMA_USER_VERSION: i32 = 4;
 
 /// Version the embedded `docs/contracts/working-db.sql` describes.
 ///
@@ -55,4 +58,4 @@ pub const SCHEMA_USER_VERSION: i32 = 3;
 /// Raise it when the contract file gains what a migration already added. It may
 /// never exceed [`SCHEMA_USER_VERSION`]; `store::schema` asserts that at compile
 /// time.
-pub const CONTRACT_SCHEMA_VERSION: i32 = 3;
+pub const CONTRACT_SCHEMA_VERSION: i32 = 4;

@@ -128,6 +128,8 @@ string_enum!(
     /// `example_candidates.source`
     ExampleSource, "example_source", {
         ExamCorpus => "exam_corpus",
+        Freedict => "freedict",
+        Tatoeba => "tatoeba",
         Llm => "llm",
         Manual => "manual",
     }
@@ -135,10 +137,16 @@ string_enum!(
 
 string_enum!(
     /// `image_candidates.source`
+    ///
+    /// `wikimedia` and `openverse` need no credentials and are therefore always
+    /// available (admin-api.md ruling #18); the three stock libraries above them
+    /// only exist when an operator supplied a key.
     ImageSource, "image_source", {
         Unsplash => "unsplash",
         Pexels => "pexels",
         Pixabay => "pixabay",
+        Wikimedia => "wikimedia",
+        Openverse => "openverse",
         Sdxl => "sdxl",
         Manual => "manual",
     }

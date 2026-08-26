@@ -2,9 +2,9 @@
 //!
 //! Two families:
 //!
-//! * **in-process** — HTTP via reqwest (Free Dictionary, Wiktionary, three
-//!   stock-photo APIs), WordNet parsed from WNdb files, the exam corpus read
-//!   from JSONL;
+//! * **in-process** — HTTP via reqwest (Free Dictionary, Wiktionary, Wikimedia
+//!   Commons, Openverse, Tatoeba, three stock-photo APIs), WordNet parsed from
+//!   WNdb files, the exam corpus read from JSONL;
 //! * **subprocess** — the Python adapters (`tts`, `morfessor`, `sdxl`) speaking
 //!   the envelope in `docs/contracts/adapter-protocol.md`.
 //!
@@ -17,6 +17,8 @@ pub mod freedict;
 pub mod http;
 pub mod images;
 pub mod proc;
+pub mod sentence;
+pub mod tatoeba;
 pub mod wiktionary;
 pub mod wordnet;
 

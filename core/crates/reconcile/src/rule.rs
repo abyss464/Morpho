@@ -20,7 +20,7 @@ use chrono::{DateTime, Utc};
 use morpho_domain::change::{ChangeEvent, EntityType};
 use morpho_domain::job::{JobKey, Priority, RateKey};
 use morpho_domain::tts::DesiredTts;
-use morpho_domain::types::{DefinitionSource, ImageSource};
+use morpho_domain::types::{DefinitionSource, ExampleSource, ImageSource};
 use morpho_store::error::Result;
 
 use crate::facts::Facts;
@@ -94,6 +94,7 @@ pub enum JobPayload {
     FetchExamples {
         word_id: i64,
         lemma: String,
+        source: ExampleSource,
     },
     FetchImages {
         word_id: i64,

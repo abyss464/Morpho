@@ -8,6 +8,11 @@
 //! 5. the first sense a word gets is marked primary, chosen by the strongest
 //!    frequency evidence available.
 //!
+//! A word's three example slots are the one place where a slot is not an
+//! independent race: `UNIQUE (word_id, ex_cand_id)` makes them an assignment,
+//! so they are decided together by [`assign_example_slots`], and rule 3 applies
+//! to a newcomer entering the set rather than to the order within it.
+//!
 //! Both halves compute from one read snapshot and commit one write, and the
 //! write re-checks what the read saw — so a human editing a slot mid-sweep
 //! wins, and the discarded decision is simply recomputed next pass.
@@ -395,35 +400,22 @@ fn collect_selections(conn: &Connection) -> Result<Vec<AutoSelection>> {
         let mut ranked = choices.clone();
         ranked.sort_by(rank_choices);
 
-        // Candidates a human pinned into a slot are reserved for it.
-        let pinned: Vec<i64> = (1..=3)
-            .filter_map(|slot| example_slots.get(&(*word_id, slot)))
-            .filter(|state| state.pinned)
-            .map(|state| state.cand_id)
-            .collect();
-        let mut cursor = 0usize;
-        for slot in 1..=3i64 {
-            let state = example_slots.get(&(*word_id, slot)).copied();
-            if state.is_some_and(|s| s.pinned) {
+        let states: [Option<SlotState>; 3] =
+            [1, 2, 3].map(|slot| example_slots.get(&(*word_id, slot)).copied());
+        let wanted = assign_example_slots(&ranked, states);
+
+        for (index, want) in wanted.iter().enumerate() {
+            let state = states[index];
+            let (Some(cand_id), false) = (*want, state.is_some_and(|s| s.pinned)) else {
+                continue;
+            };
+            if state.map(|s| s.cand_id) == Some(cand_id) {
                 continue;
             }
-            let Some(choice) = ({
-                while cursor < ranked.len() && pinned.contains(&ranked[cursor].cand_id) {
-                    cursor += 1;
-                }
-                ranked.get(cursor).cloned()
-            }) else {
-                break;
-            };
-            cursor += 1;
-            let candidates = vec![choice];
-            let Some(cand_id) = pick(&candidates, state) else {
-                continue;
-            };
             decisions.push(AutoSelection {
                 slot: SlotRef::Example {
                     word_id: *word_id,
-                    slot,
+                    slot: index as i64 + 1,
                 },
                 cand_id,
                 expected_cand_id: state.map(|s| s.cand_id),
@@ -505,6 +497,74 @@ fn strongest_pos(evidence: &[PosEvidence]) -> Option<String> {
                 .then_with(|| b.first_cand_id.cmp(&a.first_cand_id))
         })
         .map(|entry| entry.pos.clone())
+}
+
+/// Decide all three example slots at once.
+///
+/// The three slots are an *assignment*, not three separate races —
+/// `UNIQUE (word_id, ex_cand_id)` forbids one sentence filling two of them, so
+/// asking each slot independently produces answers that cannot all be true.
+/// Deciding them together also lets the hysteresis margin mean the right thing:
+///
+/// * a **newcomer** taking a slot from an incumbent is what rule 3 protects
+///   against, so it must clear the margin. When it cannot, the whole assignment
+///   is held back — a partial one would be a different assignment than the
+///   ranking asked for, and the next pass would compute the same partial answer
+///   forever;
+/// * a **reorder** among sentences the word already shows changes no content at
+///   all, only which one is the mode-1 card, and is a pure function of the
+///   ranking. There is nothing to oscillate, so the margin does not apply.
+///
+/// Returns the desired occupant of slots 1, 2 and 3. Pinned slots keep what
+/// they hold. A slot may come back empty when the word has fewer sentences than
+/// slots; the assignment compacts towards slot 1, which is the one readiness
+/// depends on.
+fn assign_example_slots(ranked: &[Choice], states: [Option<SlotState>; 3]) -> [Option<i64>; 3] {
+    let pinned: Vec<i64> = states
+        .iter()
+        .flatten()
+        .filter(|state| state.pinned)
+        .map(|state| state.cand_id)
+        .collect();
+
+    // What the ranking alone asks for, ignoring where anything sits now.
+    let mut wanted: [Option<i64>; 3] = [None; 3];
+    let mut cursor = 0usize;
+    for (slot, want) in wanted.iter_mut().enumerate() {
+        if let Some(state) = states[slot].filter(|state| state.pinned) {
+            *want = Some(state.cand_id);
+            continue;
+        }
+        while cursor < ranked.len() && pinned.contains(&ranked[cursor].cand_id) {
+            cursor += 1;
+        }
+        let Some(choice) = ranked.get(cursor) else {
+            break;
+        };
+        cursor += 1;
+        *want = Some(choice.cand_id);
+    }
+
+    let held: Vec<i64> = states.iter().flatten().map(|state| state.cand_id).collect();
+    let score = |cand_id: i64| {
+        ranked
+            .iter()
+            .find(|choice| choice.cand_id == cand_id)
+            .map_or(0.0, |choice| choice.score)
+    };
+    for (slot, want) in wanted.iter().enumerate() {
+        let (Some(want), Some(state)) = (*want, states[slot]) else {
+            continue;
+        };
+        if state.cand_id == want || held.contains(&want) {
+            continue;
+        }
+        // Rule 3, and the only place it applies here.
+        if score(want) <= state.score.unwrap_or(0.0) + HYSTERESIS_DELTA {
+            return states.map(|state| state.map(|state| state.cand_id));
+        }
+    }
+    wanted
 }
 
 /// Rules 2–4: pick a candidate for a slot, or `None` to leave it alone.
@@ -695,6 +755,176 @@ mod tests {
     #[test]
     fn no_candidates_means_no_decision() {
         assert_eq!(pick(&[], None), None);
+    }
+
+    // -- example slot assignment ------------------------------------------
+
+    fn filled(cand_id: i64, score: f64) -> Option<SlotState> {
+        Some(SlotState {
+            cand_id,
+            pinned: false,
+            score: Some(score),
+        })
+    }
+
+    fn held_pin(cand_id: i64, score: f64) -> Option<SlotState> {
+        Some(SlotState {
+            cand_id,
+            pinned: true,
+            score: Some(score),
+        })
+    }
+
+    #[test]
+    fn empty_slots_take_the_top_three_in_order() {
+        let ranked = vec![
+            choice(1, 0.9),
+            choice(2, 0.8),
+            choice(3, 0.7),
+            choice(4, 0.6),
+        ];
+        assert_eq!(
+            assign_example_slots(&ranked, [None, None, None]),
+            [Some(1), Some(2), Some(3)]
+        );
+    }
+
+    #[test]
+    fn fewer_sentences_than_slots_leaves_the_tail_empty() {
+        let ranked = vec![choice(1, 0.9), choice(2, 0.8)];
+        assert_eq!(
+            assign_example_slots(&ranked, [None, None, None]),
+            [Some(1), Some(2), None]
+        );
+        assert_eq!(
+            assign_example_slots(&[], [None, None, None]),
+            [None, None, None]
+        );
+    }
+
+    #[test]
+    fn a_settled_assignment_is_left_exactly_as_it_is() {
+        let ranked = vec![choice(1, 0.9), choice(2, 0.8), choice(3, 0.7)];
+        let states = [filled(1, 0.9), filled(2, 0.8), filled(3, 0.7)];
+        assert_eq!(
+            assign_example_slots(&ranked, states),
+            [Some(1), Some(2), Some(3)]
+        );
+    }
+
+    /// The crash this replaced: a re-rank that swaps two slots is one
+    /// permutation, and asking each slot on its own produced half of it.
+    #[test]
+    fn a_reorder_of_sentences_the_word_already_shows_is_applied_whole() {
+        // Slot 1 holds 7, slot 2 holds 9; rescoring puts 9 ahead.
+        let ranked = vec![choice(9, 0.90), choice(7, 0.88), choice(4, 0.40)];
+        let states = [filled(7, 0.88), filled(9, 0.90), None];
+        assert_eq!(
+            assign_example_slots(&ranked, states),
+            [Some(9), Some(7), Some(4)],
+            "the swap must be complete, never half of it"
+        );
+    }
+
+    /// Reordering costs nothing and cannot oscillate, so the margin — which
+    /// exists to stop a challenger flip-flopping with an incumbent — does not
+    /// hold a swap back even when the two are a hair apart.
+    #[test]
+    fn a_hairs_breadth_reorder_is_not_held_back() {
+        let ranked = vec![choice(9, 0.801), choice(7, 0.800)];
+        let states = [filled(7, 0.800), filled(9, 0.801)];
+        assert_eq!(
+            assign_example_slots(&ranked, [states[0], states[1], None]),
+            [Some(9), Some(7), None]
+        );
+    }
+
+    #[test]
+    fn a_newcomer_must_clear_the_margin_before_it_takes_a_slot() {
+        let ranked = vec![choice(50, 0.82), choice(7, 0.80), choice(9, 0.79)];
+        let states = [filled(7, 0.80), filled(9, 0.79), None];
+        assert_eq!(
+            assign_example_slots(&ranked, states),
+            [Some(7), Some(9), None],
+            "0.82 does not beat 0.80 by the margin"
+        );
+
+        let ranked = vec![choice(50, 0.95), choice(7, 0.80), choice(9, 0.79)];
+        assert_eq!(
+            assign_example_slots(&ranked, states),
+            [Some(50), Some(7), Some(9)],
+            "0.95 does, and the incumbents shift down rather than vanish"
+        );
+    }
+
+    #[test]
+    fn a_newcomer_fills_an_empty_slot_outright() {
+        // Rule 2: nothing to displace, so nothing to clear.
+        let ranked = vec![choice(7, 0.80), choice(50, 0.10)];
+        let states = [filled(7, 0.80), None, None];
+        assert_eq!(
+            assign_example_slots(&ranked, states),
+            [Some(7), Some(50), None]
+        );
+    }
+
+    #[test]
+    fn a_pinned_slot_keeps_its_sentence_and_reserves_it() {
+        let ranked = vec![choice(1, 0.9), choice(2, 0.8), choice(3, 0.7)];
+        let states = [None, held_pin(1, 0.9), None];
+        assert_eq!(
+            assign_example_slots(&ranked, states),
+            [Some(2), Some(1), Some(3)],
+            "the pinned sentence stays put and is never dealt twice"
+        );
+    }
+
+    #[test]
+    fn every_assignment_is_free_of_duplicates() {
+        let ranked = vec![
+            choice(1, 0.9),
+            choice(2, 0.8),
+            choice(3, 0.7),
+            choice(4, 0.6),
+        ];
+        let cases = [
+            [None, None, None],
+            [filled(3, 0.7), None, filled(1, 0.9)],
+            [held_pin(4, 0.6), filled(2, 0.8), None],
+            [filled(1, 0.9), filled(2, 0.8), filled(3, 0.7)],
+            [held_pin(1, 0.9), held_pin(2, 0.8), held_pin(3, 0.7)],
+        ];
+        for states in cases {
+            let wanted = assign_example_slots(&ranked, states);
+            let occupied: Vec<i64> = wanted.iter().flatten().copied().collect();
+            let unique: std::collections::HashSet<i64> = occupied.iter().copied().collect();
+            assert_eq!(occupied.len(), unique.len(), "{states:?} -> {wanted:?}");
+        }
+    }
+
+    /// Slot 1 is the only slot readiness depends on, so an assignment always
+    /// compacts towards it rather than leaving a hole at the front.
+    #[test]
+    fn an_emptied_front_slot_is_compacted_into() {
+        let ranked = vec![choice(2, 0.8), choice(3, 0.7)];
+        let states = [None, filled(2, 0.8), filled(3, 0.7)];
+        assert_eq!(
+            assign_example_slots(&ranked, states),
+            [Some(2), Some(3), None]
+        );
+    }
+
+    /// Same inputs, same answer: nothing here depends on iteration order or on
+    /// how many passes have run, which is what makes the loop converge.
+    #[test]
+    fn the_assignment_is_a_pure_function_of_the_ranking() {
+        let ranked = vec![choice(9, 0.9), choice(7, 0.8), choice(4, 0.7)];
+        let states = [filled(7, 0.8), filled(9, 0.9), None];
+        let once = assign_example_slots(&ranked, states);
+        assert_eq!(once, assign_example_slots(&ranked, states));
+        // And applying it reaches a fixed point.
+        let settled = [filled(9, 0.9), filled(7, 0.8), filled(4, 0.7)];
+        assert_eq!(assign_example_slots(&ranked, settled), once);
     }
 
     fn evidence(pos: &str, candidates: usize, source_rank: u8, first: i64) -> PosEvidence {

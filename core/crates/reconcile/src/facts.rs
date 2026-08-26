@@ -203,6 +203,7 @@ pub const SOURCE_WORDNET: &str = "wordnet";
 pub const SOURCE_WIKTIONARY: &str = "wiktionary";
 pub const SOURCE_MORFESSOR: &str = "morfessor";
 pub const SOURCE_EXAM_CORPUS: &str = "exam_corpus";
+pub const SOURCE_TATOEBA: &str = "tatoeba";
 
 /// `source_fetch.source` for a definition source.
 pub const fn definition_source_name(source: DefinitionSource) -> &'static str {
@@ -218,6 +219,8 @@ pub const fn definition_source_name(source: DefinitionSource) -> &'static str {
 pub const fn example_source_name(source: ExampleSource) -> &'static str {
     match source {
         ExampleSource::ExamCorpus => SOURCE_EXAM_CORPUS,
+        ExampleSource::Freedict => SOURCE_FREEDICT,
+        ExampleSource::Tatoeba => SOURCE_TATOEBA,
         ExampleSource::Llm => "llm",
         ExampleSource::Manual => "manual",
     }
@@ -229,6 +232,8 @@ pub const fn image_source_name(source: ImageSource) -> &'static str {
         ImageSource::Unsplash => "unsplash",
         ImageSource::Pexels => "pexels",
         ImageSource::Pixabay => "pixabay",
+        ImageSource::Wikimedia => "wikimedia",
+        ImageSource::Openverse => "openverse",
         ImageSource::Sdxl => "sdxl",
         ImageSource::Manual => "manual",
     }
@@ -409,18 +414,23 @@ mod tests {
         assert_eq!(facts.missing_tts(&config).len(), 1);
     }
 
+    /// `source_fetch.source` is a free-text column, so the only thing keeping
+    /// the completion markers aligned with the candidate rows is that both
+    /// spell a source the same way. These names *are* the enum's own strings.
     #[test]
     fn source_names_match_the_schema_check_constraints() {
-        assert_eq!(
-            definition_source_name(DefinitionSource::Freedict),
-            "freedict"
-        );
-        assert_eq!(definition_source_name(DefinitionSource::Wordnet), "wordnet");
-        assert_eq!(
-            example_source_name(ExampleSource::ExamCorpus),
-            "exam_corpus"
-        );
-        assert_eq!(image_source_name(ImageSource::Pixabay), "pixabay");
-        assert_eq!(image_source_name(ImageSource::Sdxl), "sdxl");
+        for source in DefinitionSource::ALL {
+            assert_eq!(definition_source_name(*source), source.as_str());
+        }
+        for source in ExampleSource::ALL {
+            assert_eq!(example_source_name(*source), source.as_str());
+        }
+        for source in ImageSource::ALL {
+            assert_eq!(image_source_name(*source), source.as_str());
+        }
+        // Spot-check the wave-4 arrivals by hand as well.
+        assert_eq!(example_source_name(ExampleSource::Tatoeba), "tatoeba");
+        assert_eq!(image_source_name(ImageSource::Wikimedia), "wikimedia");
+        assert_eq!(image_source_name(ImageSource::Openverse), "openverse");
     }
 }

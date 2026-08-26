@@ -33,6 +33,9 @@ pub const CONTRACT_RATE_LIMITS: &[(&str, i64, f64, i64)] = &[
     ("unsplash", 2, 45.0, 4),
     ("pexels", 2, 180.0, 4),
     ("pixabay", 2, 90.0, 4),
+    ("wikimedia", 2, 60.0, 4),
+    ("openverse", 2, 50.0, 4),
+    ("tatoeba", 2, 60.0, 4),
     ("sdxl", 1, 6.0, 1),
     ("edge_tts", 4, 240.0, 8),
     ("llm", 2, 30.0, 4),
@@ -42,24 +45,77 @@ pub const CONTRACT_RATE_LIMITS: &[(&str, i64, f64, i64)] = &[
 /// A column one migration step introduces: `(table, column, definition)`.
 pub type ColumnAdd = (&'static str, &'static str, &'static str);
 
+/// A table one migration step rebuilds, because the change is one `ALTER TABLE`
+/// cannot express — SQLite has no way to widen a `CHECK` constraint in place.
+///
+/// The forward shape is never written here: it is read out of the embedded
+/// contract, which is the whole point of the file being normative. Only the
+/// *old* shape needs recording, because nothing else remembers it once the
+/// contract moves on, and the test ladder needs it to fabricate a genuine
+/// historical database.
+#[derive(Debug, Clone, Copy)]
+pub struct TableRebuild {
+    pub table: &'static str,
+    /// The table's `CREATE TABLE` statement exactly as it stood before this
+    /// rung. Used only by [`Migration::revert`].
+    pub previous_ddl: &'static str,
+}
+
+/// `example_candidates` before ruling #18 widened its source union.
+const EXAMPLE_CANDIDATES_V3: &str = "CREATE TABLE example_candidates (
+    ex_cand_id   INTEGER PRIMARY KEY,
+    word_id      INTEGER NOT NULL REFERENCES words(word_id),
+    text         TEXT NOT NULL,
+    text_hash    TEXT NOT NULL,
+    hl_start     INTEGER NOT NULL,
+    hl_end       INTEGER NOT NULL,
+    source       TEXT NOT NULL CHECK (source IN ('exam_corpus','llm','manual')),
+    source_ref   TEXT,
+    status       TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available','rejected')),
+    auto_score   REAL, score_detail TEXT, scorer_ver TEXT,
+    created_by   TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE (word_id, text_hash)
+)";
+
+/// `image_candidates` before ruling #18 widened its source union.
+const IMAGE_CANDIDATES_V3: &str = "CREATE TABLE image_candidates (
+    img_cand_id  INTEGER PRIMARY KEY,
+    word_id      INTEGER NOT NULL REFERENCES words(word_id),
+    pos          TEXT,
+    file_hash    TEXT NOT NULL REFERENCES media_files(file_hash),
+    width        INTEGER, height INTEGER,
+    source       TEXT NOT NULL CHECK (source IN ('unsplash','pexels','pixabay','sdxl','manual')),
+    source_ref   TEXT,
+    license      TEXT,
+    query_used   TEXT,
+    status       TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available','rejected')),
+    auto_score   REAL, score_detail TEXT, scorer_ver TEXT,
+    created_by   TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE (word_id, file_hash)
+)";
+
 /// One rung of the migration ladder: a database at `from` becomes `from + 1`.
 ///
-/// Every rung so far is "add columns", and the type says so deliberately. It
-/// buys two properties that a bag of SQL strings cannot:
+/// A rung is data, not a SQL string, and the type enumerates exactly the kinds
+/// of change the ladder knows how to make. That buys two properties a bag of
+/// statements cannot:
 ///
-/// * **idempotence** — [`Migration::apply`] checks before it alters, so a
-///   contract file that has already caught up (the DDL ships the column, an old
-///   database does not) can never brick the ladder with `duplicate column name`;
+/// * **idempotence** — [`Migration::apply`] checks before it changes anything,
+///   so a contract file that has already caught up (the DDL ships the column or
+///   the widened `CHECK`, an old database does not) can never brick the ladder;
 /// * **an exact inverse** — [`Migration::revert`] lets the tests fabricate a
 ///   genuine historical schema by walking the current contract *backwards*,
 ///   instead of doing string surgery on a file that legitimately evolves.
 ///
-/// A future rung that needs more than columns adds a field here and its own
+/// A future rung that needs more than these adds a field here and its own
 /// inverse alongside it. It does not get to smuggle DDL past the guard.
 #[derive(Debug, Clone, Copy)]
 pub struct Migration {
     pub from: i32,
     pub add_columns: &'static [ColumnAdd],
+    pub rebuilds: &'static [TableRebuild],
 }
 
 pub const MIGRATIONS: &[Migration] = &[
@@ -69,6 +125,7 @@ pub const MIGRATIONS: &[Migration] = &[
         // `DistractorView.core_ready` is a column read rather than a derivation
         // hack (admin-api.md wave-2 ruling #5).
         add_columns: &[("words", "core_ready", "INTEGER NOT NULL DEFAULT 0")],
+        rebuilds: &[],
     },
     Migration {
         from: 2,
@@ -78,6 +135,25 @@ pub const MIGRATIONS: &[Migration] = &[
         // migration keep the 0 default; their count only ever lived in the
         // event detail.
         add_columns: &[("releases", "word_count", "INTEGER NOT NULL DEFAULT 0")],
+        rebuilds: &[],
+    },
+    Migration {
+        from: 3,
+        // Wave 4: ruling #18 adds the keyless sources, which widens two `CHECK`
+        // unions. SQLite cannot alter a constraint, so both tables are rebuilt.
+        // The three new `rate_limits` lanes need no rung of their own —
+        // `seed_rate_limits` runs `INSERT OR IGNORE` on every boot.
+        add_columns: &[],
+        rebuilds: &[
+            TableRebuild {
+                table: "example_candidates",
+                previous_ddl: EXAMPLE_CANDIDATES_V3,
+            },
+            TableRebuild {
+                table: "image_candidates",
+                previous_ddl: IMAGE_CANDIDATES_V3,
+            },
+        ],
     },
 ];
 
@@ -86,8 +162,8 @@ pub const MIGRATIONS: &[Migration] = &[
 const _: () = assert!(CONTRACT_SCHEMA_VERSION <= SCHEMA_USER_VERSION);
 
 impl Migration {
-    /// Apply this rung. Columns that already exist are skipped, so the step is
-    /// safe on a database created from a contract file that ships them.
+    /// Apply this rung. Changes that are already present are skipped, so the
+    /// step is safe on a database created from a contract file that ships them.
     fn apply(&self, tx: &rusqlite::Transaction<'_>) -> Result<()> {
         for (table, column, definition) in self.add_columns {
             if has_column(tx, table, column)? {
@@ -102,7 +178,27 @@ impl Migration {
                 "ALTER TABLE {table} ADD COLUMN {column} {definition}"
             ))?;
         }
+        for rebuild in self.rebuilds {
+            let want = contract_ddl(rebuild.table)?;
+            if same_shape(&live_ddl(tx, rebuild.table)?, &want.create) {
+                tracing::debug!(
+                    table = rebuild.table,
+                    "table already has the contract shape; rebuild skipped"
+                );
+                continue;
+            }
+            rebuild_table(tx, rebuild.table, &want.create, &want.indexes)?;
+        }
         Ok(())
+    }
+
+    /// Does this rung need foreign keys switched off around it?
+    ///
+    /// A rebuild drops and recreates a table other tables point at, so the
+    /// answer is yes exactly when it rebuilds something (SQLite's own 12-step
+    /// procedure, steps 1 and 12).
+    const fn touches_foreign_keys(&self) -> bool {
+        !self.rebuilds.is_empty()
     }
 
     /// Undo this rung, so tests can fabricate the schema that preceded it.
@@ -111,12 +207,21 @@ impl Migration {
     /// its inverse is a compile-time impossibility rather than a fixture that
     /// silently rots.
     #[cfg(test)]
-    fn revert(&self, conn: &Connection) -> Result<()> {
-        for (table, column, _) in self.add_columns {
-            if !has_column(conn, table, column)? {
+    fn revert(&self, tx: &rusqlite::Transaction<'_>) -> Result<()> {
+        for rebuild in self.rebuilds {
+            if same_shape(&live_ddl(tx, rebuild.table)?, rebuild.previous_ddl) {
                 continue;
             }
-            conn.execute_batch(&format!("ALTER TABLE {table} DROP COLUMN {column}"))?;
+            // The indexes are the contract's either way: no rung so far has
+            // changed one, and a rung that did would carry them in its own DDL.
+            let indexes = contract_ddl(rebuild.table)?.indexes;
+            rebuild_table(tx, rebuild.table, rebuild.previous_ddl, &indexes)?;
+        }
+        for (table, column, _) in self.add_columns {
+            if !has_column(tx, table, column)? {
+                continue;
+            }
+            tx.execute_batch(&format!("ALTER TABLE {table} DROP COLUMN {column}"))?;
         }
         Ok(())
     }
@@ -130,6 +235,194 @@ fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
         |row| row.get(0),
     )?;
     Ok(count > 0)
+}
+
+// ---------------------------------------------------------------------------
+// Table rebuilds (SQLite's 12-step "other kinds of schema change" procedure)
+// ---------------------------------------------------------------------------
+
+/// One table's DDL as the contract states it.
+struct ContractDdl {
+    create: String,
+    indexes: Vec<String>,
+}
+
+/// Drop `--` comments. The contract has none inside a string literal, and it
+/// does carry a `;` inside one, so this runs before any statement splitting.
+fn strip_comments(sql: &str) -> String {
+    sql.lines()
+        .map(|line| line.split_once("--").map_or(line, |(code, _)| code))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Split a SQL script into statements.
+fn statements(sql: &str) -> Vec<String> {
+    strip_comments(sql)
+        .split(';')
+        .map(str::trim)
+        .filter(|statement| !statement.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Two DDL texts describe the same object, ignoring layout, comments and
+/// quoting.
+///
+/// All three genuinely differ between the two sides being compared: SQLite
+/// rewrites the stored `CREATE TABLE` text when a table is renamed and quotes
+/// the new name, and the text a rebuild feeds it has already had the contract's
+/// comments stripped. Normalizing is what makes "has this rebuild already
+/// happened?" a reliable question.
+fn same_shape(a: &str, b: &str) -> bool {
+    fn normalize(sql: &str) -> String {
+        strip_comments(sql)
+            .replace(['"', '`'], "")
+            .replace('(', " ( ")
+            .replace(')', " ) ")
+            .replace(',', " , ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+    normalize(a) == normalize(b)
+}
+
+fn is_create_table(statement: &str, table: &str) -> bool {
+    statement
+        .strip_prefix("CREATE TABLE ")
+        .and_then(|rest| rest.trim_start().strip_prefix(table))
+        .is_some_and(|rest| rest.trim_start().starts_with('('))
+}
+
+fn is_index_on(statement: &str, table: &str) -> bool {
+    if !statement.starts_with("CREATE INDEX") && !statement.starts_with("CREATE UNIQUE INDEX") {
+        return false;
+    }
+    statement
+        .split_once(" ON ")
+        .and_then(|(_, rest)| rest.trim_start().strip_prefix(table))
+        .is_some_and(|rest| rest.trim_start().starts_with('('))
+}
+
+/// The contract's shape for one table: its `CREATE TABLE` plus its indexes.
+fn contract_ddl(table: &str) -> Result<ContractDdl> {
+    let all = statements(WORKING_DB_SQL);
+    let create = all
+        .iter()
+        .find(|statement| is_create_table(statement, table))
+        .cloned()
+        .ok_or_else(|| {
+            StoreError::conflict(format!("the contract has no CREATE TABLE for {table}"))
+        })?;
+    let indexes = all
+        .into_iter()
+        .filter(|statement| is_index_on(statement, table))
+        .collect();
+    Ok(ContractDdl { create, indexes })
+}
+
+/// The `CREATE TABLE` text this database actually holds for `table`.
+fn live_ddl(conn: &Connection, table: &str) -> Result<String> {
+    let sql: Option<String> = conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        rusqlite::params![table],
+        |row| row.get(0),
+    )?;
+    sql.ok_or_else(|| StoreError::conflict(format!("table {table} does not exist")))
+}
+
+/// Replace one table with a new definition, carrying every row across.
+///
+/// This is the 12-step procedure from SQLite's `ALTER TABLE` documentation.
+/// Steps 1 and 12 (the `foreign_keys` pragma) belong to the caller, because a
+/// pragma cannot be changed inside a transaction; [`migrate`] does them.
+///
+/// Every view is dropped and recreated around the swap. Step 7's
+/// `ALTER TABLE … RENAME TO` reparses the whole schema and fails if any view
+/// still names the table that step 6 dropped, and views are pure metadata, so
+/// dropping all of them is both necessary and free.
+fn rebuild_table(
+    tx: &rusqlite::Transaction<'_>,
+    table: &str,
+    create: &str,
+    indexes: &[String],
+) -> Result<()> {
+    let staging = format!("{table}_morpho_rebuild");
+
+    // Step 3: remember every view, in creation order — a view may select from
+    // another one, so the order it is put back in matters.
+    let views: Vec<String> = {
+        let mut stmt = tx.prepare(
+            "SELECT name, sql FROM sqlite_master
+             WHERE type = 'view' AND sql IS NOT NULL ORDER BY rowid",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for (name, _) in &rows {
+            tx.execute_batch(&format!("DROP VIEW IF EXISTS \"{name}\""))?;
+        }
+        rows.into_iter().map(|(_, sql)| sql).collect()
+    };
+
+    // Step 4: the new table, under a name nothing else refers to.
+    let body = create
+        .strip_prefix("CREATE TABLE ")
+        .and_then(|rest| rest.trim_start().strip_prefix(table))
+        .ok_or_else(|| {
+            StoreError::conflict(format!("rebuild DDL for {table} is not its CREATE TABLE"))
+        })?;
+    tx.execute_batch(&format!("CREATE TABLE \"{staging}\"{body}"))?;
+
+    // Step 5: carry the rows over by name, so a rebuild that also adds or drops
+    // a column moves what the two shapes have in common and nothing else.
+    let shared = shared_columns(tx, table, &staging)?;
+    if shared.is_empty() {
+        return Err(StoreError::conflict(format!(
+            "the old and new {table} share no columns"
+        )));
+    }
+    let columns = shared
+        .iter()
+        .map(|name| format!("\"{name}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    tx.execute_batch(&format!(
+        "INSERT INTO \"{staging}\" ({columns}) SELECT {columns} FROM \"{table}\""
+    ))?;
+
+    // Steps 6 and 7.
+    tx.execute_batch(&format!("DROP TABLE \"{table}\""))?;
+    tx.execute_batch(&format!("ALTER TABLE \"{staging}\" RENAME TO \"{table}\""))?;
+
+    // Step 8: the table's own indexes.
+    for index in indexes {
+        tx.execute_batch(index)?;
+    }
+    // Step 9: the views, back in the order they were created.
+    for view in &views {
+        tx.execute_batch(view)?;
+    }
+    Ok(())
+}
+
+/// Column names both tables have, in the *new* table's order.
+fn shared_columns(conn: &Connection, old: &str, new: &str) -> Result<Vec<String>> {
+    let names = |table: &str| -> Result<Vec<String>> {
+        let mut stmt = conn.prepare("SELECT name FROM pragma_table_info(?1) ORDER BY cid")?;
+        let rows = stmt
+            .query_map(rusqlite::params![table], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    };
+    let existing: std::collections::HashSet<String> = names(old)?.into_iter().collect();
+    Ok(names(new)?
+        .into_iter()
+        .filter(|name| existing.contains(name))
+        .collect())
 }
 
 /// Create the schema if the database is empty, migrate it if it is older, then
@@ -188,9 +481,7 @@ pub fn migrate(conn: &mut Connection) -> Result<usize> {
             .ok_or_else(|| {
                 StoreError::conflict(format!("no migration from schema version {version}"))
             })?;
-        let tx = conn.transaction()?;
-        step.apply(&tx)?;
-        tx.commit()?;
+        run_step(conn, step)?;
         version += 1;
         climbed += 1;
         conn.pragma_update(None, "user_version", version)?;
@@ -199,6 +490,60 @@ pub fn migrate(conn: &mut Connection) -> Result<usize> {
 
     conn.pragma_update(None, "user_version", SCHEMA_USER_VERSION)?;
     Ok(climbed)
+}
+
+/// Run one rung inside its own transaction.
+///
+/// A rung that rebuilds a table needs `foreign_keys` off while the table is
+/// briefly absent, and a pragma cannot be changed inside a transaction — so the
+/// switch lives out here, and the integrity check that justifies it runs before
+/// the commit. The original pragma value is restored whether the rung succeeded
+/// or not.
+fn run_step(conn: &mut Connection, step: &Migration) -> Result<()> {
+    let guard_foreign_keys = step.touches_foreign_keys();
+    let were_on: bool = conn.query_row("PRAGMA foreign_keys", [], |row| {
+        row.get::<_, i64>(0).map(|value| value != 0)
+    })?;
+    if guard_foreign_keys && were_on {
+        conn.pragma_update(None, "foreign_keys", false)?;
+    }
+
+    let outcome = (|| -> Result<()> {
+        let tx = conn.transaction()?;
+        step.apply(&tx)?;
+        if guard_foreign_keys && were_on {
+            check_foreign_keys(&tx)?;
+        }
+        tx.commit()?;
+        Ok(())
+    })();
+
+    if guard_foreign_keys && were_on {
+        conn.pragma_update(None, "foreign_keys", true)?;
+    }
+    outcome
+}
+
+/// Step 10: refuse to commit a rebuild that orphaned a reference.
+fn check_foreign_keys(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("SELECT \"table\", rowid FROM pragma_foreign_key_check")?;
+    let violations = stmt
+        .query_map([], |row| {
+            Ok(format!(
+                "{}#{:?}",
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<i64>>(1)?
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if violations.is_empty() {
+        return Ok(());
+    }
+    Err(StoreError::conflict(format!(
+        "migration left {} dangling reference(s): {}",
+        violations.len(),
+        violations.join(", ")
+    )))
 }
 
 /// Insert any missing lane defaults. Existing rows are left untouched so an
@@ -236,13 +581,26 @@ mod tests {
         );
         conn.execute_batch(WORKING_DB_SQL).expect("contract ddl");
 
+        conn.pragma_update(None, "foreign_keys", false).unwrap();
         for step in MIGRATIONS.iter().rev() {
             if step.from >= version {
-                step.revert(conn).expect("revert");
+                let tx = conn.transaction().unwrap();
+                step.revert(&tx).expect("revert");
+                tx.commit().unwrap();
             }
         }
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+
+        // Lane seeds arrived with rung 1→2 and grew again with 3→4; a fixture
+        // that already carried them would prove nothing about the backfill.
         if version < 2 {
             conn.execute("DELETE FROM rate_limits", []).unwrap();
+        } else if version < 4 {
+            conn.execute(
+                "DELETE FROM rate_limits WHERE rate_key IN ('wikimedia','openverse','tatoeba')",
+                [],
+            )
+            .unwrap();
         }
         conn.pragma_update(None, "user_version", version).unwrap();
 
@@ -252,6 +610,16 @@ mod tests {
                 assert!(
                     !columns(conn, table).contains(&(*column).to_string()),
                     "v{version} fixture still carries {table}.{column}"
+                );
+            }
+            for rebuild in step.rebuilds {
+                assert!(
+                    same_shape(
+                        &live_ddl(conn, rebuild.table).unwrap(),
+                        rebuild.previous_ddl
+                    ),
+                    "v{version} fixture still carries the new {} shape",
+                    rebuild.table
                 );
             }
         }
@@ -271,6 +639,73 @@ mod tests {
             .unwrap()
     }
 
+    /// Insert one candidate row of each family, so a rebuild has something to
+    /// carry across.
+    fn seed_candidates(conn: &Connection) -> (i64, i64) {
+        conn.execute(
+            "INSERT INTO words (word_id, lemma, role, blockers) VALUES (7,'serene','target','[]')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO media_files (file_hash, kind, rel_path, bytes)
+             VALUES ('abc','image','ab/abc.webp', 10)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO example_candidates
+                 (ex_cand_id, word_id, text, text_hash, hl_start, hl_end, source, created_by)
+             VALUES (11, 7, 'A serene lake.', 'h1', 2, 8, 'exam_corpus', 'cli')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO image_candidates
+                 (img_cand_id, word_id, file_hash, source, created_by)
+             VALUES (21, 7, 'abc', 'unsplash', 'cli')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO example_selections (word_id, slot, ex_cand_id, selected_by)
+             VALUES (7, 1, 11, 'auto')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO image_selections (word_id, img_cand_id, selected_by)
+             VALUES (7, 21, 'auto')",
+            [],
+        )
+        .unwrap();
+        (11, 21)
+    }
+
+    /// Can this database hold a candidate with that source?
+    fn accepts_source(conn: &Connection, table: &str, source: &str) -> bool {
+        let sql = if table == "example_candidates" {
+            format!(
+                "INSERT INTO example_candidates
+                     (word_id, text, text_hash, hl_start, hl_end, source, created_by)
+                 VALUES (7, 'A probe of {source}.', 'probe-{source}', 2, 7, '{source}', 'cli')"
+            )
+        } else {
+            // The candidate references its bytes, so the probe registers them.
+            conn.execute(
+                "INSERT OR IGNORE INTO media_files (file_hash, kind, rel_path, bytes)
+                 VALUES (?1, 'image', 'pr/probe.webp', 1)",
+                rusqlite::params![format!("probe-{source}")],
+            )
+            .expect("probe media row");
+            format!(
+                "INSERT INTO image_candidates (word_id, file_hash, source, created_by)
+                 VALUES (7, 'probe-{source}', '{source}', 'cli')"
+            )
+        };
+        conn.execute(&sql, []).is_ok()
+    }
+
     #[test]
     fn embedded_ddl_is_the_contract_file() {
         assert!(WORKING_DB_SQL.contains("CREATE TABLE words ("));
@@ -278,6 +713,31 @@ mod tests {
         assert!(WORKING_DB_SQL.contains("CREATE TABLE release_manifests"));
         assert!(WORKING_DB_SQL.contains("core_ready"));
         assert!(WORKING_DB_SQL.contains("word_count"));
+    }
+
+    /// The typed enumerations and the SQL `CHECK` unions are two spellings of
+    /// one vocabulary; a value that round-trips through the type system must be
+    /// insertable.
+    #[test]
+    fn the_source_enumerations_match_the_contract_check_constraints() {
+        use morpho_domain::types::{ExampleSource, ImageSource};
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(WORKING_DB_SQL).unwrap();
+        seed_candidates(&conn);
+        for source in ExampleSource::ALL {
+            assert!(
+                accepts_source(&conn, "example_candidates", source.as_str()),
+                "example source {source} is not in the contract CHECK"
+            );
+        }
+        for source in ImageSource::ALL {
+            assert!(
+                accepts_source(&conn, "image_candidates", source.as_str()),
+                "image source {source} is not in the contract CHECK"
+            );
+        }
+        assert!(!accepts_source(&conn, "image_candidates", "getty"));
     }
 
     #[test]
@@ -325,17 +785,151 @@ mod tests {
         assert_eq!(ver, SCHEMA_USER_VERSION);
     }
 
+    /// Ruling #18, the rung that cannot be an `ALTER TABLE`: a v3 database
+    /// rejects the keyless sources, and after the ladder it accepts them —
+    /// with every row, id and selection still in place.
+    #[test]
+    fn a_wave_three_database_gains_the_keyless_sources() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        legacy(&mut conn, 3);
+        seed_candidates(&conn);
+        assert!(!accepts_source(&conn, "example_candidates", "tatoeba"));
+        assert!(!accepts_source(&conn, "image_candidates", "wikimedia"));
+
+        assert!(!ensure_schema(&mut conn).unwrap());
+
+        for source in ["freedict", "tatoeba"] {
+            assert!(
+                accepts_source(&conn, "example_candidates", source),
+                "{source}"
+            );
+        }
+        for source in ["wikimedia", "openverse"] {
+            assert!(
+                accepts_source(&conn, "image_candidates", source),
+                "{source}"
+            );
+        }
+
+        // The rows survived the rebuild, keeping the ids their selections point at.
+        let (text, hl): (String, i64) = conn
+            .query_row(
+                "SELECT text, hl_start FROM example_candidates WHERE ex_cand_id = 11",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((text.as_str(), hl), ("A serene lake.", 2));
+        let selected: i64 = conn
+            .query_row(
+                "SELECT es.ex_cand_id FROM example_selections es
+                 JOIN example_candidates ec ON ec.ex_cand_id = es.ex_cand_id
+                 WHERE es.word_id = 7",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(selected, 11);
+        let image: String = conn
+            .query_row(
+                "SELECT source FROM image_candidates WHERE img_cand_id = 21",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(image, "unsplash");
+    }
+
+    /// The rebuild puts back everything it took apart.
+    #[test]
+    fn a_rebuild_restores_the_indexes_and_the_views() {
+        let mut migrated = Connection::open_in_memory().unwrap();
+        legacy(&mut migrated, 3);
+        ensure_schema(&mut migrated).unwrap();
+
+        let objects = |conn: &Connection, kind: &str| -> Vec<(String, String)> {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT name, COALESCE(sql, '') FROM sqlite_master
+                     WHERE type = ?1 ORDER BY name",
+                )
+                .unwrap();
+            stmt.query_map(rusqlite::params![kind], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+        };
+
+        let mut fresh = Connection::open_in_memory().unwrap();
+        ensure_schema(&mut fresh).unwrap();
+
+        for kind in ["index", "view"] {
+            let a = objects(&migrated, kind);
+            let b = objects(&fresh, kind);
+            assert_eq!(
+                a.iter().map(|(n, _)| n).collect::<Vec<_>>(),
+                b.iter().map(|(n, _)| n).collect::<Vec<_>>(),
+                "{kind} set drift"
+            );
+            for ((name, migrated_sql), (_, fresh_sql)) in a.iter().zip(b.iter()) {
+                assert!(
+                    same_shape(migrated_sql, fresh_sql),
+                    "{kind} {name} drifted:\n{migrated_sql}\n{fresh_sql}"
+                );
+            }
+        }
+        // And the view really resolves against the rebuilt table.
+        let desired: i64 = migrated
+            .query_row("SELECT COUNT(*) FROM tts_desired", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(desired, 0);
+    }
+
+    /// A rebuild refuses to commit a schema whose references no longer resolve.
+    #[test]
+    fn a_rebuild_that_orphans_a_reference_is_refused() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        legacy(&mut conn, 3);
+        seed_candidates(&conn);
+        // A selection pointing at a candidate that does not exist — the kind of
+        // damage an offline edit with foreign keys off leaves behind. The
+        // rebuild's `foreign_key_check` is what refuses to bless it.
+        conn.pragma_update(None, "foreign_keys", false).unwrap();
+        conn.execute(
+            "INSERT INTO example_selections (word_id, slot, ex_cand_id, selected_by)
+             VALUES (7, 2, 9999, 'auto')",
+            [],
+        )
+        .unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+
+        let err = ensure_schema(&mut conn).unwrap_err();
+        assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+        assert!(err.to_string().contains("dangling"), "{err}");
+        // Nothing was committed: the database is still at v3 and still narrow.
+        let ver: i32 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ver, 3);
+        assert!(!accepts_source(&conn, "example_candidates", "tatoeba"));
+    }
+
     /// A rung is a no-op when the column is already there, so a contract sync
     /// that lands ahead of an old database cannot brick the ladder.
     #[test]
-    fn a_rung_whose_column_already_exists_is_skipped() {
+    fn a_rung_whose_change_is_already_present_is_skipped() {
         let mut conn = Connection::open_in_memory().unwrap();
-        // The pathological case: contract DDL (which ships `word_count`)
-        // labelled as an older version, so the 2 → 3 rung runs over it.
+        // The pathological case: the current contract DDL — which already
+        // ships `word_count` *and* the widened source unions — labelled as an
+        // older version, so the 2 → 3 and 3 → 4 rungs both run over it.
         conn.execute_batch(WORKING_DB_SQL).unwrap();
+        seed_candidates(&conn);
         conn.pragma_update(None, "user_version", 2).unwrap();
+        let before = live_ddl(&conn, "example_candidates").unwrap();
 
-        assert_eq!(migrate(&mut conn).unwrap(), 1, "the rung still runs");
+        assert_eq!(migrate(&mut conn).unwrap(), 2, "the rungs still run");
         assert_eq!(
             columns(&conn, "releases")
                 .iter()
@@ -343,6 +937,16 @@ mod tests {
                 .count(),
             1
         );
+        assert_eq!(
+            live_ddl(&conn, "example_candidates").unwrap(),
+            before,
+            "a table that already has the contract shape is not rebuilt"
+        );
+        // The rows were never touched, because the table was never rebuilt.
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM example_candidates", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 1);
     }
 
     #[test]

@@ -8,6 +8,8 @@
 //!   * rejecting the selected candidate clears the pin and the approval so the
 //!     auto-selection rule can fall back on the next cycle.
 
+use std::collections::HashMap;
+
 use rusqlite::OptionalExtension;
 
 use morpho_domain::canon::canonicalize;
@@ -328,15 +330,14 @@ pub(super) fn set_selection(req: SetSelection, ctx: &mut OpCtx<'_, '_>) -> Resul
 
     if let SlotRef::Example { word_id, slot } = &req.slot {
         // UNIQUE (word_id, ex_cand_id): the same sentence cannot fill two slots.
-        let other: Option<i64> = ctx
-            .tx
-            .query_row(
-                "SELECT slot FROM example_selections WHERE word_id = ?1 AND ex_cand_id = ?2",
-                rusqlite::params![word_id, req.cand_id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        if let Some(other_slot) = other {
+        //
+        // For a human override this is a real error — someone has picked a
+        // sentence the word is already showing, and silently emptying the other
+        // slot is not what they asked for. The automatic selector reshuffles a
+        // word's three slots as one assignment and goes through
+        // [`apply_selection`] instead, which knows the vacated slot is about to
+        // be refilled by the same batch.
+        if let Some(other_slot) = example_slot_holding(ctx, *word_id, req.cand_id)? {
             if other_slot != *slot {
                 return Err(StoreError::conflict(format!(
                     "example candidate {} already fills slot {other_slot}",
@@ -347,6 +348,34 @@ pub(super) fn set_selection(req: SetSelection, ctx: &mut OpCtx<'_, '_>) -> Resul
     }
 
     let previous = current_selection(ctx, &req.slot)?;
+    apply_selection(req, previous, ctx)
+}
+
+/// Which of a word's example slots currently holds `cand_id`, if any.
+fn example_slot_holding(ctx: &OpCtx<'_, '_>, word_id: i64, cand_id: i64) -> Result<Option<i64>> {
+    Ok(ctx
+        .tx
+        .query_row(
+            "SELECT slot FROM example_selections WHERE word_id = ?1 AND ex_cand_id = ?2",
+            rusqlite::params![word_id, cand_id],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+/// Write one slot, given what it held beforehand.
+///
+/// `previous` is a parameter rather than a fresh read so that a caller applying
+/// several decisions in one transaction can judge every one of them against the
+/// state its *rule* saw. That matters for the example slots: reshuffling them
+/// means an earlier write in the same batch empties a slot a later write
+/// refills, and re-reading would both lose `selection_rev` continuity and make
+/// the refill look like a first selection.
+fn apply_selection(
+    req: SetSelection,
+    previous: Option<CurrentSelection>,
+    ctx: &mut OpCtx<'_, '_>,
+) -> Result<WriteResult> {
     let selected_by = req.selected_by.as_str();
     let pinned = i64::from(req.pinned);
     let entity = selection_entity(req.slot.candidate_kind());
@@ -763,14 +792,42 @@ pub(super) fn apply_scores(req: ApplyScores, ctx: &mut OpCtx<'_, '_>) -> Result<
     Ok(WriteResult::Scored { changed })
 }
 
+/// Apply a batch of automatic selection decisions.
+///
+/// A word's three example slots are one assignment, not three independent
+/// choices — `UNIQUE (word_id, ex_cand_id)` says so — and re-ranking a word's
+/// sentences routinely permutes them. Two consequences follow, and both are why
+/// this reads the whole batch before writing any of it:
+///
+/// * every guard is judged against the state the *rule* saw. Re-reading a slot
+///   an earlier decision in this same batch has just emptied would make the
+///   decision that refills it look stale, and the assignment would land half
+///   applied.
+/// * a sentence moving from slot 3 to slot 1 has to leave slot 3 first. Swaps
+///   are cyclic, so no ordering avoids it, and the slot is vacated in place.
+///   The selector emits a whole assignment rather than three opinions, so the
+///   vacated slot is either refilled by a later decision in the same batch or
+///   is one the assignment deliberately compacted away.
 pub(super) fn apply_auto_selections(
     req: ApplyAutoSelections,
     ctx: &mut OpCtx<'_, '_>,
 ) -> Result<WriteResult> {
+    let mut before: HashMap<String, Option<CurrentSelection>> = HashMap::new();
+    for decision in &req.selections {
+        let key = decision.slot.to_string();
+        if let std::collections::hash_map::Entry::Vacant(entry) = before.entry(key) {
+            let state = current_selection(ctx, &decision.slot)?;
+            entry.insert(state);
+        }
+    }
+
     let mut applied = 0usize;
     let mut skipped = 0usize;
     for decision in req.selections {
-        let current = current_selection(ctx, &decision.slot)?;
+        let current = before
+            .get(&decision.slot.to_string())
+            .cloned()
+            .unwrap_or_default();
         // Rule 4: a pinned slot is untouchable by automatic selection.
         if current.as_ref().is_some_and(|c| c.pinned) {
             skipped += 1;
@@ -785,13 +842,25 @@ pub(super) fn apply_auto_selections(
             skipped += 1;
             continue;
         }
-        set_selection(
+        if let SlotRef::Example { word_id, slot } = &decision.slot {
+            if let Some(other) = example_slot_holding(ctx, *word_id, decision.cand_id)? {
+                if other != *slot {
+                    ctx.tx.execute(
+                        "DELETE FROM example_selections WHERE word_id = ?1 AND slot = ?2",
+                        rusqlite::params![word_id, other],
+                    )?;
+                    ctx.touch(EntityType::ExampleSelection, format!("{word_id}:{other}"));
+                }
+            }
+        }
+        apply_selection(
             SetSelection {
                 slot: decision.slot.clone(),
                 cand_id: decision.cand_id,
                 selected_by: SelectedBy::Auto,
                 pinned: false,
             },
+            current,
             ctx,
         )?;
         if decision.make_primary {

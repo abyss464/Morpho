@@ -1,14 +1,20 @@
-//! Image fetching: three stock libraries in parallel, SDXL behind them.
+//! Image fetching: every enabled library in parallel, SDXL behind them all.
 //!
-//! README Part 4 example B states the fallback exactly: "三源尽墨 → SDXL". A
-//! source counts as spent when it has been queried and returned nothing, when
-//! its job is dead or waived, **or when it has no API key at all** — an absent
-//! provider is permanently absent, and making the word wait for eight retries
-//! against a provider that will never answer helps nobody.
+//! README Part 4 example B states the fallback exactly: "三源尽墨 → SDXL", and
+//! ruling #18 widens what "三源" means. A source counts as spent when it has
+//! been queried and returned nothing, when its job is dead or waived, **or when
+//! it is not enabled at all** — a stock library with no API key is permanently
+//! absent, and making the word wait for eight retries against a provider that
+//! will never answer helps nobody.
+//!
+//! What changed in wave 4 is which sources can be absent. Wikimedia Commons and
+//! Openverse take no credentials, so they are never disabled, and the
+//! generative fallback now fires only once two libraries that genuinely
+//! answered have both come back empty — not merely because nobody supplied a
+//! stock-photo key. SDXL is the last resort it was always meant to be.
 //!
 //! If SDXL is also absent (no ComfyUI), nothing further is derived and the word
-//! reports `missing_image`. That is the correct end state for a machine with no
-//! image credentials, and it is what the export holdback report will say.
+//! reports `missing_image`, which is what the export holdback report will say.
 
 use std::sync::Arc;
 
@@ -99,11 +105,13 @@ impl Rule for GenImageSdxlRule {
             return Ok(Vec::new());
         }
         let facts = snapshot.facts;
-        let config = &self.context.sources.config;
+        let enabled = self.context.sources.config.enabled_image_sources();
         let sdxl_name = image_source_name(ImageSource::Sdxl);
 
         let mut jobs = Vec::new();
         for word in &facts.active {
+            // "Zero available candidates": a word that already has a picture
+            // from anywhere never reaches the generative fallback.
             if facts.words_with_images.contains(&word.word_id) {
                 continue;
             }
@@ -111,8 +119,8 @@ impl Rule for GenImageSdxlRule {
                 continue;
             }
             let all_spent = IMAGE_PROVIDERS.iter().all(|provider| {
-                // No key => permanently absent => spent.
-                config.image_key(provider.source).is_none()
+                // Not enabled => permanently absent => spent.
+                !enabled.contains(&provider.source)
                     || facts.source_exhausted(
                         &FetchKind::Images,
                         JobKind::FetchImages,

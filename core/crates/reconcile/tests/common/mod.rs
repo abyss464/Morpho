@@ -9,15 +9,15 @@
 use std::sync::Arc;
 
 use morpho_domain::event::Actor;
-use morpho_domain::types::{CreatedBy, DefinitionSource, Role};
+use morpho_domain::types::{CreatedBy, DefinitionSource, ExampleSource, MediaKind, Role};
 use morpho_reconcile::exec::{Executor, ExtractTokensExecutor};
 use morpho_reconcile::rules::ExtractTokensRule;
-use morpho_reconcile::sources::SourceSet;
+use morpho_reconcile::sources::{sentence, SourceSet};
 use morpho_reconcile::{
-    AdapterConfig, EngineContext, PassStats, Reconciler, ReconcilerConfig, Rule, Scope,
-    SourcesConfig,
+    AdapterConfig, EngineContext, Facts, JobSpec, PassStats, Reconciler, ReconcilerConfig, Rule,
+    Scope, Snapshot, SourcesConfig,
 };
-use morpho_store::ops::CreateWord;
+use morpho_store::ops::{CreateWord, MintExampleCandidate, MintImageCandidate};
 use morpho_store::{MediaStore, Store, StoreConfig, WriteOp};
 
 pub struct Harness {
@@ -105,6 +105,120 @@ pub async fn seed_definition(store: &Store, word_id: i64, pos: &str, text: &str)
         .result
         .def_cand_id()
         .unwrap()
+}
+
+/// Mint one example candidate, locating the highlight the way every real
+/// source does.
+pub async fn seed_example(
+    store: &Store,
+    word_id: i64,
+    lemma: &str,
+    text: &str,
+    source: ExampleSource,
+) -> i64 {
+    let example = sentence::candidate(text, lemma, Some(format!("{source}:test")))
+        .unwrap_or_else(|| panic!("{text:?} does not contain {lemma:?}"));
+    store
+        .write(
+            Actor::Cli,
+            WriteOp::MintExampleCandidate(MintExampleCandidate {
+                word_id,
+                text: example.text,
+                hl_start: example.hl_start,
+                hl_end: example.hl_end,
+                source,
+                source_ref: example.source_ref,
+                created_by: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .result
+        .cand_id()
+        .unwrap()
+}
+
+/// Register a byte string in the media library and hang an image candidate off
+/// it. The bytes never have to be a real picture — nothing decodes them here.
+pub async fn seed_image(
+    store: &Store,
+    media: &MediaStore,
+    word_id: i64,
+    bytes: &[u8],
+    source: morpho_domain::types::ImageSource,
+) -> i64 {
+    let stored = media.put_bytes(bytes, MediaKind::Image).unwrap();
+    store
+        .write(
+            Actor::Cli,
+            WriteOp::MintImageCandidate(MintImageCandidate {
+                word_id,
+                pos: None,
+                file_hash: stored.file_hash.clone(),
+                media: Some(morpho_store::ops::MediaRegistration {
+                    file_hash: stored.file_hash,
+                    kind: MediaKind::Image,
+                    rel_path: stored.rel_path,
+                    bytes: stored.bytes,
+                }),
+                width: Some(1600),
+                height: Some(1200),
+                source,
+                source_ref: Some(format!("{source}:test")),
+                license: Some("test licence".into()),
+                query_used: None,
+                created_by: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .result
+        .cand_id()
+        .unwrap()
+}
+
+/// Record a fetch completion marker, so a rule sees a source as answered.
+pub async fn mark_fetched(store: &Store, kind: &str, word_id: i64, source: &str, count: i64) {
+    store
+        .write(
+            Actor::Cli,
+            WriteOp::RecordSourceFetch {
+                kind: kind.to_string(),
+                word_id,
+                source: source.to_string(),
+                result_count: count,
+            },
+        )
+        .await
+        .unwrap();
+}
+
+/// Run one rule against a fresh fact snapshot, the way a pass would.
+pub async fn derive(store: &Store, rule: Arc<dyn Rule>) -> Vec<JobSpec> {
+    store
+        .read(move |conn| {
+            let facts = Facts::load(conn)?;
+            let scope = Scope::Full;
+            rule.derive(&Snapshot {
+                conn,
+                facts: &facts,
+                scope: &scope,
+                now: chrono::Utc::now(),
+            })
+        })
+        .await
+        .unwrap()
+}
+
+/// `(kind, subject_id)` of every derived job, sorted — a stable shape to assert
+/// against.
+pub fn job_subjects(jobs: &[JobSpec]) -> Vec<String> {
+    let mut out: Vec<String> = jobs
+        .iter()
+        .map(|job| format!("{}/{}", job.key.kind, job.key.subject.subject_id))
+        .collect();
+    out.sort();
+    out
 }
 
 pub async fn scalar_i64(store: &Store, sql: &'static str) -> i64 {

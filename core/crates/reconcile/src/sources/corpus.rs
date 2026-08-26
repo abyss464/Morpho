@@ -31,8 +31,10 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use morpho_domain::canon::{canonicalize, fold_lemma};
+use morpho_domain::canon::fold_lemma;
 use morpho_domain::types::FetchedExample;
+
+use crate::sources::sentence;
 
 /// Sentences kept per word. The selection layer only ever fills three slots.
 pub const MAX_PER_WORD: usize = 8;
@@ -87,12 +89,15 @@ impl ExamCorpus {
                 }
             };
             let lemma = fold_lemma(&row.word);
-            let text = canonicalize(&row.sentence);
-            if lemma.is_empty() || text.is_empty() {
+            if lemma.is_empty() {
                 corpus.skipped += 1;
                 continue;
             }
-            let Some((hl_start, hl_end)) = locate(&text, &lemma) else {
+            let source_ref = row
+                .source
+                .map(|s| format!("exam_corpus:{s}"))
+                .or_else(|| Some("exam_corpus".to_string()));
+            let Some(example) = sentence::candidate(&row.sentence, &lemma, source_ref) else {
                 // The sentence does not contain the word it claims to
                 // illustrate: unusable for mode 1, so it is not stored.
                 tracing::debug!(
@@ -104,21 +109,13 @@ impl ExamCorpus {
                 continue;
             };
             let bucket = corpus.by_lemma.entry(lemma).or_default();
-            if bucket.iter().any(|existing| existing.text == text) {
+            if bucket.iter().any(|existing| existing.text == example.text) {
                 continue;
             }
             if bucket.len() >= MAX_PER_WORD {
                 continue;
             }
-            bucket.push(FetchedExample {
-                text,
-                hl_start: hl_start as i64,
-                hl_end: hl_end as i64,
-                source_ref: row
-                    .source
-                    .map(|s| format!("exam_corpus:{s}"))
-                    .or_else(|| Some("exam_corpus".to_string())),
-            });
+            bucket.push(example);
             corpus.sentence_count += 1;
         }
         corpus
@@ -144,66 +141,6 @@ impl ExamCorpus {
             .map(Vec::as_slice)
             .unwrap_or(&[])
     }
-}
-
-/// Byte range of `lemma` inside the already-canonicalized `text`.
-///
-/// Matching is case-insensitive and whole-word, and prefers the exact form
-/// before falling back to a common inflection, so "adapt" highlights `adapt`
-/// in "Species adapt…" and `adapted` in "Species adapted…".
-pub fn locate(text: &str, lemma: &str) -> Option<(usize, usize)> {
-    let lower = text.to_lowercase();
-    let needle = lemma.to_lowercase();
-    if needle.is_empty() {
-        return None;
-    }
-
-    // Exact word first.
-    if let Some(range) = find_word(&lower, &needle) {
-        return Some(range);
-    }
-    // Then the regular English inflections, longest first so "-ies" wins over
-    // "-s". These are surface forms of the same lemma, not different words.
-    for suffix in ["ies", "ing", "ied", "ees", "es", "ed", "en", "er", "s", "d"] {
-        let candidate = format!("{needle}{suffix}");
-        if let Some(range) = find_word(&lower, &candidate) {
-            return Some(range);
-        }
-        // Stem changes: "adapt" → "adapting", "serene" → "serener".
-        if let Some(stem) = needle.strip_suffix('e') {
-            if let Some(range) = find_word(&lower, &format!("{stem}{suffix}")) {
-                return Some(range);
-            }
-        }
-    }
-    None
-}
-
-/// Find `needle` in `haystack` on word boundaries. Both must be lowercase.
-///
-/// Offsets are byte offsets, and because `to_lowercase` can change byte length
-/// for some scripts, a mismatch between the folded and original lengths makes
-/// this bail out rather than return a range that would slice mid-character.
-fn find_word(haystack: &str, needle: &str) -> Option<(usize, usize)> {
-    let is_word = |c: char| c.is_alphanumeric() || c == '\'' || c == '\u{2019}';
-    let mut from = 0usize;
-    while let Some(found) = haystack[from..].find(needle) {
-        let start = from + found;
-        let end = start + needle.len();
-        let before_ok = haystack[..start]
-            .chars()
-            .next_back()
-            .is_none_or(|c| !is_word(c));
-        let after_ok = haystack[end..].chars().next().is_none_or(|c| !is_word(c));
-        if before_ok && after_ok {
-            return Some((start, end));
-        }
-        from = start + needle.chars().next().map_or(1, char::len_utf8);
-        if from >= haystack.len() {
-            break;
-        }
-    }
-    None
 }
 
 #[cfg(test)]
@@ -318,39 +255,6 @@ not json at all
             .collect();
         let corpus = ExamCorpus::parse(&rows.join("\n"));
         assert_eq!(corpus.examples("serene").len(), MAX_PER_WORD);
-    }
-
-    #[test]
-    fn matches_only_on_word_boundaries() {
-        // "ample" must not match inside "example".
-        assert_eq!(locate("An example of this.", "ample"), None);
-        assert_eq!(locate("An ample supply.", "ample"), Some((3, 8)));
-    }
-
-    #[test]
-    fn prefers_the_exact_form_over_an_inflection() {
-        let text = "Species adapted, and species adapt.";
-        let (start, end) = locate(text, "adapt").unwrap();
-        assert_eq!(&text[start..end], "adapt");
-    }
-
-    #[test]
-    fn handles_stem_changing_inflections() {
-        assert!(locate("The lake is serener today.", "serene").is_some());
-        assert!(locate("Species are adapting fast.", "adapt").is_some());
-    }
-
-    #[test]
-    fn offsets_land_on_character_boundaries_with_accents() {
-        let text = canonicalize("A café and a serene view.");
-        let (start, end) = locate(&text, "serene").unwrap();
-        assert!(text.is_char_boundary(start) && text.is_char_boundary(end));
-        assert_eq!(&text[start..end], "serene");
-    }
-
-    #[test]
-    fn an_empty_lemma_never_matches() {
-        assert_eq!(locate("anything", ""), None);
     }
 
     #[test]

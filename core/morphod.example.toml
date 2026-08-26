@@ -38,15 +38,36 @@ coalesce_window_ms = 250
 # engine derives no job for it, and the next fallback in the chain fires
 # immediately instead of waiting out eight retries. Nothing is ever faked to
 # stand in for a source that is not configured.
+#
+# The keyless sources below have nothing to unset, so they are never disabled —
+# only reachable or not, which is a retry rather than an absence. A checkout
+# with no accounts of any kind still produces real definitions, sentences and
+# pictures (admin-api.md ruling #18); only the URLs are configurable, and only
+# so an operator can point them at a mirror.
 # ---------------------------------------------------------------------------
 [sources]
-# Free Dictionary API. Needs no credentials, so it is always available.
+# Free Dictionary API. Definitions, IPA, and the per-sense usage sentences that
+# become `freedict` example candidates out of the very same response.
 freedict_url = "https://api.dictionaryapi.dev/api/v2/entries/en"
 
-# Wiktionary MediaWiki API, used for etymology. Wikimedia requires a real
-# User-Agent; keep the contact address current.
+# Wiktionary MediaWiki API, used for etymology.
 wiktionary_url = "https://en.wiktionary.org/w/api.php"
-user_agent = "morphod/0.1 (Morpho content engine; +https://github.com/morpho)"
+
+# Wikimedia Commons: keyless images, with per-file licence and author recorded
+# on every candidate.
+wikimedia_url = "https://commons.wikimedia.org/w/api.php"
+
+# Openverse: keyless images, filtered to commercially reusable and modifiable
+# licences. Anonymous quota is low, so a 429 parks the whole lane.
+openverse_url = "https://api.openverse.org/v1/images/"
+
+# Tatoeba: keyless English example sentences. Each sentence carries its own
+# licence, recorded in the candidate's source_ref alongside its id.
+tatoeba_url = "https://tatoeba.org/en/api_v0/search"
+
+# Wikimedia answers 403 without a real User-Agent naming the tool and a way to
+# make contact, so this is a functional requirement. Keep the address current.
+user_agent = "Morpho/0.1 vocabulary content builder (+https://github.com/morpho)"
 
 # Per-request HTTP timeout.
 http_timeout_secs = 20
@@ -63,12 +84,15 @@ http_timeout_secs = 20
 # `source` is optional provenance. Highlight offsets are computed after
 # canonicalization, and a sentence that does not contain its own target word is
 # dropped rather than stored with a guessed range.
-# Unset -> no example jobs at all, and every word reports `missing_example`.
+# Unset -> freedict and tatoeba are the only example sources, which is enough
+# for a word to become shippable.
 # corpus_path = "data/exam-corpus.jsonl"
 
-# Stock photo providers. A provider without a key is never queried. When all
-# three are keyless, the SDXL fallback becomes the live path; when that is
-# absent too, words honestly report `missing_image`.
+# Stock photo providers. A provider without a key is never queried; the keyless
+# libraries above carry on regardless, so an unkeyed install still gets real
+# photographs. SDXL only becomes the live path once EVERY enabled library has
+# been asked and come back empty; when SDXL is absent too, words honestly
+# report `missing_image`.
 # Environment overrides these: UNSPLASH_ACCESS_KEY, PEXELS_API_KEY,
 # PIXABAY_API_KEY.
 # unsplash_access_key = ""

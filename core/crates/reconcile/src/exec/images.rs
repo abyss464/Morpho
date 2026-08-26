@@ -19,6 +19,7 @@ use morpho_domain::types::{FetchedImage, ImageSource, MediaKind};
 use morpho_store::ops::{IngestImages, MediaRegistration};
 use morpho_store::{Store, WriteOp};
 
+use crate::config::ImageProvider;
 use crate::engine::EngineContext;
 use crate::exec::{store_error, wrong_payload, Executor};
 use crate::rule::{JobPayload, JobSpec};
@@ -71,9 +72,20 @@ impl Executor for FetchImagesExecutor {
             Err(err) => return Err(err),
         };
 
+        // One job is a search plus a download per candidate, and the downloads
+        // usually go to a different host than the search — so the dispatcher's
+        // lane, which meters jobs, does not meter them. The provider says how
+        // far apart its file host wants them (see `ImageProvider`).
+        let spacing = ImageProvider::for_source(*source).map(ImageProvider::download_spacing);
+
         let mut fetched = Vec::new();
         let mut media = Vec::new();
-        for photo in &photos {
+        for (index, photo) in photos.iter().enumerate() {
+            if index > 0 {
+                if let Some(spacing) = spacing.filter(|gap| !gap.is_zero()) {
+                    tokio::time::sleep(spacing).await;
+                }
+            }
             let encoded = match images::download(&self.context.sources.http, photo).await {
                 Ok(encoded) => encoded,
                 Err(err) if err.kind() == ErrorKind::Permanent => {
