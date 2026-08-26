@@ -35,10 +35,13 @@ pub async fn search(
     config: &SourcesConfig,
     word: &str,
 ) -> Result<Vec<FetchedExample>, TaskError> {
+    // `=word` is Tatoeba's exact-form syntax: plain relevance search returns
+    // any inflection of the headword (a query for "being" comes back full of
+    // bare "be"), which the sentence miner then rightly rejects wholesale.
     let url = format!(
         "{}?from=eng&query={}&sort=relevance&limit={REQUEST_LIMIT}",
         config.tatoeba_url.trim_end_matches('/'),
-        http::encode_query(word)
+        http::encode_query(&format!("={word}"))
     );
     let body: SearchResponse =
         http::get_json(client, &url, &[], &format!("tatoeba {word}")).await?;
