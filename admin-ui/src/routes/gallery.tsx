@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { GalleryPage } from '../features/gallery/GalleryPage';
-import type { ImageSource } from '../api/types';
+import type { GallerySort, ImageSource } from '../api/types';
 
 const SOURCES: ImageSource[] = [
   'unsplash',
@@ -13,10 +13,13 @@ const SOURCES: ImageSource[] = [
   'manual',
 ];
 
+const SORTS: GallerySort[] = ['clip_asc', 'clip_desc'];
+
 interface GallerySearch {
   source?: ImageSource;
   approved?: 'true' | 'false';
   q?: string;
+  sort?: GallerySort;
 }
 
 function validateSearch(search: Record<string, unknown>): GallerySearch {
@@ -26,11 +29,16 @@ function validateSearch(search: Record<string, unknown>): GallerySearch {
       : undefined;
   const approved =
     search.approved === 'true' || search.approved === 'false' ? search.approved : undefined;
+  const sort =
+    typeof search.sort === 'string' && SORTS.includes(search.sort as GallerySort)
+      ? (search.sort as GallerySort)
+      : undefined;
 
   return {
     ...(source ? { source } : {}),
     ...(approved ? { approved } : {}),
     ...(typeof search.q === 'string' && search.q ? { q: search.q } : {}),
+    ...(sort ? { sort } : {}),
   };
 }
 

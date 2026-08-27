@@ -52,14 +52,7 @@ export type SelectedBy = 'auto' | 'human';
 export type DefinitionSource = 'freedict' | 'wordnet' | 'llm_rewrite' | 'manual';
 export type ExampleSource = 'exam_corpus' | 'freedict' | 'tatoeba' | 'llm' | 'manual';
 export type ImageSource =
-  | 'unsplash'
-  | 'pexels'
-  | 'pixabay'
-  | 'wikimedia'
-  | 'openverse'
-  | 'sdxl'
-  | 'codex'
-  | 'manual';
+  'unsplash' | 'pexels' | 'pixabay' | 'wikimedia' | 'openverse' | 'sdxl' | 'codex' | 'manual';
 export type CandidateSource = DefinitionSource | ExampleSource | ImageSource;
 
 export type EtymologySource = 'wiktionary' | 'morfessor' | 'manual';
@@ -456,12 +449,20 @@ export interface GalleryItem {
   approved: boolean;
   selected_by: SelectedBy;
   pinned: boolean;
+  /** Cosine similarity to the word's own query text (its slot-1 sentence,
+   * falling back to the lemma). `null` when the pair has not been scored. */
+  clip_similarity: number | null;
 }
+
+/** `sort=clip_asc|clip_desc` — worst/best semantic match first, unscored
+ * items always last. Omitted keeps the gallery's default order. */
+export type GallerySort = 'clip_asc' | 'clip_desc';
 
 export interface GalleryQuery extends PageParams {
   source?: ImageSource;
   approved?: boolean;
   q?: string;
+  sort?: GallerySort;
 }
 
 /* ------------------------------------------------------------------ */

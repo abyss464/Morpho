@@ -6,6 +6,7 @@ import {
   getReleasePreview,
   getWord,
   listDeadLetters,
+  listGallery,
   listOov,
   listWords,
   rejectCandidate,
@@ -44,6 +45,44 @@ describe('GET /words', () => {
     const oos = await listWords({ blocker: 'oos_pending', page_size: 100 });
     expect(oos.items.length).toBeGreaterThan(0);
     expect(oos.items.every((item) => item.blockers.includes('oos_pending'))).toBe(true);
+  });
+});
+
+describe('GET /gallery', () => {
+  it('exposes clip_similarity per item, null when the pair is unscored (backlog #32)', async () => {
+    const page = await listGallery({ page_size: 100 });
+    expect(page.items.length).toBeGreaterThan(0);
+    expect(
+      page.items.every(
+        (item) => typeof item.clip_similarity === 'number' || item.clip_similarity === null,
+      ),
+    ).toBe(true);
+    // The fixture leaves some pairs unscored on purpose, so both branches
+    // of the mapper actually run.
+    expect(page.items.some((item) => item.clip_similarity === null)).toBe(true);
+    expect(page.items.some((item) => item.clip_similarity !== null)).toBe(true);
+  });
+
+  it('sort=clip_asc ranks the worst match first, unscored items last', async () => {
+    const page = await listGallery({ sort: 'clip_asc', page_size: 200 });
+    const scores = page.items.map((item) => item.clip_similarity);
+    const firstNull = scores.findIndex((score) => score === null);
+    if (firstNull !== -1) {
+      expect(scores.slice(firstNull).every((score) => score === null)).toBe(true);
+    }
+    const scored = scores.filter((score): score is number => score !== null);
+    expect(scored).toEqual([...scored].sort((a, b) => a - b));
+  });
+
+  it('sort=clip_desc reverses the scored ranking but still keeps unscored items last', async () => {
+    const page = await listGallery({ sort: 'clip_desc', page_size: 200 });
+    const scores = page.items.map((item) => item.clip_similarity);
+    const firstNull = scores.findIndex((score) => score === null);
+    if (firstNull !== -1) {
+      expect(scores.slice(firstNull).every((score) => score === null)).toBe(true);
+    }
+    const scored = scores.filter((score): score is number => score !== null);
+    expect(scored).toEqual([...scored].sort((a, b) => b - a));
   });
 });
 

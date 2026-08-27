@@ -21,7 +21,7 @@ import { DeleteOutlined, EyeOutlined } from '@ant-design/icons';
 import { mediaUrl } from '../../api/client';
 import * as api from '../../api/endpoints';
 import { qk } from '../../api/queryKeys';
-import type { GalleryItem, GalleryQuery, ImageSource } from '../../api/types';
+import type { GalleryItem, GalleryQuery, GallerySort, ImageSource } from '../../api/types';
 import { ApprovalTag, SourceBadge } from '../../components/StatusChips';
 import { errorMessage } from '../../lib/errors';
 import './GalleryPage.css';
@@ -44,10 +44,16 @@ const APPROVED_OPTIONS = [
   { value: 'false', label: 'Unapproved' },
 ];
 
+const SORT_OPTIONS: { value: GallerySort; label: string }[] = [
+  { value: 'clip_asc', label: 'Worst match first' },
+  { value: 'clip_desc', label: 'Best match first' },
+];
+
 export interface GallerySearch {
   source?: ImageSource;
   approved?: 'true' | 'false';
   q?: string;
+  sort?: GallerySort;
 }
 
 export interface GalleryPageProps {
@@ -69,16 +75,14 @@ function GalleryCard({
       hoverable
       size="small"
       className="morpho-gallery-card"
-      cover={
-        <img
-          src={mediaUrl(item.file_hash)}
-          alt={item.lemma}
-          loading="lazy"
-        />
-      }
+      cover={<img src={mediaUrl(item.file_hash)} alt={item.lemma} loading="lazy" />}
     >
       <Space direction="vertical" size={6} style={{ width: '100%' }}>
-        <Link to="/words/$wordId" params={{ wordId: String(item.word_id) }} search={{ tab: 'image' }}>
+        <Link
+          to="/words/$wordId"
+          params={{ wordId: String(item.word_id) }}
+          search={{ tab: 'image' }}
+        >
           <Typography.Text strong>{item.lemma}</Typography.Text>
         </Link>
         <Space size={4} wrap>
@@ -92,6 +96,13 @@ function GalleryCard({
           {item.auto_score !== null && (
             <Tag style={{ margin: 0 }}>{item.auto_score.toFixed(2)}</Tag>
           )}
+          <Tag
+            color={item.clip_similarity !== null ? 'blue' : 'default'}
+            title="CLIP similarity to the word's own sentence"
+            style={{ margin: 0 }}
+          >
+            {item.clip_similarity !== null ? item.clip_similarity.toFixed(3) : '—'}
+          </Tag>
         </Space>
         <Flex gap={6}>
           <Popconfirm
@@ -105,7 +116,11 @@ function GalleryCard({
               Reject
             </Button>
           </Popconfirm>
-          <Link to="/words/$wordId" params={{ wordId: String(item.word_id) }} search={{ tab: 'image' }}>
+          <Link
+            to="/words/$wordId"
+            params={{ wordId: String(item.word_id) }}
+            search={{ tab: 'image' }}
+          >
             <Button size="small" icon={<EyeOutlined />}>
               View
             </Button>
@@ -127,26 +142,19 @@ export function GalleryPage({ search, onSearchChange }: GalleryPageProps) {
     source: search.source,
     approved: search.approved === undefined ? undefined : search.approved === 'true',
     q: search.q,
+    sort: search.sort,
   };
 
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isPending,
-    isError,
-    error,
-  } = useInfiniteQuery({
-    queryKey: qk.galleryList(apiQuery),
-    queryFn: ({ pageParam, signal }) =>
-      api.listGallery({ ...apiQuery, page: pageParam }, signal),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage, allPages) => {
-      const loaded = allPages.reduce((sum, page) => sum + page.items.length, 0);
-      return loaded < lastPage.total ? allPages.length + 1 : undefined;
-    },
-  });
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isPending, isError, error } =
+    useInfiniteQuery({
+      queryKey: qk.galleryList(apiQuery),
+      queryFn: ({ pageParam, signal }) => api.listGallery({ ...apiQuery, page: pageParam }, signal),
+      initialPageParam: 1,
+      getNextPageParam: (lastPage, allPages) => {
+        const loaded = allPages.reduce((sum, page) => sum + page.items.length, 0);
+        return loaded < lastPage.total ? allPages.length + 1 : undefined;
+      },
+    });
 
   const rejectMutation = useMutation({
     mutationFn: (candId: number) => api.rejectCandidate('image', candId),
@@ -187,7 +195,10 @@ export function GalleryPage({ search, onSearchChange }: GalleryPageProps) {
         <Typography.Title level={3} style={{ margin: 0 }}>
           Image gallery
           {total > 0 && (
-            <Typography.Text type="secondary" style={{ fontSize: 14, fontWeight: 400, marginLeft: 10 }}>
+            <Typography.Text
+              type="secondary"
+              style={{ fontSize: 14, fontWeight: 400, marginLeft: 10 }}
+            >
               {total} image{total !== 1 ? 's' : ''}
             </Typography.Text>
           )}
@@ -222,6 +233,15 @@ export function GalleryPage({ search, onSearchChange }: GalleryPageProps) {
             onSearch={(value) => patch({ q: value.trim() || undefined })}
             aria-label="Filter by lemma"
           />
+          <Select
+            allowClear
+            placeholder="Sort"
+            style={{ width: 180 }}
+            value={search.sort}
+            options={SORT_OPTIONS}
+            onChange={(value) => patch({ sort: value as GallerySearch['sort'] })}
+            aria-label="Sort by semantic match"
+          />
         </Flex>
       </Card>
 
@@ -232,10 +252,7 @@ export function GalleryPage({ search, onSearchChange }: GalleryPageProps) {
       ) : isError ? (
         <Empty description={errorMessage(error)} />
       ) : allItems.length === 0 ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="No images match these filters."
-        />
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No images match these filters." />
       ) : (
         <>
           <Row gutter={[12, 12]}>
@@ -245,8 +262,7 @@ export function GalleryPage({ search, onSearchChange }: GalleryPageProps) {
                   item={item}
                   onReject={() => rejectMutation.mutate(item.img_cand_id)}
                   rejecting={
-                    rejectMutation.isPending &&
-                    rejectMutation.variables === item.img_cand_id
+                    rejectMutation.isPending && rejectMutation.variables === item.img_cand_id
                   }
                 />
               </Col>
