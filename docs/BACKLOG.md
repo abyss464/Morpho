@@ -18,7 +18,7 @@ content change exactly once.
 | # | Title | Est | Pri | Phase | Status |
 |---|-------|-----|-----|-------|--------|
 | 19+8 | CLIP 语义评分内化到引擎 + codex 生成源（图文不匹配根因修复；worktree 内开发，不动线上） | L | P1 | 1 | dispatched |
-| B3 | 学完单词后首页 0/50 不更新 — 代码级定位+修复+单测；真机复验放在收尾阶段 | S | P2 | 1 | dispatched |
+| B3 | 首页 0/50 不更新 — 结论：HEAD 上不复现。历史真因是 wave-3a 的 daily_stats schema 变更未写迁移，旧 user.db 上所有统计写入失败；2a8e2ed 的预发布库丢弃守卫已修。已补 5 个钉死测试（03e7bf5，42 test 全绿）。真机复验留在装机后 | S | P2 | 1 | ✅ code-verified |
 | 9+B5 | NSFW/不当图片清理（CLIP 语义筛查全库 + 嫌疑词人工目检）+ 129 张 codex 图（126 在选）用 blank/floor gate 复检 reject | M | P1 | 2 | dispatched |
 | 6 | 自指释义改写（粗查 126 个动词形匹配，权威集以 score_detail 为准）：in-scope 词表约束、防 OOV 回潮、mint→select→approve | M | P1 | 2 | dispatched |
 | 12 | 存量干扰项 stem 坏配对修正（SQL 上限 2166 对）：无既有变更路径，需新增 core 批量 rebind 端点（dry-run 先行、优先 core_ready 替换以保出口稳定） | M→L | P1 | 2 | dispatched (worktree) |
