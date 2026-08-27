@@ -234,10 +234,12 @@ read it). `word_id` is stable across releases, so user progress survives updates
   self-referencing selections, remainder last-resort; sense-commonality prior),
   482 primary-POS corrections (attorney/add/charm/quality etc. now carry their
   common senses), CLIP rematch over the full lexicon with persisted scores
-  (`ops/clip_rematch.py` writes clip_scores.json), 48 codex-generated images for
-  the worst CLIP scorers (all beat their incumbents, selected + approved via
-  `ops/verify_genimg.py`), 665 Chinese gloss anchors (up from 229). APK built
-  and verified (978 MB fatApkDebug, 4231 words, media synced 25904 = manifest).
+  (`ops/clip_rematch.py` writes clip_scores.json), 129 codex-generated images
+  for the worst CLIP scorers (48 wave-1 + 81 wave-2, all beat incumbents,
+  selected + approved via `ops/verify_genimg.py`), 464 Chinese gloss anchors
+  (up from 229). APK built and verified (983 MB fatApkDebug, 4231 words,
+  media synced 25904 = manifest). ~140 more images pending via systemd timer
+  `morpho-genimg.timer` (batch 40, every 5h15m, self-disabling).
   word_id stability preserved — user progress carries over from 1.4.
 - The scorer/2 → scorer/3 incident and its resolution are §7.8; the diagnosis
   SQL for "does this slot need human judgment" is in §5.1.

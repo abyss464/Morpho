@@ -21,7 +21,7 @@ When the user reports a problem, request, or idea:
 When the user says to triage, evaluate, or start implementing:
 1. **Triage first**: for each Inbox item, assess effort (S/M/L/XL), priority (P0-P3), dependencies, and feasibility. Move to Ready with estimates, or to Deferred/Won't-do with a clear reason.
 2. **Present the plan**: show the ordered Ready list. The user approves, reorders, or removes items before any code is written.
-3. **Dispatch to subagents**: write a precise prompt and launch an Agent for each approved item. Independent items run in parallel. The orchestrator (main loop) never writes code directly — it records, evaluates, dispatches, and verifies.
+3. **Dispatch to subagents**: write a precise prompt and launch an Agent. The orchestrator never writes code directly — it records, evaluates, dispatches, and verifies. **Merge small items into one agent** (S+S or S+M that touch related files). Only parallelize when items are independent AND touch different files. Unnecessary parallelism wastes agent quota and creates merge conflicts.
 4. **Verify on return**: when a subagent completes, check its output (compilation, tests, correctness). Move to Done with commit reference, or send the agent back with fixes.
 
 ### Key rules
