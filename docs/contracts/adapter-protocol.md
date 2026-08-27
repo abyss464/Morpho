@@ -52,9 +52,41 @@ edge-tts outputs mp3; the adapter transcodes to mono Opus at the requested bitra
 
 Unconfigured backend (no ComfyUI reachable) → `{"ok": false, "error": {"kind": "permanent", "message": "sdxl backend not configured"}}` so the word surfaces in dead letters instead of retry-looping.
 
+### `codex.generate` (adapters/codex, external image generator)
+
+```json
+{"op": "codex.generate", "params": {
+  "word_id": 4821,
+  "lemma": "abandon",
+  "pos": "verb",
+  "primary_definition": "to give up completely",
+  "slot1_sentence": "She had to abandon the car in the flood.",
+  "prompt_ver": "codex/1",
+  "width": 768, "height": 576,
+  "out_path": "/tmp/.../image.webp"
+}}
+→ {"ok": true, "result": {"model": "codex", "prompt": "Generate one …"}}
+```
+
+The last link in the image chain: every stock library, both keyless second passes and local SDXL come first, and a word only reaches here when CLIP says its best picture still does not answer its own sentence.
+
+**`slot1_sentence` is required** (owner ruling, wave 9). What this source draws is the scene that sentence describes; `lemma`, `pos` and `primary_definition` are disambiguation — which sense the sentence is using — never the subject. Mode 1 asks the learner to match sentence to picture, and the CLIP score that decides whether the result wins its slot queries with that same sentence, so conditioning on anything else would judge the picture against a question it was never asked. A word with no slot-1 sentence is **deferred by the engine**, not generated from its lemma: `gen_image_codex` derives nothing for it until an example lands.
+
+`prompt_ver` names the template the adapter must draw under; a version it does not implement is a permanent failure rather than a silent substitution, because the candidate's `source_ref` records which template drew it. `result.prompt` is what was actually sent, stored on the candidate as `query_used`.
+
+Two gates live here and nowhere else, because both can only be answered next to the file: exit-zero-with-nothing-written (an ordinary content-policy refusal → permanent) and a blank canvas (grayscale stddev below `MORPHO_CODEX_BLANK_STDDEV`, ported from `ops/verify_genimg.py` → permanent). Everything else — is this apt, is it better than the incumbent, is it somebody else's — the engine decides, because it has CLIP and a database.
+
+Unconfigured backend (`MORPHO_CODEX_BIN` resolves to nothing) → `{"ok": false, "error": {"kind": "permanent", "message": "codex backend not configured"}}`. In practice morphod checks the same variable before deriving, so this is a race guard rather than the normal path: an absent generator *disables* the source.
+
 ## Timeouts (enforced by morphod)
 
-tts 60 s · morfessor 120 s/batch · sdxl 600 s
+tts 60 s · morfessor 120 s/batch · sdxl 600 s · codex 900 s
+
+The codex adapter's own budget (`MORPHO_CODEX_TIMEOUT_S`, default 840 s) sits below morphod's, so a slow hosted queue is reported as a classifiable timeout rather than being killed mid-write.
+
+## Not an adapter: the CLIP sidecar
+
+`adapters/clip` speaks HTTP, not this envelope. It needs a GPU the engine's container does not have, and a process per job would spend all its time loading a model it uses once. See `docs/contracts/clip-service.md`.
 
 ## Wave-2 normative rulings (conductor, 2026-08-26)
 

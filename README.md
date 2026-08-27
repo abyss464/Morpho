@@ -60,7 +60,7 @@
 Morpho/
 ├── core/        # Rust：morphod 单二进制（对账引擎 + 管理 API + 导出器）
 ├── admin-ui/    # TypeScript：React + Vite 管理前端，构建产物由 morphod 静态托管
-├── adapters/    # Python 薄 CLI 适配器：tts / morfessor / sdxl（uv 管理）
+├── adapters/    # Python 适配器：tts / morfessor / sdxl / codex（子进程）+ clip（HTTP 边车）
 ├── app/         # Android：Kotlin + Jetpack Compose
 └── data/        # working.db（SQLite WAL）+ 内容寻址媒体库
 ```
@@ -91,7 +91,8 @@ Morpho/
 | 基础词表 | 小学 + 初中英语教学大纲词汇表 | — |
 | 释义候选 | Free Dictionary API（按词性分条） | WordNet 释义；LLM 改写（大纲外词规避）；人工 |
 | 例句候选 | 考研大纲语料 | LLM；人工 |
-| 图片候选 | Unsplash / Pexels / Pixabay API | SDXL 生成（本地 ComfyUI）；人工上传 |
+| 图片候选 | Unsplash / Pexels / Pixabay API | Wikimedia / Openverse；SDXL 生成（本地 ComfyUI）；codex 生成；人工上传 |
+| 图文语义匹配 | CLIP 边车（open_clip，进程外 GPU） | 无 —— 缺席即退化为纯画质排序 |
 | 词源 | Wiktionary | Morfessor 形态学切分 |
 | 发音音频 | edge-tts（单词、释义、例句各自独立合成） | — |
 
@@ -164,10 +165,16 @@ example_selections ( PRIMARY KEY (word_id, slot), slot 1..3, ... )
 
 image_candidates ( img_cand_id, word_id, pos,
     file_hash,                     -- 图片字节 blake3；文件存 media/img/{hash}.webp
-    source,                        -- unsplash / pexels / pixabay / sdxl / manual
+    source,                        -- unsplash / pexels / pixabay / wikimedia /
+                                   -- openverse / sdxl / codex / manual
     source_ref,                    -- 图库 photo id / {prompt, seed, model} / 上传备注
     license, query_used, width, height,
     status, auto_score, ... )
+
+-- 图文语义匹配：内容寻址，键是"比较了什么"，与候选无关
+clip_scores ( PRIMARY KEY (file_hash, text_hash, model_ver),
+    similarity,                    -- 两个单位向量的余弦
+    computed_at )
 
 image_selections ( word_id PRIMARY KEY, img_cand_id, ... )
     -- 每词恰好一张生效图：该图同时充当其他词题目里的干扰图，必须唯一
@@ -242,7 +249,11 @@ distractors ( PRIMARY KEY (word_id, rank), rank 1..3,
 
 自动选择每对账周期按槽位执行：
 
-1. `scorer_ver` 落后的候选重评分。评分输入：可读性（大纲外 token 重罚）、长度窗口、来源先验（释义 manual > llm_rewrite > freedict > wordnet；图片 manual > 图库 > sdxl；例句 exam_corpus > llm）、词性/主义项匹配、分辨率（图片）。
+1. `scorer_ver` 落后的候选重评分。评分输入：可读性（大纲外 token 重罚）、长度窗口、来源先验（释义 manual > llm_rewrite > freedict > wordnet；例句 exam_corpus > llm）、词性/主义项匹配、分辨率（图片）。图片**不含来源先验**（scorer/4）：一张生成图和一张图库照片在分辨率与主义项匹配相同时完全同分。
+
+   图片排序还有两项**不进入 auto_score** 的因素，因为它们依赖会变的状态，缓存进按 `scorer_ver` 失效的分数里会让一次无关编辑触发全库重评：
+   - **语义贴切度**（占 0.60，主导项）：该图与本词 slot-1 例句的 CLIP 余弦，来自 `clip_scores`。整词全有或全无——池子里只要有一个候选没算过，整词回退到纯画质排序，否则等于拿两把尺子量。缺席时的排序与语义评分存在之前逐位一致。
+   - **重复图惩罚**：全库范围内别的词已经选中的 `file_hash` 扣 0.10；同一道题内（干扰项互为题友）则直接**否决**——四选一里出现两张相同的图没有正确答案，这不是分数问题。
 2. 槽位无选择 → 指向得分最高的 available 候选，`selected_by='auto'`。
 3. `auto` 且未 pin → 仅当别的候选超出当前候选一个**滞回边际 δ** 才切换（防评分接近时来回摆动）。切换即 `selection_rev++`、记事件。
 4. `pinned=1` → 自动选择永不触碰。**例外**：被 pin 的候选被拒绝或其词离开 active_words 时，引擎清除 pin、按规则 2/3 回退、重置 `approved=0`、写事件进管理收件箱。
@@ -259,9 +270,11 @@ job_state (      -- 队列不持久化：QUEUED/RUNNING 只存在于内存（InF
                  -- 此表只记需要跨重启记住的失败态；成功即删行，无行即健康
     PRIMARY KEY (kind, subject_type, subject_id),
     kind,            -- fetch_definitions / fetch_examples / fetch_etymology / fetch_images
-                     -- gen_image_sdxl / rewrite_definition / synth_tts / ...
+                     -- score_image_clip / gen_image_sdxl / gen_image_codex
+                     -- rewrite_definition / synth_tts / ...
     subject_type, subject_id,
-    rate_key,        -- freedict / unsplash / pexels / pixabay / sdxl / edge_tts / llm / cpu
+    rate_key,        -- freedict / unsplash / pexels / pixabay / wikimedia / openverse
+                     -- tatoeba / sdxl / clip / codex / edge_tts / llm / cpu
     status,          -- backoff / dead / waived
     attempts, next_retry_at, last_error
 )
@@ -318,6 +331,7 @@ VIEW aux_liveness = 存在依赖边指向它 ∨ 存在干扰项绑定引用它
 | 分词提取 | 释义候选 | text_hash ‖ tokenizer_ver ‖ lemmatizer_ver | 仅工具版本升级（候选不可变） |
 | 依赖边 / 大纲外出现 | — | 无 —— **纯视图** | 永不；读取时现算，词表变更零成本即时生效 |
 | 候选评分 | 候选 | scorer_ver（其余输入不可变或为视图） | scorer 升级；辅助词提升后的廉价批量重评 |
+| 图文语义分 | (图片哈希, 文本哈希, model_ver)（内容寻址） | 键即全部输入 | 从不原地重算——换模型/换算法写的是**新行**，旧行失去读者。文本一变（换了 slot-1 例句）也只是查一个不存在的键，缺席即退化 |
 | TTS | input_hash（内容寻址） | canonical(text) ‖ voice ‖ engine ‖ engine_ver ‖ params | 从不原地重算——期望集合差分产生新行，孤儿走 GC |
 | 依赖提取哈希 H_dep | 释义候选 | text_hash ‖ sorted[(token, 分类)] ‖ ver | 按**出现 token** 记分类：提升一个大纲外词只失效包含它的那几条释义，绝不失效全部 5500 条 |
 | 学习计划 | 全局单例 | algo_ver ‖ 参数 ‖ 有序词集 ‖ 有序边集 ‖ 分组特征 | 哈希不符（2 s 防抖），毫秒级重算 |
@@ -339,7 +353,7 @@ VIEW aux_liveness = 存在依赖边指向它 ∨ 存在干扰项绑定引用它
 | **Store** | 独占 SQLite。一个写入任务（唯一写连接）+ 4–8 只读连接池。一切变更以类型化 `WriteOp` 走写入任务的 mpsc 通道，oneshot 回执 |
 | **Change Bus** | `broadcast<ChangeEvent>`。写入任务在每个事务提交后发布被触及的实体键。仅作边沿触发加速 |
 | **Reconciler** | 核心循环。被唤醒（事件/定时/启动）→ 取读快照 → 跑期望状态规则 → 与在途任务及 job_state（退避/死信/豁免）求差 → 发新任务给 Dispatcher；同时内联重算就绪度与 blocker |
-| **Dispatcher** | 每外部源一条泳道（freedict、wiktionary、unsplash、pexels、pixabay、llm、edge_tts、sdxl）+ 本地 `cpu` 泳道（提取、评分、图重算、干扰项、WordNet 查询）。每泳道：governor 令牌桶 + 并发信号量 + 工作任务 |
+| **Dispatcher** | 每外部源一条泳道（freedict、wiktionary、unsplash、pexels、pixabay、wikimedia、openverse、tatoeba、llm、edge_tts、sdxl、clip、codex）+ 本地 `cpu` 泳道（提取、评分、图重算、干扰项、WordNet 查询）。每泳道：governor 令牌桶 + 并发信号量 + 工作任务 |
 | **Executors** | 执行单个任务：调适配器 → 类型化结果 → 提交**单个原子** WriteOp（结果行与记录的输入哈希同事务）。执行器不持有 DB 连接 |
 | **Adapters** | trait 对象封装外部工具。HTTP 走 reqwest；子进程走 `tokio::process`（kill_on_drop + 硬超时）；WordNet 为进程内内存数据。适配器是纯函数：类型化输入 → 类型化输出，不见数据库 |
 | **Admin API** | 同进程 axum 路由，服务 TS 管理前端。每个变更端点只是到 WriteOp 的薄翻译——因此每个编辑行为天然触发 ChangeEvent。管理端与引擎之间不存在第二条通道 |
@@ -370,7 +384,7 @@ SQLite：`WAL + synchronous=NORMAL + foreign_keys=ON + busy_timeout=5000`。单�
 - 超过每类上限（HTTP 抓取 8、TTS 5、SDXL 3、LLM 4）→ `dead`。死信从推导中排除，浮出到管理端**死信箱**（联表词条、错误、尝试史）。人的操作同样只是 DB 写：**重试** = 删掉 job_state 行（需求即刻重新推导出）；**豁免（waive）** = "此需求由缺席永久满足"——这正是兜底规则的触发条件：Wiktionary 被豁免 → Morfessor 上；三个图库全部标记/死信/豁免且无候选无人工图 → SDXL 上。
 - 错误分类学：`Permanent`（404 等合法空结果——记完成标记，不重试）/ `Transient`(网络、5xx、超时——退避) / `RateLimited{until}`（整条泳道停靠到指定时刻，不计尝试次数）。
 
-优先级（小者先，平局按 frequency_rank 再 id，完全确定）：**P0** 解锁一切的廉价本地计算（提取、选择、图重算）；**P1** 编辑作废资产的再生成、阻塞待发布的一切；**P2** 存量回填（初始抓取、TTS、干扰项），按学习顺序排——最早的组最先变得可发布；**P3** 昂贵生成兜底（SDXL、LLM 改写）。
+优先级（小者先，平局按 frequency_rank 再 id，完全确定）：**P0** 解锁一切的廉价本地计算（提取、选择、图重算）；**P1** 编辑作废资产的再生成、阻塞待发布的一切；**P2** 存量回填（初始抓取、TTS、干扰项），按学习顺序排——最早的组最先变得可发布；**P3** 昂贵生成兜底（SDXL、codex、LLM 改写）。
 
 ## 适配器
 
@@ -390,6 +404,8 @@ enum AdapterError { Permanent(String), Transient(String), RateLimited { until: I
 | LLM 改写 | HTTP（OpenAI 兼容端点）；prompt 以版本哈希钉住；产出重分词复检，仍含大纲外 token 则拒绝（= Permanent，浮给人） |
 | Unsplash / Pexels / Pixabay | HTTP；元数据 + 下载字节 → 内容寻址库 |
 | SDXL | HTTP 到本地 ComfyUI（POST /prompt，轮询 /history）；泳道并发 1，超时 10 min |
+| CLIP | HTTP 到**进程外边车**（`adapters/clip`，POST /score）。GPU 不在引擎容器里，且每任务重载模型的代价远超打分本身，所以它是常驻服务而非子进程适配器。请求只传内容哈希，边车自己解析媒体库路径。契约见 `docs/contracts/clip-service.md` |
+| codex | 子进程（`adapters/codex`），把词的 slot-1 例句交给外部图像生成器；超时 15 min。适配器项目不在盘上、或 `MORPHO_CODEX_BIN` 找不到二进制 → 源**禁用**（同"没有 API key"），绝不死信刷屏 |
 | edge-tts | 子进程（adapters/tts），60 s 超时，stderr 进 last_error |
 | Morfessor | 子进程，stdin/stdout 批处理行协议，一次进程摊薄一批词 |
 
@@ -397,7 +413,9 @@ enum AdapterError { Permanent(String), Transient(String), RateLimited { until: I
 
 **A. 编辑 benevolent 的选定释义文本。** 管理端一次 WriteOp：铸造 manual 候选 + 选择改指（human）。下个周期：H_tts 不符 → TTS 任务（P1）；H_dep 不符 → 提取任务（P0）即刻重跑，重写该释义的依赖边与大纲外标记。若编辑引入了 "altruistic"（大纲外）→ oos 队列出现新条目、该词 ready 翻 false（blocker: oos_pending），同时 LLM 改写任务（P3）已在排队——人打开队列时规避草稿已经躺在候选里。依赖集变化 → H_graph 变化 → 防抖后计划重建。TTS 完成、大纲外词处理完，就绪度自动翻回。全程无人触发任何"阶段"。
 
-**B. 拒绝 abandon 的选定图片。** 一次 WriteOp：候选置 rejected。下周期：选择指向被拒候选 → 自动选择（P0）从余下候选重选；无候选可选 → 查完成标记，未查过的图库 → 抓取任务（P2）；三源尽墨 → SDXL（P3）。期间 abandon ready=false（missing_image），**所有把 abandon 当干扰项的词**同时翻 false（distractor_not_ready）——因为就绪度是对当前状态的派生数学，没有任何代码需要知道反向干扰边的存在。
+**B. 拒绝 abandon 的选定图片。** 一次 WriteOp：候选置 rejected。下周期：选择指向被拒候选 → 自动选择（P0）从余下候选重选；无候选可选 → 查完成标记，未查过的图库 → 抓取任务（P2）；图库尽墨 → 二次宽松检索 → SDXL（P3）→ codex（P3）。期间 abandon ready=false（missing_image），**所有把 abandon 当干扰项的词**同时翻 false（distractor_not_ready）——因为就绪度是对当前状态的派生数学，没有任何代码需要知道反向干扰边的存在。
+
+图片链条的最后一环与前面所有环都不同：**它的触发条件不是"没有"，而是"不贴切"**。前面每一环问的都是"这个词一张图都没有吗"，而一个词完全可能拥有一池子清晰、授权干净、却画的是别的东西的照片——`adapt` 拿到的是电源适配器的棚拍图。只有 CLIP 能看见这件事，所以 codex 源读的是"本词最好的一张图对着自己例句的分数低于阈值"。它必须以 slot-1 例句为条件生成（模式 1 就是让学习者拿句子对图，而裁决生成结果的 CLIP 查询用的也正是这个句子；用别的东西作条件等于拿一道没考过的题去评卷）；**没有例句的词直接推迟**，等例句落地后的下一个周期自然合格，无需清任何标记。
 
 **C. 把大纲外词 serene 处理为辅助词。** 一个事务：插入 auxiliary 词行 + oos 行置 resolved。两条独立涟漪：新词零资产 → 全套抓取 fan-out（P2，各泳道限流下）；**所有包含 serene 这个 token 的释义**的 H_dep 改变（该 token 分类 oov → auxiliary）——按出现 token 记哈希的设计让爆炸半径精确到这几条释义。serene 自己的释义到位、选定、提取后，H_graph 变化 → 计划把它排在所有引用它的词**之前**，TTS/图片/干扰项照目标词一样流过。引用它的词保持未就绪（blocker：依赖未就绪）直到辅助词建满——然后就绪度在一次校验扫描里级联翻绿。
 

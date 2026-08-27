@@ -5,7 +5,7 @@ design whitepaper) + `docs/contracts/` (the interface contracts) to pick the
 project up cold. This file holds what the code cannot tell you: current state,
 how to run things, and the traps that cost real time.
 
-Last updated: 2026-08-27, scorer/3 unblock (last cut: release 1.4, 2026.08.26+b5ce3f0e).
+Last updated: 2026-08-27, wave-9 CLIP-in-engine + codex source (last cut: release 1.5, 2026.08.27+d034466d).
 
 ---
 
@@ -15,7 +15,7 @@ Last updated: 2026-08-27, scorer/3 unblock (last cut: release 1.4, 2026.08.26+b5
 |---|---|
 | `core/` | Rust `morphod` — reconciler + admin API + exporter (one binary) |
 | `admin-ui/` | React/AntD admin console (dev: MSW-mocked; real: proxies `/api`) |
-| `adapters/` | Python CLIs: tts (edge-tts→Opus), morfessor, sdxl (ComfyUI client) |
+| `adapters/` | Python: tts (edge-tts→Opus), morfessor, sdxl (ComfyUI client), codex (image generator) as subprocess CLIs; **clip** as a host-side HTTP sidecar |
 | `app/` | Android app (Kotlin/Compose); `app/content_media/` holds the media pack (git-ignored) |
 | `data/working.db` | THE production content database (SQLite WAL) — never in `core/data/`, see trap #1 |
 | `data/media/{hash[:2]}/{hash}.{webp,ogg}` | content-addressed media store |
@@ -26,7 +26,7 @@ Last updated: 2026-08-27, scorer/3 unblock (last cut: release 1.4, 2026.08.26+b5
 | `ops/` | reusable operator scripts (persisted from the ephemeral scratchpad) |
 | `~/Code/vendor/ComfyUI/` | ComfyUI + `.venv` (ROCm torch, open_clip) for CLIP/SDXL |
 
-The working DB is currently at schema `user_version` 6 (wave-7 gloss anchors).
+The working DB is currently at schema `user_version` 7 (wave-9 `clip_scores` + the `codex` image source).
 
 ## 2. Starting the engine
 
@@ -55,6 +55,53 @@ engine (or a stale registry entry after a session ended); it is not a hang.
 Secrets go in env only, never in a committed file. The Pixabay key lives in the
 owner's head / this session's env; image sources without a key are simply
 disabled (the chain falls through to the keyless sources + generation).
+
+### 2.1 Environment variables
+
+Everything below is optional, and every default is the behaviour that predates
+the switch. The wave-9 additions are the last six.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `MORPHOD_CONFIG` / `MORPHOD_DATA_DIR` / `MORPHOD_RELEASES_DIR` / `MORPHOD_BIND` / `MORPHOD_ADMIN_UI_DIST` / `MORPHOD_ADAPTERS_ROOT` | from `morphod.toml` | Paths and bind address. |
+| `MORPHO_WORDNET_DIR` | unset | WNdb directory. Unset disables the WordNet definition fallback and semantic grouping. |
+| `MORPHO_CORPUS_PATH` | unset | Exam-corpus JSONL. Unset disables that one example source. |
+| `UNSPLASH_ACCESS_KEY` / `PEXELS_API_KEY` / `PIXABAY_API_KEY` | unset | Stock providers. Unset = that provider is disabled, never queried. |
+| `COMFYUI_URL` | unset | SDXL generation. Unset = no local generation; words honestly report `missing_image`. |
+| `MORPHO_SCENE_MODE` | `0` | Prompt SDXL with the word's own slot-1 sentence rather than the bare concept. |
+| **`MORPHO_CLIP_URL`** | unset | The CLIP sidecar. **Unset means image selection has no semantic term at all** and ranks on the quality prior alone — bit for bit the behaviour that predates it. Set it to `http://host.docker.internal:30013` from the container, `http://127.0.0.1:30013` natively. This is the one switch that turns semantic image selection on. |
+| **`MORPHO_CLIP_MODEL`** | `ViT-B-32/laion2b_s34b_b79k` | The model the sidecar is expected to be serving. It is stored in `clip_scores.model_ver`, and the executor **refuses** a sidecar reporting anything else — a silent model swap would file two models' cosines in one column. Changing it does not invalidate the old rows; it simply stops reading them. |
+| **`MORPHO_CODEX_ENABLED`** | `0` | The codex generation source. Doubly gated: it also needs `adapters/codex` on disk and `MORPHO_CODEX_BIN` to resolve. |
+| **`MORPHO_CODEX_BIN`** | `codex` | The generator binary. **The adapter reads the same variable**, so a machine where it does not exist has the source disabled rather than dead-lettering every word. |
+| **`MORPHO_CODEX_THRESHOLD`** | `0.22` | Raw CLIP cosine below which a word's best picture is worth replacing. A good match lands near 0.28; the bottom decile falls under 0.20. |
+| **`MORPHO_CODEX_BATCH`** | `8` | Most codex jobs one derivation may ask for. The queue is derived, so the rest come back next pass. |
+| `MORPHO_CODEX_PROMPT_VER` | `codex/1` | Prompt template version. Bumping it moves the job subject, which is how you ask for the whole pass again without clearing a mark. |
+| `MORPHO_CODEX_ARGS` / `MORPHO_CODEX_TIMEOUT_S` / `MORPHO_CODEX_BLANK_STDDEV` / `MORPHO_CODEX_WEBP_QUALITY` / `MORPHO_CODEX_MODEL` | see `adapters/codex/README.md` | Adapter-side only; morphod does not read them. |
+| `MORPHO_CLIP_MEDIA_ROOT` | `data/media` | Sidecar-side only: where *it* sees the media library, which is not where the container sees it. |
+
+### 2.2 Starting the CLIP sidecar
+
+It is a separate process because it needs the GPU, and it is *not* started by
+`docker compose` — it runs on the host, under the venv that already holds a
+working ROCm build of torch:
+
+```bash
+PYTHONPATH=/home/abysser/Code/learning/Morpho/adapters/clip/src \
+/home/abysser/Code/vendor/ComfyUI/.venv/bin/python -m morpho_clip \
+  --media-root /home/abysser/Code/learning/Morpho/data/media \
+  --host 0.0.0.0 --port 30013
+```
+
+`--host 0.0.0.0` because morphod is containerized and reaches the host from
+outside its network namespace; `docker-compose.yml` maps
+`host.docker.internal` onto the host gateway so the URL in `MORPHO_CLIP_URL`
+resolves. Health check: `curl -sm3 http://127.0.0.1:30013/health` — it must
+report `"algo_ver":"clip/1"` and the model named in `MORPHO_CLIP_MODEL`, or the
+engine will refuse every score it produces.
+
+First request loads the model (a few seconds, and a weight download the first
+time ever). It is idle otherwise: the whole lexicon is a few minutes of work and
+then nothing until a candidate arrives.
 
 ## 3. The reconciler model (how content gets made)
 
@@ -88,10 +135,40 @@ CLIP need the ComfyUI venv: `~/Code/vendor/ComfyUI/.venv/bin/python`.
   corpus and writes per-lemma top-K sentences to a JSON; a follow-up step mints
   them as `manual` example candidates and selects slot 1 (see release 1.4 notes).
   Highlight offsets are UTF-8 BYTE offsets into the CANONICALIZED text.
-- **Re-match images to sentences (CLIP):** `~/Code/vendor/ComfyUI/.venv/bin/python
-  ops/clip_rematch.py` — for each word, embeds its image candidates + its slot-1
-  sentence and re-selects the best image-text match, with per-question visual
-  de-duplication. ~5 min on the 7900 XTX for the full lexicon.
+- **Re-match images to sentences (CLIP): the engine does this now.** `ops/clip_rematch.py`
+  is superseded and kept only for reference. It ran twice and changed nothing
+  both times, for a reason worth remembering: approval implies a pin, and a
+  pinned slot is untouchable — so a script that re-selects through the admin API
+  hits a frozen library, exactly as trap §7.9 says. The engine reads the same
+  cosines natively, at ranking time, where a pin is the only thing that can stop
+  it and un-approving releases it.
+
+  **Deploying it (the wave-9 ship sequence).** This is a real re-selection over
+  the whole library, so budget a convergence wait and a re-approval:
+
+  1. Start the sidecar (§2.2) and verify `/health` reports the model named in
+     `MORPHO_CLIP_MODEL`. A mismatch fails every job permanently — loudly, on
+     purpose.
+  2. Set `MORPHO_CLIP_URL` and restart the engine. Nothing moves yet: the first
+     sweeps only *derive* `score_image_clip` jobs, and a word is ranked on
+     quality alone until its whole pool is scored. Watch
+     `SELECT COUNT(*) FROM clip_scores` climb; the full lexicon is a few minutes.
+  3. **Nothing will re-select until the pins come off.** Every settled slot is
+     approved, and approval pins. `python3 ops/unapprove_auto.py image` releases
+     the pin approval put on `auto` slots (a human override keeps its own).
+  4. Converge. The next sweeps rescore under `scorer/5` and re-select on the
+     semantic term. Expect real movement — this is the first time anything in the
+     engine has known what a picture depicts.
+  5. `MORPHO_API=http://127.0.0.1:30012 python3 ops/bulk_approve.py`, then
+     `GET /api/releases/preview`. `question_images_distinct` should now be
+     structurally clean: automatic selection refuses a picture a question mate
+     shows.
+  6. Only then, if you want it: `MORPHO_CODEX_ENABLED=1`. It is P3 and batched,
+     so it trickles rather than floods.
+
+  Expected convergence: step 2 is bounded by the sidecar (minutes); step 4 by the
+  60 s sweep plus TTS re-synthesis for nothing (images have no TTS), so it is
+  fast; step 5 is the expensive one, exactly as trap §7.9 describes.
 - **Resolve OOV (out-of-scope words in definitions):** three modes via
   `POST /api/oov/{lemma}/resolve` — `{"mode":"promote"}` (make it a learnable
   auxiliary word), `{"mode":"rewrite","def_cand_id","text"}`, or
@@ -133,8 +210,15 @@ CLIP need the ComfyUI venv: `~/Code/vendor/ComfyUI/.venv/bin/python`.
      ```
      If most rows say yes, the scorer picked badly — fix the scorer (trap §7.8)
      rather than promoting a few hundred words into the lexicon.
-   - `question_images_distinct` → two of a question's four images are the same
-     (or CLIP-identical family). Re-select a distinct candidate for one side.
+   - `question_images_distinct` → two of a question's four images are the same.
+     Since wave 9 automatic selection cannot *create* this: a picture one of the
+     word's bound distractors currently shows is removed from its pool outright,
+     and an incumbent that duplicates a mate is replaced without having to clear
+     the hysteresis margin. What can still reach the gate is a **pinned** slot (a
+     human's choice outranks the veto) or a word whose entire pool is spoken for
+     — the reconciler never *empties* a slot, so a cornered word keeps its
+     duplicate and reports it here. The fix for the second case is more
+     candidates, which `needs_image_candidates` is already asking for.
    - `*_not_approved` → run `ops/bulk_approve.py`.
 2. `POST /api/releases/export {"notes":"..."}` → writes `data/releases/export-<ts>/`
    with `release.db`, `img/`, `audio/`, `manifest.json`. Version is
@@ -219,7 +303,23 @@ read it). `word_id` is stable across releases, so user progress survives updates
     The 2026-08-27 unblock found 182 such lemmas behind the 224 the queue
     actually reported. Reopening `auto_closed` on re-entry is an engine fix
     worth filing.
-11. **A promoted OOV lemma can become a permanent blocker.** `{"mode":"promote"}`
+11. **CLIP scores are not stale, they are absent.** `clip_scores` is keyed on
+    `(file_hash, text_hash, model_ver)`, so nothing is ever "out of date" — a
+    changed slot-1 sentence, a changed model or a bumped `clip/N` all just look
+    up a key that is not there, and the word falls back to quality ranking until
+    the sidecar fills it in. Consequences worth knowing: re-selecting a sentence
+    a word once had costs nothing (the scores are still there under that text's
+    hash); changing `MORPHO_CLIP_MODEL` re-scores the whole library rather than
+    correcting it; and the old rows are never cleaned up, which is fine — they
+    are a few dozen bytes each and `media_gc` has no opinion about them.
+12. **The semantic term is per word and all-or-nothing.** A pool where some
+    candidates are scored and some are not ranks on quality alone. So a word does
+    not move the instant its first score lands — it moves when its *last* one
+    does. Mid-backfill, "why has nothing changed" is usually this, and
+    `SELECT COUNT(*) FROM image_candidates ic WHERE ic.status='available' AND NOT
+    EXISTS (SELECT 1 FROM clip_scores c WHERE c.file_hash = ic.file_hash)` is the
+    number to watch.
+13. **A promoted OOV lemma can become a permanent blocker.** `{"mode":"promote"}`
     creates an *active* auxiliary that now needs a definition, an example, an
     image and TTS like any other word — and lemmas like `crosspiece`,
     `adposition` or the plural `integers` have no usable candidates anywhere, so
@@ -241,12 +341,21 @@ read it). `word_id` is stable across releases, so user progress survives updates
   media synced 25904 = manifest). ~140 more images pending via systemd timer
   `morpho-genimg.timer` (batch 40, every 5h15m, self-disabling).
   word_id stability preserved — user progress carries over from 1.4.
+  **The `morpho-genimg.timer` that produced those images is disabled and is not
+  coming back.** Wave 9 productized it: `adapters/codex` is the sole future
+  generation path, driven by the engine's own `gen_image_codex` rule, and the
+  `ops/` scripts around it (`genimg_cron.sh`, `verify_genimg.py`) are reference
+  material for what the prompt and the gates say.
 - The scorer/2 → scorer/3 incident and its resolution are §7.8; the diagnosis
   SQL for "does this slot need human judgment" is in §5.1.
 - **Shipped:** release 1.4 (`2026.08.26+b5ce3f0e`): 4253 words, real dictionary
   definitions, OpenSubtitles example sentences (flagged 62%→0.4%), CLIP-matched
   images, 229 Chinese gloss anchors, per-question image distinctness, bottom-
   anchored quiz layout, prompt auto-play, adaptive mode-2 caption band.
+- **Built in wave 9, not yet deployed:** CLIP scoring inside the engine
+  (`MORPHO_CLIP_URL`, default off) and the codex image source
+  (`MORPHO_CODEX_ENABLED`, default off). Code and docs only — the deploy is §4's
+  ship sequence and has not been run against the live database.
 - **Open backlog** (see memory `morpho-image-aptness-backlog`):
   - SDXL scene-image generation for words with no apt image in the pool — built
     (`MORPHO_SCENE_MODE=1`, core wave 9, default OFF), run in an off-peak GPU
@@ -261,6 +370,9 @@ read it). `word_id` is stable across releases, so user progress survives updates
 ## 9. The subsystems' own test/build commands
 
 - core: `cd core && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
-- adapters: `uv run --directory adapters/<name> pytest`
+- adapters: `uv run --directory adapters/<name> pytest` — `common`, `tts`,
+  `morfessor`, `sdxl`, `codex`, `clip`. None of them needs a GPU, a model or a
+  quota: the clip suite substitutes a stub for the model and the codex suite
+  substitutes a stub script for the generator.
 - admin-ui: `cd admin-ui && pnpm exec tsc --noEmit && pnpm exec eslint . && pnpm exec vitest run && pnpm build`
 - app: see §6.4
