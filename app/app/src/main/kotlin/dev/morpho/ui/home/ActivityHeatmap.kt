@@ -33,8 +33,10 @@ fun ActivityHeatmap(
     data: HeatmapData,
     modifier: Modifier = Modifier,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
-    val empty = MaterialTheme.colorScheme.surfaceContainerHighest
+    // The grid warms from a resting mist cell to the icon's copper as a day fills up.
+    val ink = MorphoTheme.accents.motifBase
+    val copper = MorphoTheme.accents.motifActive
+    val empty = MorphoTheme.accents.ringTrack
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val labelStyle = MaterialTheme.typography.labelSmall
     val dayLabels = mapOf(0 to "M", 2 to "W", 4 to "F")
@@ -81,10 +83,10 @@ fun ActivityHeatmap(
                 val row = index % ROWS
                 val color = when (cell.intensity) {
                     0 -> empty
-                    1 -> primary.copy(alpha = 0.2f)
-                    2 -> primary.copy(alpha = 0.4f)
-                    3 -> primary.copy(alpha = 0.7f)
-                    else -> primary
+                    1 -> ink.copy(alpha = 0.45f)
+                    2 -> ink
+                    3 -> copper.copy(alpha = 0.7f)
+                    else -> copper
                 }
                 drawRoundRect(
                     color = color,

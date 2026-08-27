@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Mirrors MorphoLightColorScheme.background -->
-    <color name="morpho_window_background">#FAFBFD</color>
-    <color name="morpho_primary">#2461FF</color>
+    <!-- Mirrors MorphoLightColorScheme.background — the icon's parchment. -->
+    <color name="morpho_window_background">#F2EDE2</color>
+    <!-- Mirrors MorphoLightColorScheme.primary — the icon's ink blue. -->
+    <color name="morpho_primary">#22314A</color>
     <color name="morpho_icon_background">#22314A</color>
 </resources>

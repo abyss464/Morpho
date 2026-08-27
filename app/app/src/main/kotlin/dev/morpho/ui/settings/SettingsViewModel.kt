@@ -13,6 +13,7 @@ import dev.morpho.data.repository.SettingsRepository
 import dev.morpho.data.sound.SfxEvent
 import dev.morpho.di.AppContainer
 import dev.morpho.domain.model.ActivityChartStyle
+import dev.morpho.domain.model.ThemeMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,6 +63,15 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setActivityChartStyle(value: ActivityChartStyle) {
         viewModelScope.launch { repo.setActivityChartStyle(value) }
+    }
+
+    /**
+     * Repaints the whole app the moment it lands: `MainActivity` collects the same
+     * settings flow, so nothing here has to reach for the theme.
+     */
+    fun setThemeMode(value: ThemeMode) {
+        viewModelScope.launch { repo.setThemeMode(value) }
+        container.playSfx(SfxEvent.TAP)
     }
 
     // ---------------------------------------------------------------- backup

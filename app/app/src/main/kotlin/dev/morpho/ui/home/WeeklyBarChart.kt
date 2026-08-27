@@ -27,8 +27,9 @@ fun WeeklyBarChart(
     activity: List<DailyActivity>,
     modifier: Modifier = Modifier,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
-    val dimmed = primary.copy(alpha = 0.35f)
+    // Today is the copper diamond of the row; the rest of the week rests in mist blue.
+    val todayColor = MorphoTheme.accents.motifActive
+    val dimmed = MorphoTheme.accents.motifBase.copy(alpha = 0.55f)
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val labelStyle = MaterialTheme.typography.labelSmall
     val today = LocalDate.now()
@@ -50,7 +51,7 @@ fun WeeklyBarChart(
             val totalGap = gap * (barCount - 1)
             val barWidth = (size.width - totalGap) / barCount
             val minBarHeight = 4.dp.toPx()
-            val cornerRadius = CornerRadius(4.dp.toPx())
+            val cornerRadius = CornerRadius(2.dp.toPx())
 
             activity.take(7).forEachIndexed { index, day ->
                 val isToday = day.date == today
@@ -67,7 +68,7 @@ fun WeeklyBarChart(
                 val x = index * (barWidth + gap)
                 val y = size.height - h
                 drawRoundRect(
-                    color = if (isToday) primary else dimmed,
+                    color = if (isToday) todayColor else dimmed,
                     topLeft = Offset(x, y),
                     size = Size(barWidth, h),
                     cornerRadius = cornerRadius,
@@ -86,7 +87,7 @@ fun WeeklyBarChart(
                     text = dayLabels[dayIndex],
                     style = labelStyle,
                     fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isToday) primary else labelColor,
+                    color = if (isToday) todayColor else labelColor,
                     modifier = Modifier.align(Alignment.CenterVertically),
                 )
             }

@@ -2,6 +2,7 @@ package dev.morpho.data.repository
 
 import dev.morpho.domain.model.ActivityChartStyle
 import dev.morpho.domain.model.ProgressDefaults
+import dev.morpho.domain.model.ThemeMode
 import dev.morpho.domain.model.UserMetaKeys
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +23,7 @@ data class MorphoSettings(
     val sfxVolume: Float = ProgressDefaults.SFX_VOLUME,
     val reducedMotion: Boolean? = null,
     val activityChartStyle: ActivityChartStyle = ActivityChartStyle.BAR,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
 )
 
 class SettingsRepository(private val progress: ProgressRepository) {
@@ -44,6 +46,9 @@ class SettingsRepository(private val progress: ProgressRepository) {
             activityChartStyle = progress.metaValue(UserMetaKeys.ACTIVITY_CHART_STYLE)
                 ?.let { ActivityChartStyle.fromDb(it) }
                 ?: ActivityChartStyle.BAR,
+            themeMode = progress.metaValue(UserMetaKeys.THEME_MODE)
+                ?.let { ThemeMode.fromDb(it) }
+                ?: ThemeMode.SYSTEM,
         )
         state.value = loaded
         return loaded
@@ -79,6 +84,11 @@ class SettingsRepository(private val progress: ProgressRepository) {
     suspend fun setActivityChartStyle(value: ActivityChartStyle) {
         progress.setMeta(UserMetaKeys.ACTIVITY_CHART_STYLE, value.dbValue)
         state.value = state.value.copy(activityChartStyle = value)
+    }
+
+    suspend fun setThemeMode(value: ThemeMode) {
+        progress.setMeta(UserMetaKeys.THEME_MODE, value.dbValue)
+        state.value = state.value.copy(themeMode = value)
     }
 
     companion object {

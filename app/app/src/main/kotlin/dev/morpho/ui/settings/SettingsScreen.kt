@@ -47,6 +47,7 @@ import dev.morpho.data.sound.SfxEvent
 import dev.morpho.di.AppContainer
 import dev.morpho.di.StartupReport
 import dev.morpho.domain.model.ActivityChartStyle
+import dev.morpho.domain.model.ThemeMode
 import dev.morpho.ui.designsystem.component.PreviewBox
 import dev.morpho.ui.designsystem.component.ThemePreviews
 import dev.morpho.ui.designsystem.theme.MorphoTheme
@@ -105,6 +106,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding),
             onDailyGoalChange = viewModel::setDailyGoal,
+            onThemeModeChange = viewModel::setThemeMode,
             onActivityChartStyleChange = viewModel::setActivityChartStyle,
             onSoundChange = viewModel::setSoundEnabled,
             onVolumeChange = viewModel::setSfxVolume,
@@ -219,6 +221,7 @@ private fun SettingsContent(
     contentVersion: String?,
     backupStatus: String?,
     onDailyGoalChange: (Int) -> Unit,
+    onThemeModeChange: (ThemeMode) -> Unit,
     onActivityChartStyleChange: (ActivityChartStyle) -> Unit,
     onSoundChange: (Boolean) -> Unit,
     onVolumeChange: (Float) -> Unit,
@@ -258,16 +261,40 @@ private fun SettingsContent(
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         SectionHeader(stringResource(R.string.settings_section_display))
 
+        SettingRow(
+            title = stringResource(R.string.settings_theme),
+            summary = stringResource(R.string.settings_theme_summary),
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            ChoiceChip(
+                label = stringResource(R.string.settings_theme_system),
+                selected = settings.themeMode == ThemeMode.SYSTEM,
+                onClick = { onThemeModeChange(ThemeMode.SYSTEM) },
+            )
+            ChoiceChip(
+                label = stringResource(R.string.settings_theme_light),
+                selected = settings.themeMode == ThemeMode.LIGHT,
+                onClick = { onThemeModeChange(ThemeMode.LIGHT) },
+            )
+            ChoiceChip(
+                label = stringResource(R.string.settings_theme_dark),
+                selected = settings.themeMode == ThemeMode.DARK,
+                onClick = { onThemeModeChange(ThemeMode.DARK) },
+            )
+        }
+
         SettingRow(title = stringResource(R.string.settings_activity_chart))
         Row(
             horizontalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
-            ChartStyleOption(
+            ChoiceChip(
                 label = stringResource(R.string.settings_activity_chart_bar),
                 selected = settings.activityChartStyle == ActivityChartStyle.BAR,
                 onClick = { onActivityChartStyleChange(ActivityChartStyle.BAR) },
             )
-            ChartStyleOption(
+            ChoiceChip(
                 label = stringResource(R.string.settings_activity_chart_heatmap),
                 selected = settings.activityChartStyle == ActivityChartStyle.HEATMAP,
                 onClick = { onActivityChartStyleChange(ActivityChartStyle.HEATMAP) },
@@ -431,7 +458,7 @@ private fun ToggleRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChartStyleOption(
+private fun ChoiceChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
@@ -441,8 +468,8 @@ private fun ChartStyleOption(
         onClick = onClick,
         label = { Text(label) },
         colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
         ),
     )
 }
@@ -457,6 +484,7 @@ private fun SettingsPreview() {
             contentVersion = "2026.08.26+ff7fd531",
             backupStatus = null,
             onDailyGoalChange = {},
+            onThemeModeChange = {},
             onActivityChartStyleChange = {},
             onSoundChange = {},
             onVolumeChange = {},

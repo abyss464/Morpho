@@ -5,161 +5,191 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Morpho brand palette: electric morpho blue on deep neutrals
- * (docs/contracts/app-design.md, "Brand").
+ * Morpho brand palette, derived from the app icon (`res/drawable/ic_launcher_foreground.xml`).
  *
- * A **static** branded scheme, not Material You dynamic colour — the butterfly blue
- * is the product's identity and must survive on every device. Tonal roles are
- * derived from the three brand seeds:
+ * Four seeds, and nothing outside them:
  *
- *   primary   #2461FF  morpho blue
- *   secondary #00B8A9  teal, correctness accents
- *   error     #E5484D
+ *   ink blue    #22314A  the icon's field — light-theme text, dark-theme ground
+ *   copper gold #C08F4A  the icon's active diamond — the single accent
+ *   parchment   #F2EDE2  the icon's page — light-theme ground, dark-theme text
+ *   mist blue   #6B7893  the icon's resting square — the quiet secondary
+ *
+ * A **static** branded scheme, not Material You dynamic colour: the icon is the
+ * product's identity and must survive on every device (docs/contracts/app-design.md,
+ * "Brand"). Each seed carries a tonal ramp so Material's roles resolve without
+ * inventing hues that are not on the icon.
  */
 object MorphoPalette {
 
-    // --- Primary: morpho blue tonal ramp ---
-    val Blue10 = Color(0xFF00164A)
-    val Blue20 = Color(0xFF002676)
-    val Blue30 = Color(0xFF0B3AA8)
-    val Blue40 = Color(0xFF2461FF) // brand primary
-    val Blue60 = Color(0xFF6E93FF)
-    val Blue80 = Color(0xFFB4C6FF)
-    val Blue90 = Color(0xFFDCE3FF)
-    val Blue95 = Color(0xFFEFF1FF)
+    // --- Ink blue: the icon's field. Primary in light, ground in dark. ---
+    val Ink05 = Color(0xFF0B111B)
+    val Ink10 = Color(0xFF131C2A)
+    val Ink15 = Color(0xFF1A2536)
+    val Ink20 = Color(0xFF22314A) // icon background, brand ink
+    val Ink25 = Color(0xFF2A3A57)
+    val Ink30 = Color(0xFF35496E)
+    val Ink40 = Color(0xFF43567A)
+    val Ink50 = Color(0xFF5B7099)
+    val Ink60 = Color(0xFF7B90B5)
+    val Ink70 = Color(0xFFA9BDDC)
+    val Ink80 = Color(0xFFC3D1E5)
+    val Ink90 = Color(0xFFD9E1EE)
+    val Ink95 = Color(0xFFECF0F6)
 
-    // --- Secondary: teal ---
-    val Teal10 = Color(0xFF00201D)
-    val Teal20 = Color(0xFF00382F)
-    val Teal30 = Color(0xFF008576)
-    val Teal40 = Color(0xFF00B8A9) // brand secondary
-    val Teal80 = Color(0xFF6FF4E1)
-    val Teal90 = Color(0xFFB6FFF2)
+    // --- Mist blue: the icon's resting square. Secondary. ---
+    val Mist20 = Color(0xFF2B3345)
+    val Mist30 = Color(0xFF414C64)
+    val Mist35 = Color(0xFF4A5570)
+    val Mist40 = Color(0xFF6B7893) // brand mist
+    /** Lifted mist, so a resting mark still clears 3:1 against the ink ground. */
+    val Mist50 = Color(0xFF7E8CA6)
+    val Mist60 = Color(0xFF9AA6BE)
+    val Mist80 = Color(0xFFC6CDDA)
+    val Mist90 = Color(0xFFDFE4EC)
 
-    // --- Tertiary: morpho wing violet, used sparingly for celebration ---
-    val Violet20 = Color(0xFF32105E)
-    val Violet30 = Color(0xFF4B2683)
-    val Violet40 = Color(0xFF6B3FB5)
-    val Violet80 = Color(0xFFD5BBFF)
-    val Violet90 = Color(0xFFEDDCFF)
+    // --- Copper gold: the icon's active diamond. The one accent. ---
+    val Copper20 = Color(0xFF3E2B12)
+    val Copper25 = Color(0xFF4A3316)
+    val Copper30 = Color(0xFF6E4C22)
+    val Copper40 = Color(0xFF8F6329)
+    /** Deepened copper, so the frontier diamond still clears 3:1 on a parchment page. */
+    val Copper45 = Color(0xFFB07C33)
+    val Copper50 = Color(0xFFC08F4A) // brand copper
+    val Copper70 = Color(0xFFD9B384)
+    val Copper80 = Color(0xFFE7CBA6)
+    val Copper90 = Color(0xFFF4E4CD)
 
-    // --- Error ---
-    val Red30 = Color(0xFF8C1A1E)
-    val Red40 = Color(0xFFE5484D) // brand error
-    val Red80 = Color(0xFFFFB3B2)
-    val Red90 = Color(0xFFFFDAD8)
+    // --- Parchment: the icon's page. Ground in light, text in dark. ---
+    val Parchment70 = Color(0xFFC9BEA6)
+    val Parchment80 = Color(0xFFDED5C2)
+    val Parchment85 = Color(0xFFE9E2D3)
+    val Parchment90 = Color(0xFFF2EDE2) // brand parchment
+    val Parchment95 = Color(0xFFF8F4EB)
+    val Parchment98 = Color(0xFFFCFAF4)
+    val Parchment100 = Color(0xFFFFFDF8)
 
-    // --- Deep neutrals ---
-    val Neutral6 = Color(0xFF0C0E14)
-    val Neutral10 = Color(0xFF12151C)
-    val Neutral15 = Color(0xFF1B1F28)
-    val Neutral20 = Color(0xFF232833)
-    val Neutral25 = Color(0xFF2C323F)
-    val Neutral30 = Color(0xFF3A4150)
-    val Neutral60 = Color(0xFF8A91A0)
-    val Neutral80 = Color(0xFFC5CAD6)
-    val Neutral90 = Color(0xFFE2E5EC)
-    val Neutral95 = Color(0xFFF1F3F7)
-    val Neutral98 = Color(0xFFFAFBFD)
-    val White = Color(0xFFFFFFFF)
+    /**
+     * Verdigris — aged-copper green. The "correct" signal, kept in the icon's
+     * metal family rather than a stock UI green.
+     */
+    val Verdigris20 = Color(0xFF12312A)
+    val Verdigris30 = Color(0xFF255045)
+    val Verdigris40 = Color(0xFF3B7A67)
+    val Verdigris60 = Color(0xFF6FAD98)
+    val Verdigris80 = Color(0xFFB5D8C9)
+    val Verdigris90 = Color(0xFFD8ECE3)
 
-    // --- Neutral variants (outlines, surface variants) ---
-    val NeutralVariant30 = Color(0xFF434A5C)
-    val NeutralVariant50 = Color(0xFF737B8F)
-    val NeutralVariant60 = Color(0xFF8D95A9)
-    val NeutralVariant80 = Color(0xFFC3C8D8)
-    val NeutralVariant90 = Color(0xFFDFE2EF)
+    /** Oxblood — the bookbinder's red. The "wrong" and error signal. */
+    val Oxblood20 = Color(0xFF3F1210)
+    val Oxblood30 = Color(0xFF75211E)
+    val Oxblood40 = Color(0xFF9E322D)
+    val Oxblood60 = Color(0xFFC96A63)
+    val Oxblood80 = Color(0xFFEDB2AB)
+    val Oxblood90 = Color(0xFFF8DBD5)
 }
 
+/**
+ * Light: a parchment page, ink-blue type, copper for anything the eye should land on.
+ * Cards sit *above* the page (lighter) the way a card sits on a desk.
+ */
 val MorphoLightColorScheme = lightColorScheme(
-    primary = MorphoPalette.Blue40,
-    onPrimary = MorphoPalette.White,
-    primaryContainer = MorphoPalette.Blue90,
-    onPrimaryContainer = MorphoPalette.Blue10,
-    inversePrimary = MorphoPalette.Blue80,
+    primary = MorphoPalette.Ink20,
+    onPrimary = MorphoPalette.Parchment95,
+    primaryContainer = MorphoPalette.Ink90,
+    onPrimaryContainer = MorphoPalette.Ink10,
+    inversePrimary = MorphoPalette.Ink70,
 
-    secondary = MorphoPalette.Teal30,
-    onSecondary = MorphoPalette.White,
-    secondaryContainer = MorphoPalette.Teal90,
-    onSecondaryContainer = MorphoPalette.Teal10,
+    secondary = MorphoPalette.Mist35,
+    onSecondary = MorphoPalette.Parchment95,
+    secondaryContainer = MorphoPalette.Mist90,
+    onSecondaryContainer = MorphoPalette.Mist20,
 
-    tertiary = MorphoPalette.Violet40,
-    onTertiary = MorphoPalette.White,
-    tertiaryContainer = MorphoPalette.Violet90,
-    onTertiaryContainer = MorphoPalette.Violet20,
+    tertiary = MorphoPalette.Copper40,
+    onTertiary = MorphoPalette.Parchment98,
+    tertiaryContainer = MorphoPalette.Copper90,
+    onTertiaryContainer = MorphoPalette.Copper25,
 
-    error = MorphoPalette.Red40,
-    onError = MorphoPalette.White,
-    errorContainer = MorphoPalette.Red90,
-    onErrorContainer = MorphoPalette.Red30,
+    error = MorphoPalette.Oxblood40,
+    onError = MorphoPalette.Parchment98,
+    errorContainer = MorphoPalette.Oxblood90,
+    onErrorContainer = MorphoPalette.Oxblood30,
 
-    background = MorphoPalette.Neutral98,
-    onBackground = MorphoPalette.Neutral10,
-    surface = MorphoPalette.Neutral98,
-    onSurface = MorphoPalette.Neutral10,
-    surfaceVariant = MorphoPalette.NeutralVariant90,
-    onSurfaceVariant = MorphoPalette.NeutralVariant30,
-    surfaceTint = MorphoPalette.Blue40,
-    inverseSurface = MorphoPalette.Neutral20,
-    inverseOnSurface = MorphoPalette.Neutral95,
+    background = MorphoPalette.Parchment90,
+    onBackground = MorphoPalette.Ink10,
+    surface = MorphoPalette.Parchment90,
+    onSurface = MorphoPalette.Ink10,
+    surfaceVariant = MorphoPalette.Parchment85,
+    onSurfaceVariant = MorphoPalette.Mist30,
+    surfaceTint = MorphoPalette.Copper50,
+    inverseSurface = MorphoPalette.Ink20,
+    inverseOnSurface = MorphoPalette.Parchment90,
 
-    surfaceContainerLowest = MorphoPalette.White,
-    surfaceContainerLow = MorphoPalette.Neutral98,
-    surfaceContainer = MorphoPalette.Neutral95,
-    surfaceContainerHigh = MorphoPalette.Neutral90,
-    surfaceContainerHighest = Color(0xFFDDE1EA),
+    surfaceContainerLowest = MorphoPalette.Parchment100,
+    surfaceContainerLow = MorphoPalette.Parchment98,
+    surfaceContainer = MorphoPalette.Parchment95,
+    surfaceContainerHigh = MorphoPalette.Parchment85,
+    surfaceContainerHighest = MorphoPalette.Parchment80,
 
-    outline = MorphoPalette.NeutralVariant50,
-    outlineVariant = MorphoPalette.NeutralVariant80,
-    scrim = Color(0xFF000000),
+    outline = MorphoPalette.Mist40,
+    outlineVariant = MorphoPalette.Parchment70,
+    scrim = Color(0xCC131C2A),
 )
 
+/**
+ * Dark: the icon itself, full-bleed. Ink-blue ground, parchment type, the same
+ * copper diamond doing the same job.
+ */
 val MorphoDarkColorScheme = darkColorScheme(
-    primary = MorphoPalette.Blue60,
-    onPrimary = MorphoPalette.Blue10,
-    primaryContainer = MorphoPalette.Blue30,
-    onPrimaryContainer = MorphoPalette.Blue90,
-    inversePrimary = MorphoPalette.Blue40,
+    primary = MorphoPalette.Ink70,
+    onPrimary = MorphoPalette.Ink10,
+    primaryContainer = MorphoPalette.Ink30,
+    onPrimaryContainer = MorphoPalette.Ink90,
+    inversePrimary = MorphoPalette.Ink20,
 
-    secondary = MorphoPalette.Teal40,
-    onSecondary = MorphoPalette.Teal10,
-    secondaryContainer = MorphoPalette.Teal20,
-    onSecondaryContainer = MorphoPalette.Teal80,
+    secondary = MorphoPalette.Mist60,
+    onSecondary = MorphoPalette.Mist20,
+    secondaryContainer = MorphoPalette.Mist30,
+    onSecondaryContainer = MorphoPalette.Mist90,
 
-    tertiary = MorphoPalette.Violet80,
-    onTertiary = MorphoPalette.Violet20,
-    tertiaryContainer = MorphoPalette.Violet30,
-    onTertiaryContainer = MorphoPalette.Violet90,
+    tertiary = MorphoPalette.Copper50,
+    onTertiary = MorphoPalette.Copper20,
+    tertiaryContainer = MorphoPalette.Copper30,
+    onTertiaryContainer = MorphoPalette.Copper90,
 
-    error = Color(0xFFFF6E70),
-    onError = Color(0xFF4E0206),
-    errorContainer = MorphoPalette.Red30,
-    onErrorContainer = MorphoPalette.Red90,
+    error = MorphoPalette.Oxblood60,
+    onError = MorphoPalette.Oxblood20,
+    errorContainer = MorphoPalette.Oxblood30,
+    onErrorContainer = MorphoPalette.Oxblood90,
 
-    background = MorphoPalette.Neutral6,
-    onBackground = MorphoPalette.Neutral90,
-    surface = MorphoPalette.Neutral6,
-    onSurface = MorphoPalette.Neutral90,
-    surfaceVariant = MorphoPalette.Neutral25,
-    onSurfaceVariant = MorphoPalette.NeutralVariant80,
-    surfaceTint = MorphoPalette.Blue60,
-    inverseSurface = MorphoPalette.Neutral90,
-    inverseOnSurface = MorphoPalette.Neutral15,
+    background = MorphoPalette.Ink20,
+    onBackground = MorphoPalette.Parchment90,
+    surface = MorphoPalette.Ink20,
+    onSurface = MorphoPalette.Parchment90,
+    surfaceVariant = MorphoPalette.Ink25,
+    onSurfaceVariant = MorphoPalette.Mist80,
+    surfaceTint = MorphoPalette.Copper50,
+    inverseSurface = MorphoPalette.Parchment90,
+    inverseOnSurface = MorphoPalette.Ink20,
 
-    surfaceContainerLowest = Color(0xFF070910),
-    surfaceContainerLow = MorphoPalette.Neutral10,
-    surfaceContainer = MorphoPalette.Neutral15,
-    surfaceContainerHigh = MorphoPalette.Neutral20,
-    surfaceContainerHighest = MorphoPalette.Neutral25,
+    surfaceContainerLowest = MorphoPalette.Ink15,
+    surfaceContainerLow = MorphoPalette.Ink25,
+    surfaceContainer = MorphoPalette.Ink30,
+    surfaceContainerHigh = MorphoPalette.Ink40,
+    surfaceContainerHighest = MorphoPalette.Ink50,
 
-    outline = MorphoPalette.NeutralVariant60,
-    outlineVariant = MorphoPalette.Neutral30,
-    scrim = Color(0xFF000000),
+    outline = MorphoPalette.Mist40,
+    outlineVariant = MorphoPalette.Ink40,
+    scrim = Color(0xCC0B111B),
 )
 
 /**
  * Semantic colours that have no Material role but are part of the brand system.
  * Reached through `MorphoTheme.accents`.
+ *
+ * [motifBase], [motifActive] and [motifMastered] are the three marks of the icon's
+ * progress row — mist-blue square, copper diamond, parchment diamonds — and they
+ * read, in that order, as *untouched → learning → mastered*. In light theme the
+ * mastered mark flips to ink so it survives on a parchment page.
  */
 @androidx.compose.runtime.Immutable
 data class MorphoAccents(
@@ -174,32 +204,48 @@ data class MorphoAccents(
     val ringTrack: Color,
     val modePipInactive: Color,
     val shimmer: Color,
+    /** The icon's resting square: not started. */
+    val motifBase: Color,
+    /** The icon's copper diamond: in progress, and the one thing the eye lands on. */
+    val motifActive: Color,
+    /** The icon's trailing diamonds: done. */
+    val motifMastered: Color,
+    /** Hairline ornament rules between sections. */
+    val rule: Color,
 )
 
 val LightAccents = MorphoAccents(
-    correct = MorphoPalette.Teal30,
-    onCorrect = MorphoPalette.White,
-    correctContainer = MorphoPalette.Teal90,
-    wrong = MorphoPalette.Red40,
-    wrongContainer = MorphoPalette.Red90,
-    streak = Color(0xFFF7A325),
-    highlight = MorphoPalette.Blue90,
-    onHighlight = MorphoPalette.Blue20,
-    ringTrack = MorphoPalette.NeutralVariant90,
-    modePipInactive = MorphoPalette.NeutralVariant80,
+    correct = MorphoPalette.Verdigris40,
+    onCorrect = MorphoPalette.Parchment98,
+    correctContainer = MorphoPalette.Verdigris90,
+    wrong = MorphoPalette.Oxblood40,
+    wrongContainer = MorphoPalette.Oxblood90,
+    streak = MorphoPalette.Copper40,
+    highlight = MorphoPalette.Copper90,
+    onHighlight = MorphoPalette.Copper25,
+    ringTrack = MorphoPalette.Parchment80,
+    modePipInactive = MorphoPalette.Parchment70,
     shimmer = Color(0x33FFFFFF),
+    motifBase = MorphoPalette.Mist40,
+    motifActive = MorphoPalette.Copper45,
+    motifMastered = MorphoPalette.Ink20,
+    rule = MorphoPalette.Parchment70,
 )
 
 val DarkAccents = MorphoAccents(
-    correct = MorphoPalette.Teal40,
-    onCorrect = MorphoPalette.Teal10,
-    correctContainer = MorphoPalette.Teal20,
-    wrong = Color(0xFFFF6E70),
-    wrongContainer = MorphoPalette.Red30,
-    streak = Color(0xFFFFC163),
-    highlight = MorphoPalette.Blue30,
-    onHighlight = MorphoPalette.Blue90,
-    ringTrack = MorphoPalette.Neutral25,
-    modePipInactive = MorphoPalette.Neutral30,
+    correct = MorphoPalette.Verdigris60,
+    onCorrect = MorphoPalette.Verdigris20,
+    correctContainer = MorphoPalette.Verdigris30,
+    wrong = MorphoPalette.Oxblood60,
+    wrongContainer = MorphoPalette.Oxblood30,
+    streak = MorphoPalette.Copper50,
+    highlight = MorphoPalette.Copper30,
+    onHighlight = MorphoPalette.Copper90,
+    ringTrack = MorphoPalette.Ink30,
+    modePipInactive = MorphoPalette.Ink40,
     shimmer = Color(0x1FFFFFFF),
+    motifBase = MorphoPalette.Mist50,
+    motifActive = MorphoPalette.Copper50,
+    motifMastered = MorphoPalette.Parchment90,
+    rule = MorphoPalette.Ink40,
 )

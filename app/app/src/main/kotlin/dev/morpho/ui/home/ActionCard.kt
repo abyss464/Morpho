@@ -17,7 +17,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -25,17 +24,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.morpho.R
 import dev.morpho.domain.progress.TodayProgress
+import dev.morpho.ui.designsystem.component.MotifProgressRow
 import dev.morpho.ui.designsystem.component.PreviewBox
+import dev.morpho.ui.designsystem.component.SectionHeading
 import dev.morpho.ui.designsystem.component.ThemePreviews
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
+/**
+ * The one card on home that asks for something. Everything below it reports; this one
+ * acts, and it holds the only route into a learning session.
+ *
+ * The day's goal is drawn as the icon's own progress row — squares ahead, a copper
+ * diamond at the frontier, solid diamonds behind — rather than a generic bar.
+ */
 @Composable
 fun ActionCard(
     today: TodayProgress,
@@ -62,11 +68,7 @@ fun ActionCard(
                 .padding(spacing.xl),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            Text(
-                text = stringResource(R.string.home_today_title).uppercase(),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            SectionHeading(stringResource(R.string.home_today_title))
 
             if (!hasContent) {
                 Text(
@@ -85,7 +87,7 @@ fun ActionCard(
                     icon = Icons.Rounded.Refresh,
                     label = stringResource(R.string.home_reviews_due),
                     value = today.dueReviews.toString(),
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MorphoTheme.accents.motifActive,
                     dimmed = today.dueReviews == 0,
                     modifier = Modifier.weight(1f),
                 )
@@ -99,20 +101,20 @@ fun ActionCard(
                 )
             }
 
-            LinearProgressIndicator(
-                progress = { today.fraction },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = MorphoTheme.sizes.groupBarHeight),
-                trackColor = MorphoTheme.accents.ringTrack,
-                strokeCap = StrokeCap.Round,
+            MotifProgressRow(
+                fraction = today.fraction,
+                contentDescription = stringResource(
+                    R.string.home_today_goal_progress,
+                    today.newLearned,
+                    today.dailyGoal,
+                ),
             )
 
             if (!today.hasWork) {
                 Text(
                     text = stringResource(R.string.home_all_done),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary,
+                    color = MorphoTheme.accents.correct,
                 )
             }
 
@@ -165,7 +167,7 @@ private fun MetricBox(
     Box(
         modifier = modifier
             .clip(MorphoTheme.radii.shapeMd)
-            .background(tint.copy(alpha = 0.08f))
+            .background(tint.copy(alpha = 0.10f))
             .padding(MorphoTheme.spacing.md),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(MorphoTheme.spacing.xs)) {
@@ -182,8 +184,7 @@ private fun MetricBox(
             )
             Text(
                 text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
             )
         }

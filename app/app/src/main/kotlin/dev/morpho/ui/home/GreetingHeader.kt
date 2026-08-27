@@ -3,7 +3,9 @@ package dev.morpho.ui.home
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
@@ -16,11 +18,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import dev.morpho.R
 import dev.morpho.domain.model.GreetingPeriod
+import dev.morpho.ui.designsystem.component.MotifSignature
 import dev.morpho.ui.designsystem.component.PreviewBox
 import dev.morpho.ui.designsystem.component.StreakBadge
 import dev.morpho.ui.designsystem.component.ThemePreviews
+import dev.morpho.ui.designsystem.theme.MorphoSectionLabel
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
+/**
+ * The page masthead: a tracked-out greeting, the wordmark in the icon's own Garamond,
+ * and the icon's four marks sitting under it like a printer's device.
+ */
 @Composable
 fun GreetingHeader(
     greetingPeriod: GreetingPeriod,
@@ -41,15 +49,17 @@ fun GreetingHeader(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(MorphoTheme.spacing.xxs)) {
             Text(
-                text = greetingText,
-                style = MaterialTheme.typography.bodySmall,
+                text = greetingText.uppercase(),
+                style = MorphoSectionLabel,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
                 text = stringResource(R.string.home_title),
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+            Spacer(Modifier.height(MorphoTheme.spacing.xxs))
+            MotifSignature()
         }
 
         Row(
@@ -63,6 +73,7 @@ fun GreetingHeader(
                 Icon(
                     Icons.Rounded.Settings,
                     contentDescription = stringResource(R.string.action_settings),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

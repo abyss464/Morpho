@@ -121,6 +121,38 @@ enum class ActivityChartStyle {
     }
 }
 
+/**
+ * Which colour scheme the app paints in.
+ *
+ * [SYSTEM] is the default and follows the platform's day/night setting; [LIGHT] and
+ * [DARK] pin it. Stored in `user.db`'s `meta` like every other preference, so the
+ * choice survives Auto Backup and the manual export.
+ */
+enum class ThemeMode {
+    SYSTEM,
+    LIGHT,
+    DARK,
+    ;
+
+    val dbValue: String get() = name.lowercase()
+
+    /** Resolve to an actual scheme given what the platform currently asks for. */
+    fun isDark(systemInDark: Boolean): Boolean = when (this) {
+        SYSTEM -> systemInDark
+        LIGHT -> false
+        DARK -> true
+    }
+
+    companion object {
+        /** Anything unrecognised — including a cleared value — falls back to [SYSTEM]. */
+        fun fromDb(value: String): ThemeMode = when (value) {
+            "light" -> LIGHT
+            "dark" -> DARK
+            else -> SYSTEM
+        }
+    }
+}
+
 data class DailyActivity(
     val date: LocalDate,
     val wordsStudied: Int,
@@ -154,6 +186,7 @@ object UserMetaKeys {
     const val LAST_STUDY_DATE = "last_study_date"
     const val STREAK_DAYS = "streak_days"
     const val ACTIVITY_CHART_STYLE = "activity_chart_style"
+    const val THEME_MODE = "theme_mode"
 }
 
 object ProgressDefaults {
