@@ -24,7 +24,7 @@ content change exactly once.
 |---|-------|-----|-----|-------|--------|
 | 19+8 | CLIP 语义评分内化到引擎 + codex 生成源（图文不匹配根因修复；worktree 内开发，不动线上） | L | P1 | 1 | dispatched |
 | B3 | 首页 0/50 不更新 — 结论：HEAD 上不复现。历史真因是 wave-3a 的 daily_stats schema 变更未写迁移，旧 user.db 上所有统计写入失败；2a8e2ed 的预发布库丢弃守卫已修。已补 5 个钉死测试（03e7bf5，42 test 全绿）。真机复验留在装机后 | S | P2 | 1 | ✅ code-verified |
-| 9+B5 | NSFW/不当图片清理（CLIP 语义筛查全库 + 嫌疑词人工目检）+ 129 张 codex 图（126 在选）用 blank/floor gate 复检 reject | M | P1 | 2 | dispatched |
+| 9+B5 | NSFW/不当图片清理（CLIP 语义筛查全库 + 嫌疑词人工目检）+ 129 张 codex 图（126 在选）用 blank/floor gate 复检 reject。**Owner 追加（2026-08-27 已确认）**：全库在选图清除 ①纯色/近纯色图 ②以文字为主体的图（尤其把目标词写在图里的——泄答案且骗 CLIP 分）；文字类每张人工目检后才 reject | M | P1 | 2 | dispatched, scope extended |
 | 6 | 自指释义改写 | M | P1 | 2 | ✅ done, conductor-verified |
 | 12 | 存量干扰项 stem 坏配对修正 — 代码完成并合并（d80c194）：`POST /distractors/rebind-violations`，共享 ranked_candidates 选择逻辑，core_ready 池，乐观守卫，698 测试绿。**待办**：phase-3 部署新引擎后、导出前，dry-run → apply → 复扫为零；admin-ui types.ts 镜像另记 | M→L | P1 | 2 | code merged, live run pending deploy |
 | 17+20+21 | 发布链：合并 phase-1/2 代码 → Docker 重建部署 → unapprove/rescore/re-approve → **停容器后宿主原生跑 morphod publish**（容器内无 app/ 无 gradle，publish 不可能在容器里跑）→ APK → adb 卸载重装 | L | P1 | 3 | waiting |
@@ -39,6 +39,7 @@ content change exactly once.
 | # | Title | Result |
 |---|-------|--------|
 | 5 | Docker 镜像重建+重启 | image `morpho-morphod:018c9ee9d6cc` @ 0ea2f5d；数据零漂移（6944 词/资产计数完全一致）；publish 子命令在位；无错误风暴。无代码变更 |
+| ops | morpho-genimg.timer 关闭 | Owner 要求。disable --now 并验证（disabled/inactive/列表清零）。wave2 列表 221 词已生成 81、剩 140 不再走此野路子——未来由 #19 引擎内建生成源接管。最后一批实测 81 张 codex 图 0 张胜过在位图 |
 | 6 | 自指释义清零 | 权威集 271 处（266 词，远超估计的 104；粗查 126 是因 LIKE 漏屈折形和标点边界）。264 条新撰 + 7 条改选既有干净候选，全部 manual 带血缘。conductor 独立复核：自指 0、§7.10 未解析词元 0、oos_queue 与基线一致、TTS 收敛 missing/failed/死信全 0、blocked 维持 7。两个 agent 判断已采纳：超 200 停止线继续（机械改写+机械校验成立）；9 个退化义项（owl=鸽子、source=源代码等）顺手改为常用义。副作用：33 个辅助词因新释义用词更平实而失去引用、自动退休（1146→1113，设计内可逆）。日志 ops/logs/defrewrite-2026-08-27.json |
 
 ## Done (this session, 2026-08-27)
