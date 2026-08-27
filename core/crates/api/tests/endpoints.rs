@@ -1069,6 +1069,57 @@ async fn gallery_exposes_clip_similarity_and_null_when_unscored() {
 }
 
 #[tokio::test]
+async fn gallery_exposes_the_slot1_sentence_and_null_when_unselected() {
+    let h = harness();
+    let with_sentence = seed_gallery_word(&h, "lucent", 100, None).await;
+    let cand_id = h
+        .store
+        .write(
+            Actor::Cli,
+            WriteOp::MintExampleCandidate(MintExampleCandidate {
+                word_id: with_sentence,
+                text: "The lucent moon lit the path.".into(),
+                hl_start: 4,
+                hl_end: 10,
+                source: ExampleSource::Manual,
+                source_ref: None,
+                created_by: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .result
+        .cand_id()
+        .unwrap();
+    h.store
+        .write(
+            Actor::Reconciler,
+            WriteOp::select(
+                SlotRef::Example {
+                    word_id: with_sentence,
+                    slot: 1,
+                },
+                cand_id,
+                SelectedBy::Auto,
+            ),
+        )
+        .await
+        .unwrap();
+
+    seed_gallery_word(&h, "murky", 200, None).await;
+
+    let (status, body) = get(&h.router, "/api/gallery").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let items = body["items"].as_array().unwrap();
+    let lucent = items.iter().find(|item| item["lemma"] == "lucent").unwrap();
+    assert_eq!(lucent["slot1_sentence"], "The lucent moon lit the path.");
+
+    let murky = items.iter().find(|item| item["lemma"] == "murky").unwrap();
+    assert!(murky["slot1_sentence"].is_null());
+}
+
+#[tokio::test]
 async fn gallery_sort_clip_asc_puts_the_worst_match_first_with_nulls_last() {
     let h = harness();
     seed_gallery_word(&h, "radiant", 100, Some(0.81)).await;

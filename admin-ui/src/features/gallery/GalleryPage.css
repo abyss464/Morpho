@@ -14,3 +14,13 @@
   height: 1px;
   width: 100%;
 }
+
+.morpho-gallery-review-thumb {
+  display: block;
+  width: 160px;
+  height: 120px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 4px;
+  background: rgba(127, 127, 127, 0.1);
+}

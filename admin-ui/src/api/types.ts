@@ -452,6 +452,9 @@ export interface GalleryItem {
   /** Cosine similarity to the word's own query text (its slot-1 sentence,
    * falling back to the lemma). `null` when the pair has not been scored. */
   clip_similarity: number | null;
+  /** The word's selected slot-1 example sentence, for review-mode
+   * image↔sentence judgment. `null` when no slot-1 selection exists yet. */
+  slot1_sentence: string | null;
 }
 
 /** `sort=clip_asc|clip_desc` — worst/best semantic match first, unscored

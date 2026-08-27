@@ -510,19 +510,24 @@ export const handlers = [
       });
     }
 
-    const items: GalleryItem[] = matches.map(({ word, sel, cand }) => ({
-      word_id: word.word_id,
-      lemma: word.lemma,
-      role: word.role,
-      img_cand_id: cand.img_cand_id,
-      file_hash: cand.file_hash,
-      source: cand.source,
-      auto_score: cand.auto_score,
-      approved: sel.approved,
-      selected_by: sel.selected_by,
-      pinned: sel.pinned,
-      clip_similarity: cand.clip_similarity,
-    }));
+    const items: GalleryItem[] = matches.map(({ word, sel, cand }) => {
+      const exSel = s.exSels.find((es) => es.word_id === word.word_id && es.slot === 1);
+      const exCand = exSel ? s.exCands.find((ec) => ec.ex_cand_id === exSel.ex_cand_id) : undefined;
+      return {
+        word_id: word.word_id,
+        lemma: word.lemma,
+        role: word.role,
+        img_cand_id: cand.img_cand_id,
+        file_hash: cand.file_hash,
+        source: cand.source,
+        auto_score: cand.auto_score,
+        approved: sel.approved,
+        selected_by: sel.selected_by,
+        pinned: sel.pinned,
+        clip_similarity: cand.clip_similarity,
+        slot1_sentence: exCand?.text ?? null,
+      };
+    });
 
     return HttpResponse.json(paginate(items, page, pageSize));
   }),

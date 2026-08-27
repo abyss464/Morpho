@@ -84,6 +84,31 @@ describe('GET /gallery', () => {
     const scored = scores.filter((score): score is number => score !== null);
     expect(scored).toEqual([...scored].sort((a, b) => b - a));
   });
+
+  it('exposes slot1_sentence per item, string or null (review mode)', async () => {
+    const page = await listGallery({ page_size: 200 });
+    expect(page.items.length).toBeGreaterThan(0);
+    expect(
+      page.items.every(
+        (item) => typeof item.slot1_sentence === 'string' || item.slot1_sentence === null,
+      ),
+    ).toBe(true);
+    expect(page.items.some((item) => item.slot1_sentence !== null)).toBe(true);
+
+    // Rejecting a word's only remaining example candidates empties the
+    // slot-1 selection entirely (mirrors the 27 live words with a selected
+    // image but no slot-1 sentence), so the mapper's null branch runs too.
+    const withSentence = page.items.find((item) => item.slot1_sentence !== null);
+    if (!withSentence) throw new Error('fixture has no gallery item with a slot-1 sentence');
+    const word = await getWord(withSentence.word_id);
+    const candidates = word.examples.flatMap((slot) => slot.candidates.map((c) => c.ex_cand_id));
+    for (const candId of candidates) {
+      await rejectCandidate('example', candId);
+    }
+    const after = await listGallery({ page_size: 200 });
+    const refreshed = after.items.find((item) => item.word_id === withSentence.word_id);
+    expect(refreshed?.slot1_sentence).toBeNull();
+  });
 });
 
 describe('GET /words/{id}', () => {

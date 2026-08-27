@@ -371,10 +371,15 @@ pub fn gallery_list(conn: &Connection, query: &GalleryQuery) -> Result<Page<Gall
     let base_sql = format!(
         "SELECT w.word_id, w.lemma, w.role,
                 ic.img_cand_id, ic.file_hash, ic.source, ic.auto_score,
-                isel.approved, isel.selected_by, isel.pinned
+                isel.approved, isel.selected_by, isel.pinned,
+                exc.text AS slot1_sentence
          FROM words w
          JOIN image_selections isel ON w.word_id = isel.word_id
          JOIN image_candidates ic ON isel.img_cand_id = ic.img_cand_id
+         LEFT JOIN example_selections esel
+             ON esel.word_id = w.word_id AND esel.slot = 1
+         LEFT JOIN example_candidates exc
+             ON exc.ex_cand_id = esel.ex_cand_id
          {where_sql}"
     );
 
@@ -401,6 +406,7 @@ pub fn gallery_list(conn: &Connection, query: &GalleryQuery) -> Result<Page<Gall
             selected_by: row.get("selected_by")?,
             pinned: row.get::<_, i64>("pinned")? != 0,
             clip_similarity,
+            slot1_sentence: row.get("slot1_sentence")?,
         })
     };
 

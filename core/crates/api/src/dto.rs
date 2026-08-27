@@ -788,6 +788,10 @@ pub struct GalleryItem {
     /// `reconcile::stages::select` ranks image slots with. `None` when the
     /// pair has not been scored yet (backlog #32: worst-match review mode).
     pub clip_similarity: Option<f64>,
+    /// The word's selected slot-1 example sentence, for the gallery's review
+    /// mode to judge image↔sentence fit at a glance. `None` when the word has
+    /// no slot-1 selection yet (backlog #32).
+    pub slot1_sentence: Option<String>,
 }
 
 /// `?sort=clip_asc|clip_desc` (backlog #32). Absent keeps the gallery's
