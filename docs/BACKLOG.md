@@ -32,7 +32,8 @@ content change exactly once.
 | 9+B5 | 图片清理 — **扫描/目检 100% 完成，应用 229/302**。B5：129 张 codex 图全过新门，0 需拒。NSFW 双管（CLIP 探针 4540 张全扫 + 65 嫌疑词 319 张全目检）：27 拒已应用（breast/thigh/flesh/desire/naked 实锤裸露已清；rape 核查后本就合规）。纯色扫描全库：3 拒已应用。文字主体图全库扫描：295 张逐张目检，判 272 拒/15 留/7 owner 复核；**199 拒已应用，73 张已定案未应用**（应用中途被权限分类器拦截批量调用形态而中止——agent 留下的"换成分类器放行的调用形态继续"属规避性绕过，conductor 拒绝采用；这 73 张证据齐全躺在日志里，等 owner 明示批准后走正常路径应用）。15 项 needs_owner_review 连同证据在 ops/logs/imgclean-2026-08-27.json；ops/nsfw_screen.py 待 conductor 审后入库 | M | P1 | 2 | 229 applied; 73 vetted-pending owner go |
 | 6 | 自指释义改写 | M | P1 | 2 | ✅ done, conductor-verified |
 | 12 | 存量干扰项 stem 坏配对修正 — 代码完成并合并（d80c194）：`POST /distractors/rebind-violations`，共享 ranked_candidates 选择逻辑，core_ready 池，乐观守卫，698 测试绿。**待办**：phase-3 部署新引擎后、导出前，dry-run → apply → 复扫为零；admin-ui types.ts 镜像另记 | M→L | P1 | 2 | code merged, live run pending deploy |
-| 17+20+21 | 发布链：合并 phase-1/2 代码 → Docker 重建部署 → unapprove/rescore/re-approve → **停容器后宿主原生跑 morphod publish**（容器内无 app/ 无 gradle，publish 不可能在容器里跑）→ APK → adb 卸载重装 | L | P1 | 3 | waiting |
+| 29 | morphod publish 的两个 bug（1.7 首验发现） | core | ①repo_root 解析：resolve_adapters_root 存仓库根而 repo_root() 取其 parent，语义打架致 app/ 路径错一级（绕过：显式 MORPHOD_ADAPTERS_ROOT）；②stale 清理只扫 img//audio/ 子目录，扫不到旧平铺布局的根级遗留（25904 个文件 492MB，人工 gio trash 清掉，APK 983→532MB）。另：publish 不补测试体内的计数断言（plan size/checked/gloss index），§6.3 需记录 |
+| 30 | CLIP 重选后文字图回流 | content/engine | 实机截图实锤：author 的在选图是"SAMUEL VALLEE AUTHOR & SPEAKER"文字宣传卡——文字图清扫在 CLIP 重选**之前**跑，池中未在选的文字图被 CLIP 的 typographic bias 抬进了选择槽（图里写着 AUTHOR，泄答案）。需：对 CLIP 重选后的新在选集重跑 text-dominant 筛查+人审+reject；根治在引擎端对文字探针得分高的候选降权。ashtray 图（Smoking kills 烟盒）同类 |
 
 关键发现（通读 README/contracts/publish.rs/compose 后）：
 - publish 管线第 2-5 步触碰 app/ 与 gradle，而镜像 .dockerignore 排除了 app/ —— #17 必须以宿主原生 morphod 独占 DB 运行（先停容器，SQLite 单写者纪律）。
@@ -45,6 +46,7 @@ content change exactly once.
 |---|-------|--------|
 | 5 | Docker 镜像重建+重启 | image `morpho-morphod:018c9ee9d6cc` @ 0ea2f5d；数据零漂移（6944 词/资产计数完全一致）；publish 子命令在位；无错误风暴。无代码变更 |
 | ops | morpho-genimg.timer 关闭 | Owner 要求。disable --now 并验证（disabled/inactive/列表清零）。wave2 列表 221 词已生成 81、剩 140 不再走此野路子——未来由 #19 引擎内建生成源接管。（更正：先前记录"最后一批 81 张 0 胜出"系误读——那次 firing 是对已上传图的重复 ingest，incumbent==generated 自比自，kept 是 no-op。真实战绩：wave-1 48/48 胜出、wave-2 全部有非 manual 对手的 77 张胜出）|
+| 17+20+21 | 发布链走通，release 1.7 装机 | `2026.08.27+0847bb29`，4225 词，APK 532MB（陈旧媒体清理砍半），干净卸载重装（注意真实包名 dev.morpho.debug，首装==更新时间戳已验证），实机启动+截图确认新主题生效。#17 publish 首验发现 2 bug → #29。commit 1cefae5 |
 | 27 | 主页重设计（图标语言/双主题/motif/删冗余入口） | 合并 ffe0a8b（76c7524，22 文件 +1032/−484）：四色 ramp、EB Garamond 内嵌（OFL 留档）、Motif.kt 组件族、Settings 内 System/Light/Dark 切换、QuickAccessRow 删除。gate 绿。**待办**：docs/contracts/app-design.md Brand 段落已过时（旧 morpho blue），conductor 发布后更新 |
 | 22+23 | 续学弹窗（一组制）+ 空计划不再进旧总结页 | 合并 a90f3a5（worktree gate 绿，8 新测试；LearnSessionPlanner 纯逻辑抽取）。#22 附带验证：配额本就按 LocalDate 自然日归零，无需改。agent 顺手发现 ReviewScreen 有同款 #23 隐患（无到期词时可能进旧总结页），未动，待 owner 审 |
 | 6 | 自指释义清零 | 权威集 271 处（266 词，远超估计的 104；粗查 126 是因 LIKE 漏屈折形和标点边界）。264 条新撰 + 7 条改选既有干净候选，全部 manual 带血缘。conductor 独立复核：自指 0、§7.10 未解析词元 0、oos_queue 与基线一致、TTS 收敛 missing/failed/死信全 0、blocked 维持 7。两个 agent 判断已采纳：超 200 停止线继续（机械改写+机械校验成立）；9 个退化义项（owl=鸽子、source=源代码等）顺手改为常用义。副作用：33 个辅助词因新释义用词更平实而失去引用、自动退休（1146→1113，设计内可逆）。日志 ops/logs/defrewrite-2026-08-27.json |
