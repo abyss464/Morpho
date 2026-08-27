@@ -36,6 +36,7 @@ _New items land here. Not evaluated yet._
 | 18 | 图片评分去掉 source_prior + 自动上传不 pin | engine/ops | source 只是标签不参与评分。CLIP 置信度决定选择。只有人在 admin UI 手动点"Use this"才 pin。脚本/引擎自动上传的候选不 pin，参与正常置信度竞争 |
 | 19 | codex 图片生成适配器 + admin 手动触发 | engine/admin | 和 SDXL 并行的可选生成源。引擎内置速率限制 (5h/80张)。admin Gallery 可手动选低质量图触发生成。source 标记为 codex，不 pin，按置信度竞争 |
 | 17 | 发布链路自动化 morphod publish | core/admin | morphod 新子命令：export → cp release.db → rsync media → 更新测试断言 → gradle build。admin API 留端点 |
+| 20 | App 图标替换 + 通用加载动画 | app | 新图标：墨蓝底 EB Garamond M + 底部四元素（方块+三菱形）。foreground SVG→vector drawable（text 转 path），背景纯色 #22314A。四个底部元素做成 flow 风格加载动画，用在所有需要加载的场景（splash、切题等） |
 
 ## Ready
 
