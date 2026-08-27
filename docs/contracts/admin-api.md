@@ -62,6 +62,29 @@ Kind ∈ `definition | example | image`.
 | POST | `/selections/definition/primary` | Move is_primary: `{word_id, pos}` |
 | POST | `/selections/definition/enabled` | `{word_id, pos, enabled}` |
 
+## Distractors
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/distractors/rebind-violations` | `{dry_run}` (default `true`) → audit every binding for morphological pairs and repair them: `{scanned, violations, planned_or_applied: RebindItem[], unresolvable: RebindItem[], planned_or_applied_total, unresolvable_total, truncated, applied, skipped}` |
+
+`RebindItem` = `{word_id, lemma, rank, old: {word_id, lemma}, new: {word_id, lemma} | null, core_ready_new}`.
+
+Distractors are bound once and never change; this endpoint is the one
+exception the product rule always allowed — a human replacing a binding that
+should never have been made. A row is a violation when the word and its
+distractor share a stem (`adapt`/`adapter`, `invest`/`investor`), which
+bindings written before the exclusion rule still contain. Replacements follow
+the live selection rule (same-POS, nearest by edit distance, ties on
+frequency then id) and are drawn from `core_ready` words only, so a repair
+never costs a word its place in the release; when nothing shippable is near
+enough, the binding is listed under `unresolvable` and left alone. `dry_run`
+mutates nothing and an absent body is a dry run. Applying writes one
+`distractor_bound` event per moved row with the old and new ids and
+`reason: "stem_violation_rebind"`; `skipped` counts ranks the writer declined
+because the table had drifted since the plan was computed. Arrays cap at 500
+entries per list (`truncated` says so); the events are never capped.
+
 ## OOV queue
 
 | Method | Path | Purpose |
