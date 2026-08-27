@@ -31,7 +31,11 @@ _New items land here. Not evaluated yet._
 
 | # | Title | Category | Reporter note |
 |---|-------|----------|---------------|
-_(all moved to Ready or pending clarification)_
+| # | Title | Category | Reporter note |
+|---|-------|----------|---------------|
+| 18 | 图片评分去掉 source_prior + 自动上传不 pin | engine/ops | source 只是标签不参与评分。CLIP 置信度决定选择。只有人在 admin UI 手动点"Use this"才 pin。脚本/引擎自动上传的候选不 pin，参与正常置信度竞争 |
+| 19 | codex 图片生成适配器 + admin 手动触发 | engine/admin | 和 SDXL 并行的可选生成源。引擎内置速率限制 (5h/80张)。admin Gallery 可手动选低质量图触发生成。source 标记为 codex，不 pin，按置信度竞争 |
+| 17 | 发布链路自动化 morphod publish | core/admin | morphod 新子命令：export → cp release.db → rsync media → 更新测试断言 → gradle build。admin API 留端点 |
 
 ## Ready
 
@@ -41,10 +45,11 @@ _Triaged, estimated, approved for implementation. Ordered by priority then effor
 |---|-------|-----|-----|--------|-------|
 |
 |
-| 15 | 复习模式改造：每日先复习 + 单轮模式 2 | app | P1 | L | 复习不走三轮模式，改为单一轮次：上方单词，下方 4 图+释义（模式 2 样式）。每天先完成到期复习词，再开始新词学习。复习调度基于已有 FSRS v5（已实现到期计算），但题型统一为模式 2 而非当前的释义选词+听写双模式 |
 |
-| 12 | 干扰项排除形变词 | engine | P2 | L | 当前纯编辑距离，不排除同词族（adapt/adapter 会配对）。需要词族/词根数据或 stem 比较。且干扰项永久绑定——已绑定的不会自动更新 |
-| 14 | 图片绑定迁移到 example (slot 1) | engine/app | P2 | L | 架构级。image_selections 主键从 word_id 改为 (word_id, slot)，release.db 图字段从 words 移到 examples。现有图平移到 slot 1 |
+|
+|
+| 14 | 图片绑到 example slot 1 + CLIP rematch | engine/app/ops | P2 | L | schema: release.db 图字段从 words.image_file 移到 examples.image_file (display_order=1)。engine export 适配。App ContentRepository 从 examples 读图。现有图平移。全词库 CLIP rematch 用纯例句查询。working.db image_selections 主键不变（第一阶段仍每词一图） |
+| 17 | 发布链路自动化 morphod publish | core/admin | P2 | L | morphod 新子命令 publish：export → cp release.db → rsync media → 更新测试断言 → gradle build，一条命令完成。admin API 留 POST /api/releases/publish 端点。不含 adb install |
 
 ## In Progress
 
@@ -68,6 +73,8 @@ _Triaged, estimated, approved for implementation. Ordered by priority then effor
 | 11 | Mode 2/3 skip detail on correct; full-expand on wrong | 2026-08-27 | 0adaf8e |
 | 13 | 逐词进度已确认正确（三轮通关=已学+FSRS时间戳） | 2026-08-27 | 已实现，无需改动 |
 | 16 | 答错后自动播放一次音频（模式1=句子，2/3=单词） | 2026-08-27 | 702a6f3 |
+| 15 | 统一复习模式：单轮模式 2（4 图+释义） | 2026-08-27 | 2899f23 |
+| 12 | 干扰项排除形变词 + 同 POS 优先 | 2026-08-27 | ccbc386 |
 
 ## Deferred
 

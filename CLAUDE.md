@@ -11,10 +11,12 @@ All work goes through `docs/BACKLOG.md`. Two modes, never mixed:
 ### Report mode
 
 When the user reports a problem, request, or idea:
-1. Add it to **Inbox** in BACKLOG.md immediately — one line, no evaluation.
-2. Acknowledge with the item number. Do NOT start coding, analyzing, or designing.
-3. If the user reports multiple items in one message, record all of them.
-4. Reporting is instant and never blocked by ongoing work.
+1. **Confirm understanding first**: restate what you understood back to the user in concrete terms (expected behavior vs current behavior, or what exactly will change). Wait for the user to confirm before recording. Do NOT assume or fill gaps silently — if anything is ambiguous, ask.
+2. Only after confirmation: add it to **Inbox** in BACKLOG.md — one line matching the confirmed understanding.
+3. Acknowledge with the item number. Do NOT start coding, analyzing, or designing.
+4. If the user reports multiple items in one message, confirm each one's understanding before recording.
+5. Reporting is instant and never blocked by ongoing work.
+6. **Scope discipline**: when dispatching to subagents, the prompt must describe ONLY the confirmed behavior. No "also while you're there" additions. If the agent discovers adjacent improvements, it reports them back — it does not implement them.
 
 ### Build mode
 
