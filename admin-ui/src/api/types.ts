@@ -58,6 +58,7 @@ export type ImageSource =
   | 'wikimedia'
   | 'openverse'
   | 'sdxl'
+  | 'codex'
   | 'manual';
 export type CandidateSource = DefinitionSource | ExampleSource | ImageSource;
 

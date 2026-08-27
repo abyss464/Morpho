@@ -621,8 +621,14 @@ fn collect_selections(
     }
     let image_slots = image_slot_states(conn, &taken, &queries, &clip, &mates)?;
     for (word_id, pool) in &pools {
-        let state = image_slots.get(word_id);
-        let choices = rank_images(pool);
+        let slot = image_slots.get(word_id);
+        // One ruler for the whole word, incumbent included. Deciding that here
+        // rather than inside each scorer is the point: measuring a scored
+        // incumbent against unscored challengers would push it out of its own
+        // slot on the strength of half the evidence.
+        let semantic = uniformly_scored(pool);
+        let choices = rank_images(pool, semantic);
+        let state = slot.map(|slot| slot.state(semantic));
         // An incumbent a question mate also shows is not an occupant to be
         // out-argued — it is an invalid one, so the slot is decided as if it
         // were empty and the best admissible picture takes it outright. Without
@@ -631,10 +637,10 @@ fn collect_selections(
         // through every future pass. A *pinned* slot is still never touched:
         // a human who chose that picture outranks this, and the export gate is
         // the right place for them to hear about it.
-        let incumbent = state.and_then(|slot| (!slot.conflicts).then_some(slot.state));
-        let effective = match state {
-            Some(slot) if slot.state.pinned => Some(slot.state),
-            _ => incumbent,
+        let effective = match slot {
+            Some(slot) if slot.pinned => state,
+            Some(slot) if slot.conflicts => None,
+            _ => state,
         };
         let Some(cand_id) = pick(&choices, effective) else {
             continue;
@@ -642,7 +648,7 @@ fn collect_selections(
         decisions.push(AutoSelection {
             slot: SlotRef::Image { word_id: *word_id },
             cand_id,
-            expected_cand_id: state.map(|slot| slot.state.cand_id),
+            expected_cand_id: slot.map(|slot| slot.cand_id),
             make_primary: false,
         });
     }
@@ -667,30 +673,38 @@ struct ImageChoice {
     conflicts: bool,
 }
 
+/// Has every picture in this pool been compared against the word's sentence?
+///
+/// Semantic scoring is all or nothing, per word. A pool where some candidates
+/// have been compared and some have not is ranked on quality alone, because
+/// blending a scored candidate against an unscored one measures them with two
+/// different rulers — and a word mid-backfill would otherwise flip its slot to
+/// whichever candidate the sidecar happened to reach first, then flip back when
+/// the rest arrived. As soon as every candidate has a score the whole pool is
+/// ranked semantically; until then the word behaves exactly as it did before the
+/// sidecar existed.
+fn uniformly_scored(pool: &[ImageChoice]) -> bool {
+    !pool.is_empty() && pool.iter().all(|choice| choice.clip.is_some())
+}
+
 /// Turn one word's pool into ranked [`Choice`]s.
 ///
-/// Two decisions live here, and both are per word rather than per candidate:
+/// `semantic` comes from [`uniformly_scored`] over this same pool, and the
+/// incumbent is measured with the identical flag — see the caller.
 ///
-/// * **semantic scoring is all or nothing.** A pool where some candidates have
-///   been compared and some have not is ranked on quality alone, because
-///   blending a scored candidate against an unscored one measures them with two
-///   different rulers — and a word mid-backfill would otherwise flip its slot to
-///   whichever candidate the sidecar happened to reach first. As soon as every
-///   candidate has a score the whole pool is ranked semantically; until then the
-///   word behaves exactly as it did before the sidecar existed.
-/// * **a picture a question mate shows is removed, not docked.** If that empties
-///   the pool the word makes no decision at all and keeps reporting
-///   `missing_image`, which is honest: the image chain then walks it down to a
-///   picture nobody else holds, up to and including generating one.
-fn rank_images(pool: &[ImageChoice]) -> Vec<Choice> {
-    let scored_uniformly = !pool.is_empty() && pool.iter().all(|choice| choice.clip.is_some());
+/// A picture a question mate shows is **removed, not docked**. If that empties
+/// the pool the word makes no decision at all and keeps whatever it has, which
+/// is honest: the reconciler never empties a slot, and the word is already
+/// flagged as needing more candidates, so the image chain walks it down to a
+/// picture nobody else holds — up to and including generating one.
+fn rank_images(pool: &[ImageChoice], semantic: bool) -> Vec<Choice> {
     pool.iter()
         .filter(|choice| !choice.conflicts)
         .map(|choice| Choice {
             cand_id: choice.cand_id,
             score: score::image_selection_score(
                 choice.auto_score,
-                scored_uniformly.then_some(choice.clip).flatten(),
+                semantic.then_some(choice.clip).flatten(),
                 choice.duplicate,
             ),
         })
@@ -907,12 +921,41 @@ fn example_slot_states(conn: &Connection) -> Result<HashMap<(i64, i64), SlotStat
     Ok(rows.into_iter().collect())
 }
 
-/// One image slot: what fills it, and whether what fills it is admissible.
-#[derive(Debug, Clone, Copy)]
+/// One image slot, before it is scored.
+///
+/// The score is deliberately not here: it depends on whether the word's *pool*
+/// is uniformly scored, which is a fact about the candidates rather than about
+/// the slot. Computing it here would measure the incumbent on one ruler and its
+/// challengers on another — and a scored incumbent against unscored challengers
+/// would lose its own slot on half the evidence.
+#[derive(Debug, Clone)]
 struct ImageSlot {
-    state: SlotState,
-    /// The picture this slot holds is one a question mate also shows.
+    cand_id: i64,
+    pinned: bool,
+    auto_score: Option<f64>,
+    /// This picture's cosine against the word's query, when it has one.
+    clip: Option<f64>,
+    /// Some other word in the lexicon also shows this picture.
+    duplicate: bool,
+    /// A word this one shares a question card with shows this picture.
     conflicts: bool,
+}
+
+impl ImageSlot {
+    /// The incumbent as the selector sees it, on the ruler `semantic` names.
+    fn state(&self, semantic: bool) -> SlotState {
+        SlotState {
+            cand_id: self.cand_id,
+            pinned: self.pinned,
+            score: self.auto_score.map(|score| {
+                score::image_selection_score(
+                    score,
+                    semantic.then_some(self.clip).flatten(),
+                    self.duplicate,
+                )
+            }),
+        }
+    }
 }
 
 fn image_slot_states(
@@ -941,11 +984,9 @@ fn image_slot_states(
     Ok(rows
         .into_iter()
         .map(|(word_id, cand_id, pinned, auto_score, file_hash)| {
-            // The incumbent is measured on the same ruler as its challengers —
-            // same semantic term, same duplicate pressure — because a slot
-            // holding a picture another word also holds, or a picture of the
-            // wrong thing, is exactly what these are meant to move.
-            let duplicate = facts::is_duplicate_image(taken, &file_hash, word_id);
+            // Everything the incumbent is judged on, gathered the same way its
+            // challengers' is. What it *scores* is decided by the caller, which
+            // is the only place that knows whether the pool is uniformly scored.
             let clip_score = queries
                 .get(&word_id)
                 .and_then(|text_hash| clip.get(&(file_hash.clone(), text_hash.clone())))
@@ -953,13 +994,11 @@ fn image_slot_states(
             (
                 word_id,
                 ImageSlot {
-                    state: SlotState {
-                        cand_id,
-                        pinned,
-                        score: auto_score.map(|score| {
-                            score::image_selection_score(score, clip_score, duplicate)
-                        }),
-                    },
+                    cand_id,
+                    pinned,
+                    auto_score,
+                    clip: clip_score,
+                    duplicate: facts::is_duplicate_image(taken, &file_hash, word_id),
                     conflicts: mates
                         .get(&word_id)
                         .is_some_and(|held| held.contains(&file_hash)),
@@ -1069,6 +1108,19 @@ mod tests {
         }
     }
 
+    /// The incumbent, as the loop in `collect_selections` builds it — same
+    /// candidate, same numbers, seen from the slot side.
+    fn slot(choice: &ImageChoice) -> ImageSlot {
+        ImageSlot {
+            cand_id: choice.cand_id,
+            pinned: false,
+            auto_score: Some(choice.auto_score),
+            clip: choice.clip,
+            duplicate: choice.duplicate,
+            conflicts: choice.conflicts,
+        }
+    }
+
     /// A pool nothing has scored ranks exactly on the quality prior, with the
     /// scores passed through untouched — this is what a lexicon looks like
     /// before the sidecar has reached it, and it must be indistinguishable from
@@ -1076,7 +1128,8 @@ mod tests {
     #[test]
     fn an_unscored_pool_is_ranked_on_quality_alone() {
         let pool = vec![image(1, 0.90, None), image(2, 0.60, None)];
-        let ranked = rank_images(&pool);
+        assert!(!uniformly_scored(&pool));
+        let ranked = rank_images(&pool, false);
         assert_eq!(ranked.len(), 2);
         assert_eq!(ranked[0].score, 0.90);
         assert_eq!(ranked[1].score, 0.60);
@@ -1090,7 +1143,8 @@ mod tests {
     #[test]
     fn a_half_scored_pool_falls_back_to_quality() {
         let pool = vec![image(1, 0.90, None), image(2, 0.60, Some(CLIP_CEIL))];
-        let ranked = rank_images(&pool);
+        assert!(!uniformly_scored(&pool));
+        let ranked = rank_images(&pool, false);
         assert_eq!(ranked[0].score, 0.90, "the unscored candidate is untouched");
         assert_eq!(ranked[1].score, 0.60);
         assert_eq!(pick(&ranked, None), Some(1));
@@ -1100,7 +1154,56 @@ mod tests {
             image(1, 0.90, Some(CLIP_FLOOR)),
             image(2, 0.60, Some(CLIP_CEIL)),
         ];
-        assert_eq!(pick(&rank_images(&pool), None), Some(2));
+        assert!(uniformly_scored(&pool));
+        assert_eq!(pick(&rank_images(&pool, true), None), Some(2));
+    }
+
+    /// The half-scored case seen from the slot side, which is where it bites.
+    ///
+    /// A word whose incumbent happens to have been scored first and scored badly
+    /// must not be pushed out of its own slot by an *unscored* challenger: that
+    /// compares a semantic number against a quality number and calls the
+    /// difference a preference. The incumbent and its challengers take the same
+    /// `semantic` flag for exactly this reason.
+    #[test]
+    fn a_half_scored_pool_measures_the_incumbent_on_the_same_ruler() {
+        // The incumbent is scored, and scored at the floor. The challenger has
+        // no score at all and a picture a shade sharper — not by the switching
+        // margin, so nothing here should move.
+        let held = image(1, 0.90, Some(CLIP_FLOOR));
+        let pool = vec![held.clone(), image(2, 0.93, None)];
+        let semantic = uniformly_scored(&pool);
+        assert!(!semantic);
+        let ranked = rank_images(&pool, semantic);
+        let incumbent = slot(&held).state(semantic);
+        assert_eq!(incumbent.score, Some(0.90), "measured on the quality ruler");
+        assert_eq!(
+            pick(&ranked, Some(incumbent)),
+            None,
+            "0.93 does not beat 0.90 by the margin"
+        );
+
+        // On the wrong ruler it would have moved: the incumbent's blended score
+        // is 0.36, which 0.93 clears by a mile — a slot lost to a comparison
+        // between a semantic number and a quality one.
+        let blended = slot(&held).state(true);
+        assert!(blended.score.unwrap() < 0.4);
+        assert_eq!(pick(&ranked, Some(blended)), Some(2), "the bug, pinned");
+    }
+
+    /// Once the pool is complete, both sides move to the semantic ruler
+    /// together and the apt picture takes the slot.
+    #[test]
+    fn a_fully_scored_pool_moves_the_incumbent_and_its_challengers_together() {
+        let held = image(1, 0.90, Some(CLIP_FLOOR));
+        let pool = vec![held.clone(), image(2, 0.80, Some(CLIP_CEIL))];
+        let semantic = uniformly_scored(&pool);
+        assert!(semantic);
+        let incumbent = slot(&held).state(semantic);
+        assert_eq!(
+            pick(&rank_images(&pool, semantic), Some(incumbent)),
+            Some(2)
+        );
     }
 
     /// The veto: a picture a question mate shows is not in the running at all,
@@ -1110,7 +1213,7 @@ mod tests {
         let mut best = image(1, 1.0, Some(CLIP_CEIL));
         best.conflicts = true;
         let pool = vec![best, image(2, 0.10, Some(CLIP_FLOOR))];
-        let ranked = rank_images(&pool);
+        let ranked = rank_images(&pool, true);
         assert_eq!(ranked.len(), 1);
         assert_eq!(ranked[0].cand_id, 2);
     }
@@ -1127,7 +1230,7 @@ mod tests {
                 ..image(id, 0.9, Some(CLIP_CEIL))
             })
             .collect();
-        let ranked = rank_images(&pool);
+        let ranked = rank_images(&pool, true);
         assert!(ranked.is_empty());
         assert_eq!(pick(&ranked, None), None);
         let incumbent = SlotState {

@@ -35,6 +35,7 @@ const SOURCE_OPTIONS: { value: ImageSource; label: string }[] = [
   { value: 'wikimedia', label: 'wikimedia' },
   { value: 'openverse', label: 'openverse' },
   { value: 'sdxl', label: 'sdxl' },
+  { value: 'codex', label: 'codex' },
   { value: 'manual', label: 'manual' },
 ];
 

@@ -9,6 +9,7 @@ const SOURCES: ImageSource[] = [
   'wikimedia',
   'openverse',
   'sdxl',
+  'codex',
   'manual',
 ];
 

@@ -555,6 +555,11 @@ impl Executor for ScoreImageClipExecutor {
             // unconfigured between derivation and execution.
             return Err(TaskError::permanent("clip sidecar is not configured"));
         };
+        if file_hashes.is_empty() {
+            // The rule never derives an empty ask; a job that carries one has
+            // nothing to do and nothing to report.
+            return Ok(());
+        }
 
         let response = clip::score(&self.context.sources.http, base_url, text, file_hashes).await?;
 
@@ -591,7 +596,22 @@ impl Executor for ScoreImageClipExecutor {
             })
             .collect();
         if rows.is_empty() {
-            return Ok(());
+            // Every picture asked about came back unreadable, so this run made
+            // no progress — and the rule's trigger is "these are still
+            // unscored", which has not changed. Reporting success would derive
+            // the identical job on the very next sweep, forever, one GPU request
+            // a minute for a word whose bytes are gone.
+            //
+            // Permanent is the honest classification: the same files will be
+            // just as unreadable next time. The job backs off, dead-letters, and
+            // shows up in the dead-letter box naming a word whose media the
+            // sidecar cannot see — which is a real thing an operator should fix
+            // (usually a media root pointed somewhere else).
+            return Err(TaskError::permanent(format!(
+                "clip sidecar could not read any of this word's {} picture(s); \
+                 check MORPHO_CLIP_MEDIA_ROOT",
+                file_hashes.len()
+            )));
         }
         store
             .write(

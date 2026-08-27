@@ -183,6 +183,7 @@ const SOURCE_COLOR: Record<string, string> = {
   openverse: 'orange',
   tatoeba: 'lime',
   sdxl: 'magenta',
+  codex: 'purple',
 };
 
 export function SourceBadge({ source }: { source: CandidateSource | string }) {
