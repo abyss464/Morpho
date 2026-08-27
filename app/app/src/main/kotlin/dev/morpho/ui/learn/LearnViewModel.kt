@@ -18,6 +18,7 @@ import dev.morpho.domain.learning.SessionConfig
 import dev.morpho.domain.model.LearnMode
 import dev.morpho.domain.model.WordBundle
 import dev.morpho.domain.progress.ProgressTracker
+import dev.morpho.domain.progress.SessionBank
 import dev.morpho.ui.common.toWordDetail
 import dev.morpho.ui.designsystem.component.FeedbackSignal
 import dev.morpho.ui.designsystem.component.GroupSegmentState
@@ -89,6 +90,9 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
     private var config: SessionConfig = SessionConfig()
     private var advancing = false
 
+    /** What this session has already written into `daily_stats`. See [SessionBank]. */
+    private var banked = SessionBank()
+
     init {
         viewModelScope.launch { startSession() }
         viewModelScope.launch {
@@ -141,6 +145,10 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
             _state.value = LearnSessionPlanner.emptyState()
             return
         }
+
+        // A fresh session restarts its stats at zero, so the watermark must too —
+        // otherwise "one more group" would bank negative deltas.
+        banked = SessionBank()
 
         session = LearningEngine.startSession(plan, progress, config)
         renderCurrent()
@@ -288,6 +296,10 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
         session = result.state
         viewModelScope.launch {
             container.progressRepository.upsertProgress(result.progressUpdates)
+            // Bank on every answer, not just graduations: today's counter then tracks
+            // the third-round word that just landed, live, and the accuracy figures
+            // stay consistent with it.
+            bankProgress(result.state)
         }
 
         if (!correct) {
@@ -423,10 +435,16 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
 
     // ---------------------------------------------------------------- finish
 
-    private suspend fun finish() {
-        val state = session ?: return
+    /**
+     * Writes everything this session has earned but not yet stored: an FSRS card for each
+     * newly graduated word, and the `daily_stats` delta since the last call.
+     *
+     * Safe to call after every answer and again at [finish] — both halves are idempotent.
+     * Cards are filtered on "no card yet", and stats move by the difference against the
+     * watermark, so a repeat call with no new answers writes nothing.
+     */
+    private suspend fun bankProgress(state: LearningSessionState) {
         val progressRepo = container.progressRepository
-        val today = LocalDate.now()
         val now = Instant.now()
 
         // Every graduated word gets its first FSRS card, dated from this moment.
@@ -435,15 +453,37 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
             .map { container.reviewScheduler.newCardFor(it, now) }
         progressRepo.upsertCards(newCards)
 
-        val merged = ProgressTracker.mergeSession(
-            existing = progressRepo.statsFor(today),
-            date = today,
-            newLearned = state.stats.learned,
-            reviewed = 0,
+        val running = SessionBank(
+            learned = state.stats.learned,
             correctAnswers = state.stats.correctFirstTry,
             totalAnswers = state.stats.firstTryTotal,
         )
-        progressRepo.upsertStats(merged)
+        val pending = banked.pending(running)
+        if (pending.isEmpty) return
+
+        // Resolved per call, so a session running past local midnight banks the rest of
+        // its work against the new day rather than backdating it.
+        val today = LocalDate.now()
+        progressRepo.upsertStats(
+            ProgressTracker.mergeSession(
+                existing = progressRepo.statsFor(today),
+                date = today,
+                newLearned = pending.learned,
+                reviewed = 0,
+                correctAnswers = pending.correctAnswers,
+                totalAnswers = pending.totalAnswers,
+            ),
+        )
+        banked = running
+    }
+
+    private suspend fun finish() {
+        val state = session ?: return
+        val progressRepo = container.progressRepository
+        val today = LocalDate.now()
+
+        // Catches whatever the last answer left unbanked; double-counts nothing.
+        bankProgress(state)
 
         val streak = ProgressTracker.streak(progressRepo.recentStats(), today)
         val goal = container.settingsRepository.settings.value.dailyGoal
@@ -455,7 +495,7 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
                 correctFirstTry = state.stats.correctFirstTry,
                 totalFirstTry = state.stats.firstTryTotal,
                 streakDays = streak,
-                goalMet = merged.newLearned >= goal,
+                goalMet = (progressRepo.statsFor(today)?.newLearned ?: 0) >= goal,
             ),
         )
         if (streak > 0) container.playSfx(SfxEvent.STREAK)

@@ -3,6 +3,7 @@ package dev.morpho.data.repository
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import dev.morpho.data.db.user.UserDatabase
 import dev.morpho.domain.progress.ProgressTracker
+import dev.morpho.domain.progress.SessionBank
 import java.time.LocalDate
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -133,5 +134,68 @@ class ProgressRepositoryTest {
 
         assertEquals(50, repo.statsFor(yesterday)?.newLearned)
         assertEquals(5, repo.statsFor(today)?.newLearned)
+    }
+
+    /**
+     * Backlog #35. The three tests above all start from a *finished* session, which is
+     * exactly why they passed while the device stayed at `0 / 50`: nothing reached
+     * `finish()`. A daily batch is 50 words over three rounds, so the summary screen sits
+     * ~150 answers away, and a user who stops before it stored no `daily_stats` row at
+     * all — 22 words sat `learned` in `learning_progress` with the counter still on zero.
+     *
+     * This drives [dev.morpho.ui.learn.LearnViewModel.bankProgress] instead: bank after
+     * every answer, then once more at finish, and check the counter moves with each
+     * graduating word without the final pass counting anything twice.
+     */
+    @Test
+    fun `words graduating mid-session reach today's counter before the session ends`() = runBlocking {
+        val today = LocalDate.now()
+        var banked = SessionBank()
+
+        suspend fun bank(running: SessionBank) {
+            val pending = banked.pending(running)
+            if (pending.isEmpty) return
+            repo.upsertStats(
+                ProgressTracker.mergeSession(
+                    existing = repo.statsFor(today),
+                    date = today,
+                    newLearned = pending.learned,
+                    reviewed = 0,
+                    correctAnswers = pending.correctAnswers,
+                    totalAnswers = pending.totalAnswers,
+                ),
+            )
+            banked = running
+        }
+
+        suspend fun counter() = ProgressTracker.today(
+            stats = repo.statsFor(today),
+            dailyGoal = 50,
+            dueReviewCount = 0,
+        ).newLearned
+
+        // Round 3: each correct answer retires a word, so the counter gains one each
+        // time — the owner's spec, "模式3的时候背一个词就涨一个".
+        bank(SessionBank(learned = 1, correctAnswers = 31, totalAnswers = 33))
+        assertEquals(1, counter())
+
+        bank(SessionBank(learned = 2, correctAnswers = 32, totalAnswers = 34))
+        assertEquals(2, counter())
+
+        // A miss banks the answer but graduates nobody: the counter holds.
+        bank(SessionBank(learned = 2, correctAnswers = 32, totalAnswers = 35))
+        assertEquals(2, counter())
+
+        bank(SessionBank(learned = 3, correctAnswers = 33, totalAnswers = 36))
+        assertEquals(3, counter())
+
+        // Leaving here used to lose all of it. Now finish() re-banks the same session
+        // state and must add nothing on top.
+        bank(SessionBank(learned = 3, correctAnswers = 33, totalAnswers = 36))
+        assertEquals(3, counter())
+
+        val stats = repo.statsFor(today)
+        assertEquals(33, stats?.correctCount)
+        assertEquals(36, stats?.answerCount)
     }
 }
