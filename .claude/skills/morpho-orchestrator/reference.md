@@ -2,7 +2,7 @@
 
 The main file holds norms; this file holds operational detail. docs/OPERATIONS.md is the final authority; this records only the facts the orchestration layer uses repeatedly.
 
-## Release chain (order proven in wave-2)
+## Release chain (order used in wave-2)
 
 1. Merge all code branches → re-run gates.
 2. `docker compose build`, then `up -d --force-recreate` with env (`MORPHO_CLIP_URL=http://host.docker.internal:30013`, `MORPHO_CLIP_MODEL=ViT-B-32/laion2b_s34b_b79k`). Start the CLIP sidecar on the host first (OPERATIONS.md §2.2); `/health` must report `clip/1` and the matching model.
@@ -23,7 +23,7 @@ The main file holds norms; this file holds operational detail. docs/OPERATIONS.m
 
 ## Docker traps
 
-- `.dockerignore` must include `.claude/` — agent worktrees carry core/target dirs reaching tens of GB; missing it hangs the build in context packing.
+- `.dockerignore` must include `.claude/` — agent worktrees carry core/target dirs reaching tens of GB, and without the entry the build stalls in context packing.
 - One `adapter unavailable adapter="sdxl"` WARN per container start is expected (the image packs only tts/morfessor; SDXL/CLIP run host-side).
 - The compose data volume is a bind mount, so image rebuilds cannot hurt working.db; still compare dashboard word counts before and after.
 

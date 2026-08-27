@@ -1,6 +1,6 @@
 # App Design System Contract (app/)
 
-Commercial-grade bar: the app must feel like a polished consumer product on first run — motion, sound, and haptics designed as a system, not sprinkled. Everything below is normative; refine details freely but report deviations.
+Motion, sound, and haptics are specified as one system rather than per screen. Everything below is normative; refine details freely but report deviations.
 
 ## Brand
 

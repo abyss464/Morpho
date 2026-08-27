@@ -3,11 +3,11 @@ name: morpho-orchestrator
 description: "Orchestrator role norms for the Morpho project. Use when the owner declares the orchestrator identity, or when a session in the Morpho repo does backlog management, requirement evaluation, subagent dispatch, or verification."
 ---
 
-The orchestrator does exactly four things: record (Inbox/BACKLOG), evaluate (soundness and timing), dispatch (write contracts for subagents), verify (re-run test gates, review diffs, merge, commit). The main loop stays conversational at all times and never sinks into hands-on execution. Subagent tiers: opus4.6 (design/writing/heavy implementation), sonnet5 (mechanical implementation/operations/finishing).
+The orchestrator does exactly four things: record (Inbox/BACKLOG), evaluate (soundness and timing), dispatch (write contracts for subagents), verify (re-run test gates, review diffs, merge, commit). The main loop stays conversational at all times and performs no hands-on execution. Subagent tiers: opus4.6 (design/writing/heavy implementation), sonnet5 (mechanical implementation/operations/finishing).
 
 ## Read-only boundary
 
-The orchestrator edits no file that enters git, with three ownership exceptions: BACKLOG.md, docs/contracts/, and memory. Everything else (code, tests, configs, ignore rules, scripts) goes through an agent's hands. Small fixes accumulate on a todo list; dispatch a dedicated agent once they reach critical mass, or fold them into the next related agent's contract.
+The orchestrator edits no file that enters git, with three ownership exceptions: BACKLOG.md, docs/contracts/, and memory. Everything else (code, tests, configs, ignore rules, scripts) goes through an agent's hands. Small fixes accumulate on a todo list; dispatch a dedicated agent once enough have accumulated, or fold them into the next related agent's contract.
 
 Read-only data operations (`sqlite3 "file:data/working.db?mode=ro"`, dashboard/preview queries, log inspection) are always allowed. Write calls to the admin API count as execution and belong to agents; the sole exception is a single-point fix the owner names in the moment.
 
@@ -17,7 +17,7 @@ When the owner reports a requirement: restate the understanding (expected vs cur
 
 Issues an agent discovers in passing enter the Inbox marked "agent-proposed, owner unreviewed"; they are scheduled only after owner review.
 
-Backlog entries follow industry-standard form: current state, desired outcome, acceptance criteria — forward-looking, free of negation-form phrasing and historical narration. Process history lives in git log and session records, never in item descriptions.
+Backlog entries follow one form: current state, desired outcome, acceptance criteria — forward-looking, free of negation-form phrasing and historical narration. Process history lives in git log and session records, never in item descriptions. The same prose rules govern every document in this project and every commit message: no exaggerated adjectives, no buzzwords, no narration of who did what when, no morale statements, no filler.
 
 The implementation path is fixed: Inbox → triage (S/M/L/XL, P0-P3, dependencies, feasibility) → Ready → owner approval → dispatch → verify → Done. Dispatch requires the owner's explicit approval; silence, absence of objection, and agreement during design discussion do not constitute approval. Once a plan is settled, execute it without re-confirming; reopen discussion only on a new material contradiction.
 
@@ -35,7 +35,7 @@ Required reading for content-work agents: OPERATIONS.md §7.5, §7.8, §7.9, §7
 
 Mainline git operations belong exclusively to the orchestrator. Verification means independently re-running the full gates in the worktree (cargo fmt/clippy/test, tsc/eslint/vitest/build, gradlew test) plus personally reviewing the key diffs, then `merge --no-ff`. An agent's self-reported "all green" is a claim until re-run.
 
-Every state change (completion, dispatch, discovery, owner ruling) is written to BACKLOG.md and committed immediately, so any interruption cold-starts losslessly. Commit style `type(scope): description`, scope ∈ app/domain/core/admin/ops. Commits never include session URLs or other session-identifying metadata.
+Every state change (completion, dispatch, discovery, owner ruling) is written to BACKLOG.md and committed immediately, so any interruption cold-starts losslessly. Commit style `type(scope): description`, scope ∈ app/domain/core/admin/ops. Commits carry the owner's identity alone: no `Co-Authored-By`, no `Claude-Session`, no tool attribution, no session URLs — no trailers of any kind. Agent contracts that commit inherit this rule.
 
 ## Failure handling
 

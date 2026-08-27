@@ -68,9 +68,9 @@ Unconfigured backend (no ComfyUI reachable) → `{"ok": false, "error": {"kind":
 → {"ok": true, "result": {"model": "codex", "prompt": "Generate one …"}}
 ```
 
-The last link in the image chain: every stock library, both keyless second passes and local SDXL come first, and a word only reaches here when CLIP says its best picture still does not answer its own sentence.
+The last link in the image chain: every stock library, both keyless second passes and local SDXL come first, and a word only reaches here when CLIP scores its best picture below threshold against its own sentence.
 
-**`slot1_sentence` is required** (owner ruling, wave 9). What this source draws is the scene that sentence describes; `lemma`, `pos` and `primary_definition` are disambiguation — which sense the sentence is using — never the subject. Mode 1 asks the learner to match sentence to picture, and the CLIP score that decides whether the result wins its slot queries with that same sentence, so conditioning on anything else would judge the picture against a question it was never asked. A word with no slot-1 sentence is **deferred by the engine**, not generated from its lemma: `gen_image_codex` derives nothing for it until an example lands.
+**`slot1_sentence` is required** (owner ruling, wave 9). What this source draws is the scene that sentence describes; `lemma`, `pos` and `primary_definition` are disambiguation — which sense the sentence is using — never the subject. Mode 1 asks the learner to match sentence to picture, and the CLIP score that decides whether the result wins its slot queries with that same sentence, so conditioning on anything else would score the picture against a different target than the one it must satisfy. A word with no slot-1 sentence is **deferred by the engine**, not generated from its lemma: `gen_image_codex` derives nothing for it until an example lands.
 
 `prompt_ver` names the template the adapter must draw under; a version it does not implement is a permanent failure rather than a silent substitution, because the candidate's `source_ref` records which template drew it. `result.prompt` is what was actually sent, stored on the candidate as `query_used`.
 

@@ -1,6 +1,6 @@
 # Engineering Conventions
 
-Read README.md (the whitepaper) first — it is the design authority. These conventions govern implementation. If a needed decision is not covered here or in the contracts, pick the boring industry-standard option and report it in your final summary; do NOT invent new cross-subsystem interfaces.
+Read README.md (the whitepaper) first — it is the design authority. These conventions govern implementation. If a needed decision is not covered here or in the contracts, pick the standard option and report it in your final summary; do NOT invent new cross-subsystem interfaces.
 
 ## Ownership boundaries
 
@@ -26,7 +26,7 @@ No agent runs git commands — the conductor owns version control. No agent edit
 
 ## TypeScript (admin-ui/)
 
-- Vite + React 18 + TypeScript strict. UI library: **Ant Design 5** (commercial-grade admin standard) + `@ant-design/icons`; charts: ECharts via `echarts-for-react`.
+- Vite + React 18 + TypeScript strict. UI library: **Ant Design 5** + `@ant-design/icons`; charts: ECharts via `echarts-for-react`.
 - Data: TanStack Query v5 (all server state; no Redux), TanStack Router (file-based routes), typed API client in `src/api/` mirroring `docs/contracts/admin-api.md` exactly.
 - Mocks: MSW v2 with realistic fixtures under `src/mocks/`; dev server runs fully against mocks (`VITE_API_MOCK=1`), real mode proxies `/api` to morphod.
 - ESLint + Prettier defaults; feature-folder layout `src/features/{dashboard,words,oov,deadletters,releases}`.

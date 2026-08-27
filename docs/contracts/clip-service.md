@@ -76,14 +76,14 @@ retry). A backend failure is `500` (transient).
 
 `clip_scores.model_ver` is `"{algo_ver}:{model}"`, and it is part of the row's
 primary key. That is what makes the artifact content addressed rather than
-stale-able: a different model writes *different rows*, and the old ones simply
-lose their readers — the same mechanism `tts_assets` uses for a voice change.
+stale-able: a different model writes *different rows*, and the old ones lose
+their readers — the same mechanism `tts_assets` uses for a voice change.
 
-So every reply carries its identity, and morphod refuses one that is not the
+Every reply carries its identity, and morphod refuses one that is not the
 identity it stores under (`images.clip_model` / `MORPHO_CLIP_MODEL`). A sidecar
-quietly serving a different checkpoint would file two models' cosines in one
-column with nothing able to tell them apart, which is exactly what the version is
-there to prevent. The refusal is permanent and loud rather than a warning.
+serving a different checkpoint would file two models' cosines in one column with
+nothing able to tell them apart, which the version check prevents. The refusal is
+permanent, not a warning.
 
 ## Running it
 
