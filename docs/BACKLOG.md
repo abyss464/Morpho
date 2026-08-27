@@ -17,13 +17,23 @@ content change exactly once.
 
 | # | Title | Est | Pri | Phase | Status |
 |---|-------|-----|-----|-------|--------|
-| 5 | Docker 镜像重建+重启（纳入 scorer v4、#14 schema、#17 publish、#18 图片评分等全部已提交代码） | S | P0 | 1 | dispatched |
 | 19+8 | CLIP 语义评分内化到引擎 + codex 生成源（图文不匹配根因修复；worktree 内开发，不动线上） | L | P1 | 1 | dispatched |
 | B3 | 学完单词后首页 0/50 不更新 — 代码级定位+修复+单测；真机复验放在收尾阶段 | S | P2 | 1 | dispatched |
-| 9+B5 | NSFW/不当图片清理（reject 落地）+ 已上传 129 张 codex 图用新 blank/floor gate 复检 | M | P1 | 2 | waiting on #5 |
-| 6 | 104 个自指释义 LLM 改写（in-scope 词表约束、防 OOV 回潮、录入+选择+审批） | M | P1 | 2 | waiting on #5 |
-| 12 | 存量 4508 词干扰项形变坏配对（adapt/adapter 等）按 v2 规则修正 | M | P1 | 2 | waiting on #5 |
-| 17+20+21 | 部署含 #19 的新引擎 → unapprove/rescore/re-approve → 验证 morphod publish → 导出 → APK（新图标、schema、图片选择全部进包）→ adb 卸载重装到手机 | L | P1 | 3 | waiting on phases 1-2 |
+| 9+B5 | NSFW/不当图片清理（CLIP 语义筛查全库 + 嫌疑词人工目检）+ 129 张 codex 图（126 在选）用 blank/floor gate 复检 reject | M | P1 | 2 | dispatched |
+| 6 | 自指释义改写（粗查 126 个动词形匹配，权威集以 score_detail 为准）：in-scope 词表约束、防 OOV 回潮、mint→select→approve | M | P1 | 2 | dispatched |
+| 12 | 存量干扰项 stem 坏配对修正（SQL 上限 2166 对）：无既有变更路径，需新增 core 批量 rebind 端点（dry-run 先行、优先 core_ready 替换以保出口稳定） | M→L | P1 | 2 | dispatched (worktree) |
+| 17+20+21 | 发布链：合并 phase-1/2 代码 → Docker 重建部署 → unapprove/rescore/re-approve → **停容器后宿主原生跑 morphod publish**（容器内无 app/ 无 gradle，publish 不可能在容器里跑）→ APK → adb 卸载重装 | L | P1 | 3 | waiting |
+
+关键发现（通读 README/contracts/publish.rs/compose 后）：
+- publish 管线第 2-5 步触碰 app/ 与 gradle，而镜像 .dockerignore 排除了 app/ —— #17 必须以宿主原生 morphod 独占 DB 运行（先停容器，SQLite 单写者纪律）。
+- publish 只自动补 content_version，不补 ReleaseDatabaseTest 的行数断言（§6.3 的 pin 设计）——行数变化时 gradle 步骤会红，需手动更新断言后重跑。
+- conventions.md：subagent 不跑 git，版本控制归 conductor；docs/contracts 由 conductor 修改。
+
+## Done — wave-2
+
+| # | Title | Result |
+|---|-------|--------|
+| 5 | Docker 镜像重建+重启 | image `morpho-morphod:018c9ee9d6cc` @ 0ea2f5d；数据零漂移（6944 词/资产计数完全一致）；publish 子命令在位；无错误风暴。无代码变更 |
 
 ## Done (this session, 2026-08-27)
 
