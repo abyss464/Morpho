@@ -35,7 +35,7 @@ pub use candidates::{
     MintImageCandidate, FETCH_DEFINITIONS, FETCH_ETYMOLOGY, FETCH_EXAMPLES, FETCH_IMAGES,
 };
 pub use derived::{MarkMediaGc, RecordDefExtraction};
-pub use distractors::{BindDistractors, DistractorBinding};
+pub use distractors::{BindDistractors, DistractorBinding, DistractorRebind, RebindDistractors};
 pub use jobs::UpsertJobState;
 pub use oov::{OovResolution, SyncOosQueue};
 pub use plan::{PlanGroupRow, PlanWordRow, WritePlan};
@@ -120,6 +120,8 @@ pub enum WriteOp {
     RecordTtsAsset(RecordTtsAsset),
     /// Bind missing distractors. Existing bindings are never rewritten.
     BindDistractors(BindDistractors),
+    /// Replace existing distractor bindings. Human-only repair path.
+    RebindDistractors(RebindDistractors),
     /// Publish a freshly computed learning plan.
     WritePlan(WritePlan),
     /// Refresh the `ready` / `core_ready` / `blockers` caches.
@@ -184,6 +186,12 @@ pub enum WriteResult {
     },
     Bound {
         bound: usize,
+    },
+    /// `skipped` counts ranks whose row no longer matched the plan, or whose
+    /// replacement the word already held at another rank.
+    Rebound {
+        rebound: usize,
+        skipped: usize,
     },
     Plan {
         plan_id: i64,
@@ -334,6 +342,7 @@ pub(crate) fn apply_op(op: WriteOp, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResu
         } => derived::register_media_file(&file_hash, kind, &rel_path, bytes, ctx),
         WriteOp::RecordTtsAsset(req) => tts::record_tts_asset(req, ctx),
         WriteOp::BindDistractors(req) => distractors::bind_distractors(req, ctx),
+        WriteOp::RebindDistractors(req) => distractors::rebind_distractors(req, ctx),
         WriteOp::WritePlan(req) => plan::write_plan(req, ctx),
         WriteOp::ApplyReadiness(req) => readiness::apply_readiness(req, ctx),
         WriteOp::MarkMediaGc(req) => derived::mark_media_gc(req, ctx),
