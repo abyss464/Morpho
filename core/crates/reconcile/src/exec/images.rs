@@ -652,7 +652,7 @@ impl Executor for GenImageCodexExecutor {
                 lemma,
                 pos: pos.as_deref(),
                 primary_definition: gloss.as_deref(),
-                slot1_sentence: sentence.as_deref(),
+                slot1_sentence: sentence,
                 prompt_ver,
                 width: images::TARGET_WIDTH,
                 height: images::TARGET_HEIGHT,

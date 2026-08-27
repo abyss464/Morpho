@@ -46,6 +46,14 @@ RUN cd tts && uv sync --frozen
 COPY adapters/morfessor/ ./morfessor/
 RUN cd morfessor && uv sync --frozen
 
+# Codex adapter. Its *generator* is not in the image — a hosted CLI with
+# somebody's credentials behind it does not belong in a container built from
+# this repository — so `MORPHO_CODEX_BIN` resolves to nothing and morphod
+# reports the source as disabled. Mount the binary in and the source comes
+# alive; leave it out and the image chain simply stops at SDXL.
+COPY adapters/codex/ ./codex/
+RUN cd codex && uv sync --frozen
+
 # -- 4. Runtime image -------------------------------------------------------
 FROM python:3.12-slim-bookworm AS runtime
 
@@ -65,6 +73,7 @@ COPY --from=ui-builder /build/dist/ /app/admin-ui/dist/
 COPY --from=py-builder /build/adapters/common/ /app/adapters/common/
 COPY --from=py-builder /build/adapters/tts/    /app/adapters/tts/
 COPY --from=py-builder /build/adapters/morfessor/ /app/adapters/morfessor/
+COPY --from=py-builder /build/adapters/codex/    /app/adapters/codex/
 
 # uv binary (morphod spawns adapters via `uv run`)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv

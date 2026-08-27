@@ -501,6 +501,12 @@ impl Rule for ScoreImageClipRule {
 /// hosted quota, so it is only asked for what the whole rest of the chain, local
 /// generation included, has failed to serve.
 ///
+/// A word with no slot-1 sentence is **deferred**, never generated from its
+/// lemma alone. What the source draws is the scene one sentence describes,
+/// because that is the question mode 1 asks and the question CLIP scores the
+/// answer against; a picture made from anything else is judged against a
+/// question it was never asked.
+///
 /// Three things keep it conservative: it is off unless an operator turns it on,
 /// it is off unless its adapter is on disk, and one pass asks for at most
 /// [`crate::config::ImagesConfig::codex_batch`] words. The queue is derived, so
@@ -557,6 +563,23 @@ impl Rule for GenImageCodexRule {
             if !inapt(facts, word.word_id, images.codex_threshold) {
                 continue;
             }
+            // No sentence, no generation — the word waits (owner ruling, wave 9).
+            //
+            // This source exists to draw the scene a sentence describes, and
+            // nothing else: mode 1 asks the learner to match sentence to
+            // picture, and the CLIP score that decides whether the result is
+            // any good queries with that same sentence. A picture generated
+            // from the lemma and the definition alone would be judged against a
+            // question it was never asked, which handicaps it against every
+            // library photograph it is competing with.
+            //
+            // Deferring rather than falling back is the level-triggered answer:
+            // a word with no slot-1 sentence has an example fetch outstanding,
+            // and when that lands the word becomes eligible on the next sweep
+            // with nothing to clear.
+            let Some(sentence) = facts.slot_one_example.get(&word.word_id) else {
+                continue;
+            };
             jobs.push(
                 JobSpec::new(
                     JobKey::new(
@@ -573,7 +596,7 @@ impl Rule for GenImageCodexRule {
                     lemma: word.lemma.clone(),
                     pos: facts.primary_pos.get(&word.word_id).cloned(),
                     gloss: facts.primary_gloss.get(&word.word_id).cloned(),
-                    sentence: facts.slot_one_example.get(&word.word_id).cloned(),
+                    sentence: sentence.clone(),
                     prompt_ver: images.codex_prompt_ver().to_string(),
                     mark: mark.clone(),
                 }),

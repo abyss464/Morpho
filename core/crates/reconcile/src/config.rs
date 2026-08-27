@@ -61,6 +61,11 @@ pub struct SourcesConfig {
     pub pixabay_api_key: Option<String>,
     /// Local ComfyUI base URL for the SDXL fallback.
     pub comfyui_url: Option<String>,
+    /// Name of (or path to) the codex generator binary the adapter shells out
+    /// to. The adapter reads the same `MORPHO_CODEX_BIN` override, so both
+    /// sides agree about whether the generator exists — which is what lets an
+    /// absent one *disable* the source instead of dead-lettering every word.
+    pub codex_bin: Option<String>,
     /// Base URL of the CLIP scoring sidecar (`adapters/clip`, run host-side).
     ///
     /// Empty means image selection has no semantic term at all and ranks on the
@@ -89,6 +94,7 @@ impl Default for SourcesConfig {
             pexels_api_key: None,
             pixabay_api_key: None,
             comfyui_url: None,
+            codex_bin: None,
             clip_url: None,
             user_agent: UserAgent::default(),
             http_timeout_secs: 20,
@@ -560,6 +566,9 @@ impl SourcesConfig {
         if let Some(value) = env(CLIP_URL_ENV) {
             self.clip_url = Some(value);
         }
+        if let Some(value) = env(CODEX_BIN_ENV) {
+            self.codex_bin = Some(value);
+        }
         if let Some(value) = env("MORPHO_WORDNET_DIR") {
             self.wordnet_dir = Some(PathBuf::from(value));
         }
@@ -634,6 +643,15 @@ impl SourcesConfig {
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
+    }
+
+    /// The codex generator binary to look for.
+    pub fn codex_bin(&self) -> &str {
+        self.codex_bin
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(DEFAULT_CODEX_BIN)
     }
 
     /// The CLIP sidecar endpoint, if one is configured.
@@ -724,6 +742,7 @@ impl SourcesConfig {
                     self.clip_url().unwrap_or_default().to_string(),
                 ),
             ),
+            ("codex", format!("`{}`", self.codex_bin())),
         ]
     }
 }
@@ -792,6 +811,11 @@ pub const ADAPTERS: &[(&str, &str)] = &[
 
 /// Environment override for [`SourcesConfig::clip_url`].
 pub const CLIP_URL_ENV: &str = "MORPHO_CLIP_URL";
+/// Environment override for [`SourcesConfig::codex_bin`]. The codex adapter
+/// reads the same variable.
+pub const CODEX_BIN_ENV: &str = "MORPHO_CODEX_BIN";
+/// The generator binary's name when nobody says otherwise.
+pub const DEFAULT_CODEX_BIN: &str = "codex";
 
 impl Default for AdapterConfig {
     fn default() -> Self {
@@ -1064,6 +1088,7 @@ mod tests {
         let config = SourcesConfig::default();
         let images = ImagesConfig::default();
         assert!(config.clip_url().is_none(), "no sidecar until one is named");
+        assert_eq!(config.codex_bin(), DEFAULT_CODEX_BIN);
         assert!(!images.codex_enabled);
         // …but the identity a score would be stored under is settled anyway, so
         // turning the sidecar on never leaves rows keyed on an empty model.
@@ -1253,7 +1278,8 @@ mod tests {
                 "pexels",
                 "pixabay",
                 "sdxl",
-                "clip"
+                "clip",
+                "codex"
             ]
         );
         assert!(described.iter().any(|(_, state)| state == "disabled"));

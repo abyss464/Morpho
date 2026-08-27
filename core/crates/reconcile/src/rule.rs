@@ -144,12 +144,18 @@ pub enum JobPayload {
     /// A codex generation: everything the prompt draws from, plus the mark this
     /// job writes when it finishes — success or empty-handed alike, so the word
     /// is never asked twice under the same template.
+    ///
+    /// `sentence` is not optional. This source draws the scene one sentence
+    /// describes; a word without one is deferred by the rule rather than
+    /// generated from its lemma (owner ruling, wave 9). The lemma and gloss ride
+    /// along as disambiguation — which sense of the word the sentence is using —
+    /// never as the subject.
     GenImageCodex {
         word_id: i64,
         lemma: String,
         pos: Option<String>,
         gloss: Option<String>,
-        sentence: Option<String>,
+        sentence: String,
         prompt_ver: String,
         mark: String,
     },

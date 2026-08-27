@@ -318,11 +318,12 @@ pub struct CodexRequest<'a> {
     pub pos: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primary_definition: Option<&'a str>,
-    /// The scene the picture must depict. The whole point of the source: a
-    /// learner picks an image that matches the *sentence*, so that is what gets
-    /// drawn.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub slot1_sentence: Option<&'a str>,
+    /// The scene the picture must depict. The whole point of the source, and
+    /// the reason it is not optional: mode 1 asks the learner to match sentence
+    /// to picture, and the CLIP score that decides whether the result wins the
+    /// slot queries with this same sentence. A word without one is deferred by
+    /// the rule rather than drawn from its lemma.
+    pub slot1_sentence: &'a str,
     /// Prompt template version, echoed back so a stored candidate says which
     /// template drew it.
     pub prompt_ver: &'a str,
@@ -347,6 +348,15 @@ pub async fn codex_generate(
     request: CodexRequest<'_>,
 ) -> Result<CodexResult, TaskError> {
     call(config, "codex", "codex.generate", request, CODEX_TIMEOUT).await
+}
+
+/// Is this executable reachable — on `PATH`, or at the absolute path given?
+///
+/// Used for backends an adapter shells out to, so the engine can answer "is
+/// this source available" the same way the adapter will, and disable it rather
+/// than dead-lettering every word (README part 4, "disabled ≡ waived").
+pub fn binary_available(program: &str) -> bool {
+    which(program).is_some()
 }
 
 /// Is the launcher for a given adapter present at all?
@@ -689,7 +699,7 @@ mod tests {
             lemma: "abandon",
             pos: None,
             primary_definition: None,
-            slot1_sentence: Some("She had to abandon the car."),
+            slot1_sentence: "She had to abandon the car.",
             prompt_ver: "codex/1",
             width: 768,
             height: 576,

@@ -84,9 +84,15 @@ impl SourceSet {
             None => None,
         };
 
+        // Two halves of one question: the adapter's project has to be on disk
+        // *and* the generator it shells out to has to exist. Either missing
+        // means the source is absent rather than broken, so the chain stops at
+        // SDXL and the word honestly reports `missing_image` — the same answer
+        // a stock library with no API key gives.
         let codex_available = proc::probe_adapters(&adapters)
             .into_iter()
-            .any(|probe| probe.adapter == "codex" && probe.available());
+            .any(|probe| probe.adapter == "codex" && probe.available())
+            && proc::binary_available(config.codex_bin());
 
         Ok(Self {
             config: Arc::new(config),
