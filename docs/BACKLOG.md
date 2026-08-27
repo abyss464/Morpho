@@ -52,6 +52,8 @@ content change exactly once.
 |---|-------|--------|
 | 5 | Docker 镜像重建+重启 | image `morpho-morphod:018c9ee9d6cc` @ 0ea2f5d；数据零漂移（6944 词/资产计数完全一致）；publish 子命令在位；无错误风暴。无代码变更 |
 | ops | morpho-genimg.timer 关闭 | Owner 要求。disable --now 并验证（disabled/inactive/列表清零）。wave2 列表 221 词已生成 81、剩 140 不再走此野路子——未来由 #19 引擎内建生成源接管。（更正：先前记录"最后一批 81 张 0 胜出"系误读——那次 firing 是对已上传图的重复 ingest，incumbent==generated 自比自，kept 是 no-op。真实战绩：wave-1 48/48 胜出、wave-2 全部有非 manual 对手的 77 张胜出）|
+| 35 | 进度 0/50 根治+实机验证 | 根因：daily_stats 只在**整个 50 词计划全部走完**时结算一次（wave-1 设计，非回归；#22/#27 均无辜），且 0 计数自续命。修复 f865ac2：SessionBank 水位线逐题入账、幂等、跨午夜分账，5 新测试。1.7.x 补丁装机（7037f04 含 #34），user.db 备份→回灌+今日 22 词补记，实机截图确认 22/50 |
+| 34 | 学习内容回无衬线 | 5cb0bb8→7037f04 合并：readingFontFamily 单点根修级联 6 内容样式，chrome 保衬线，RetryHelpCard 字体不一致顺手修 |
 | 17+20+21 | 发布链走通，release 1.7 装机 | `2026.08.27+0847bb29`，4225 词，APK 532MB（陈旧媒体清理砍半），干净卸载重装（注意真实包名 dev.morpho.debug，首装==更新时间戳已验证），实机启动+截图确认新主题生效。#17 publish 首验发现 2 bug → #29。commit 1cefae5 |
 | 27 | 主页重设计（图标语言/双主题/motif/删冗余入口） | 合并 ffe0a8b（76c7524，22 文件 +1032/−484）：四色 ramp、EB Garamond 内嵌（OFL 留档）、Motif.kt 组件族、Settings 内 System/Light/Dark 切换、QuickAccessRow 删除。gate 绿。**待办**：docs/contracts/app-design.md Brand 段落已过时（旧 morpho blue），conductor 发布后更新 |
 | 22+23 | 续学弹窗（一组制）+ 空计划不再进旧总结页 | 合并 a90f3a5（worktree gate 绿，8 新测试；LearnSessionPlanner 纯逻辑抽取）。#22 附带验证：配额本就按 LocalDate 自然日归零，无需改。agent 顺手发现 ReviewScreen 有同款 #23 隐患（无到期词时可能进旧总结页），未动，待 owner 审 |
