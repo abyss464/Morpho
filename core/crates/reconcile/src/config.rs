@@ -61,6 +61,18 @@ pub struct SourcesConfig {
     pub pixabay_api_key: Option<String>,
     /// Local ComfyUI base URL for the SDXL fallback.
     pub comfyui_url: Option<String>,
+    /// Name of (or path to) the codex generator binary the adapter shells out
+    /// to. The adapter reads the same `MORPHO_CODEX_BIN` override, so both
+    /// sides agree about whether the generator exists — which is what lets an
+    /// absent one *disable* the source instead of dead-lettering every word.
+    pub codex_bin: Option<String>,
+    /// Base URL of the CLIP scoring sidecar (`adapters/clip`, run host-side).
+    ///
+    /// Empty means image selection has no semantic term at all and ranks on the
+    /// quality prior alone — the behaviour that predates it. This is the one
+    /// switch that turns the whole feature on, and it is unset by default
+    /// because the sidecar needs a GPU the engine's container does not have.
+    pub clip_url: Option<String>,
     /// `User-Agent` sent to every HTTP source. Wikimedia requires a real one.
     pub user_agent: UserAgent,
     /// Per-request timeout for HTTP sources, in seconds.
@@ -82,6 +94,8 @@ impl Default for SourcesConfig {
             pexels_api_key: None,
             pixabay_api_key: None,
             comfyui_url: None,
+            codex_bin: None,
+            clip_url: None,
             user_agent: UserAgent::default(),
             http_timeout_secs: 20,
         }
@@ -157,6 +171,24 @@ defaulted_string!(
      free to ignore a name it does not know."
 );
 defaulted_string!(
+    ClipModel,
+    "ViT-B-32/laion2b_s34b_b79k",
+    "CLIP model identity the sidecar is expected to be serving.\n\n\
+     It rides in `clip_scores.model_ver` next to the algorithm version, so a \
+     different model writes different rows rather than making the old ones \
+     wrong. The executor refuses a sidecar that reports something else — a \
+     silent model swap would leave one lexicon scored two ways, which is \
+     exactly the failure the version column exists to make impossible."
+);
+defaulted_string!(
+    CodexPromptVer,
+    "codex/1",
+    "Version tag of the codex generation prompt.\n\n\
+     Same mechanism as the scene-prompt version: it rides in the candidate's \
+     `source_ref` and in the job subject, so bumping it asks for every word to \
+     be generated again under the changed prompt without clearing anything."
+);
+defaulted_string!(
     TatoebaUrl,
     "https://tatoeba.org/en/api_v0/search",
     "Tatoeba sentence search endpoint."
@@ -199,6 +231,33 @@ pub struct ImagesConfig {
     pub sdxl_cfg: f32,
     /// Workflow template name the adapter should render with.
     pub sdxl_workflow: SdxlWorkflow,
+    /// CLIP model the sidecar is expected to serve; see [`ClipModel`].
+    pub clip_model: ClipModel,
+    /// Offer words the CLIP sidecar rates poorly to the codex generator.
+    ///
+    /// Off by default, and doubly gated: the source also needs its adapter on
+    /// disk. Turning it on points an external generation service at every word
+    /// the libraries and SDXL between them could not picture aptly, which costs
+    /// somebody's quota — so it is an operator decision, exactly like scene
+    /// mode.
+    pub codex_enabled: bool,
+    /// Version of the codex prompt template; see [`CodexPromptVer`].
+    pub codex_prompt_ver: CodexPromptVer,
+    /// Raw CLIP cosine below which a word's best picture is judged inapt enough
+    /// to be worth generating a replacement for.
+    ///
+    /// The default is the middle of the band the live lexicon actually occupies:
+    /// `ops/clip_rematch.py`'s pass over 4 000 words put a good match around
+    /// 0.28 and left the bottom decile under 0.20. A word above it has a picture
+    /// somebody can answer a quiz on; a word below it usually has a picture of
+    /// the wrong thing.
+    pub codex_threshold: f64,
+    /// Most codex jobs one derivation may ask for.
+    ///
+    /// The queue is derived, not stored, so an underived job costs nothing and
+    /// comes back next pass — this is what keeps a first run from putting six
+    /// thousand generation requests in front of somebody's rate limit.
+    pub codex_batch: usize,
 }
 
 impl Default for ImagesConfig {
@@ -209,6 +268,11 @@ impl Default for ImagesConfig {
             sdxl_steps: 4,
             sdxl_cfg: 1.0,
             sdxl_workflow: SdxlWorkflow::default(),
+            clip_model: ClipModel::default(),
+            codex_enabled: false,
+            codex_prompt_ver: CodexPromptVer::default(),
+            codex_threshold: 0.22,
+            codex_batch: 8,
         }
     }
 }
@@ -216,17 +280,73 @@ impl Default for ImagesConfig {
 impl ImagesConfig {
     /// Fill unset fields from the environment.
     pub fn apply_env(&mut self) {
-        let Ok(raw) = std::env::var(SCENE_MODE_ENV) else {
+        self.apply_flag(SCENE_MODE_ENV, |images, value| images.scene_mode = value);
+        self.apply_flag(CODEX_ENABLED_ENV, |images, value| {
+            images.codex_enabled = value
+        });
+        if let Some(value) = env_text(CLIP_MODEL_ENV) {
+            self.clip_model = ClipModel(value);
+        }
+        if let Some(value) = env_text(CODEX_PROMPT_VER_ENV) {
+            self.codex_prompt_ver = CodexPromptVer(value);
+        }
+        if let Some(raw) = env_text(CODEX_THRESHOLD_ENV) {
+            match raw.parse::<f64>() {
+                Ok(value) if value.is_finite() => self.codex_threshold = value,
+                _ => tracing::warn!(
+                    value = raw,
+                    "{CODEX_THRESHOLD_ENV} is not a number; leaving the threshold as configured"
+                ),
+            }
+        }
+        if let Some(raw) = env_text(CODEX_BATCH_ENV) {
+            match raw.parse::<usize>() {
+                Ok(value) => self.codex_batch = value,
+                Err(_) => tracing::warn!(
+                    value = raw,
+                    "{CODEX_BATCH_ENV} is not a whole number; leaving the batch as configured"
+                ),
+            }
+        }
+    }
+
+    /// Read one boolean switch, refusing to guess at anything that is not one.
+    fn apply_flag(&mut self, name: &str, set: impl Fn(&mut Self, bool)) {
+        let Ok(raw) = std::env::var(name) else {
             return;
         };
         match parse_flag(&raw) {
-            Some(value) => self.scene_mode = value,
+            Some(value) => set(self, value),
             None if raw.trim().is_empty() => {}
             None => tracing::warn!(
                 value = raw,
-                "{SCENE_MODE_ENV} is not a boolean; leaving scene_mode as configured"
+                "{name} is not a boolean; leaving it as configured"
             ),
         }
+    }
+
+    /// The identity CLIP scores are stored under: algorithm version and model,
+    /// together, because either one changing means a different number.
+    pub fn clip_model_ver(&self) -> String {
+        format!(
+            "{}:{}",
+            morpho_domain::version::CLIP_ALGO_VER,
+            self.clip_model.0
+        )
+    }
+
+    /// The current codex prompt version, as it appears in a `source_ref`.
+    pub fn codex_prompt_ver(&self) -> &str {
+        &self.codex_prompt_ver
+    }
+
+    /// `source_fetch.source` / job subject suffix for the codex pass.
+    pub fn codex_mark(&self) -> String {
+        format!(
+            "codex_{}",
+            self.codex_prompt_ver()
+                .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+        )
     }
 
     /// The current scene-prompt version, as it appears in a `source_ref`.
@@ -251,6 +371,24 @@ impl ImagesConfig {
 
 /// Environment override for [`ImagesConfig::scene_mode`].
 pub const SCENE_MODE_ENV: &str = "MORPHO_SCENE_MODE";
+/// Environment override for [`ImagesConfig::clip_model`].
+pub const CLIP_MODEL_ENV: &str = "MORPHO_CLIP_MODEL";
+/// Environment override for [`ImagesConfig::codex_enabled`].
+pub const CODEX_ENABLED_ENV: &str = "MORPHO_CODEX_ENABLED";
+/// Environment override for [`ImagesConfig::codex_prompt_ver`].
+pub const CODEX_PROMPT_VER_ENV: &str = "MORPHO_CODEX_PROMPT_VER";
+/// Environment override for [`ImagesConfig::codex_threshold`].
+pub const CODEX_THRESHOLD_ENV: &str = "MORPHO_CODEX_THRESHOLD";
+/// Environment override for [`ImagesConfig::codex_batch`].
+pub const CODEX_BATCH_ENV: &str = "MORPHO_CODEX_BATCH";
+
+/// A non-empty environment value, trimmed.
+fn env_text(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
 
 /// A boolean spelled the way a shell profile spells one.
 ///
@@ -425,6 +563,12 @@ impl SourcesConfig {
         if let Some(value) = env("COMFYUI_URL") {
             self.comfyui_url = Some(value);
         }
+        if let Some(value) = env(CLIP_URL_ENV) {
+            self.clip_url = Some(value);
+        }
+        if let Some(value) = env(CODEX_BIN_ENV) {
+            self.codex_bin = Some(value);
+        }
         if let Some(value) = env("MORPHO_WORDNET_DIR") {
             self.wordnet_dir = Some(PathBuf::from(value));
         }
@@ -443,6 +587,7 @@ impl SourcesConfig {
             ImageSource::Wikimedia
             | ImageSource::Openverse
             | ImageSource::Sdxl
+            | ImageSource::Codex
             | ImageSource::Manual => None,
         };
         key.map(str::trim).filter(|value| !value.is_empty())
@@ -495,6 +640,28 @@ impl SourcesConfig {
     /// The ComfyUI endpoint, if one is configured.
     pub fn comfyui_url(&self) -> Option<&str> {
         self.comfyui_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }
+
+    /// The codex generator binary to look for.
+    pub fn codex_bin(&self) -> &str {
+        self.codex_bin
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(DEFAULT_CODEX_BIN)
+    }
+
+    /// The CLIP sidecar endpoint, if one is configured.
+    ///
+    /// Absent is the ordinary case rather than a fault: the sidecar wants a GPU,
+    /// and the engine's own container has none. Image selection then ranks on
+    /// the quality prior alone, which is exactly what it did before semantic
+    /// scoring existed — "disabled ≡ waived", applied to a scorer.
+    pub fn clip_url(&self) -> Option<&str> {
+        self.clip_url
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -568,6 +735,14 @@ impl SourcesConfig {
                     self.comfyui_url().unwrap_or_default().to_string(),
                 ),
             ),
+            (
+                "clip",
+                state(
+                    self.clip_url().is_some(),
+                    self.clip_url().unwrap_or_default().to_string(),
+                ),
+            ),
+            ("codex", format!("`{}`", self.codex_bin())),
         ]
     }
 }
@@ -628,7 +803,19 @@ pub const ADAPTERS: &[(&str, &str)] = &[
         "sdxl",
         "gen_image_sdxl jobs — the image fallback after every stock provider is exhausted",
     ),
+    (
+        "codex",
+        "gen_image_codex jobs — the last image source, for words nothing pictures aptly",
+    ),
 ];
+
+/// Environment override for [`SourcesConfig::clip_url`].
+pub const CLIP_URL_ENV: &str = "MORPHO_CLIP_URL";
+/// Environment override for [`SourcesConfig::codex_bin`]. The codex adapter
+/// reads the same variable.
+pub const CODEX_BIN_ENV: &str = "MORPHO_CODEX_BIN";
+/// The generator binary's name when nobody says otherwise.
+pub const DEFAULT_CODEX_BIN: &str = "codex";
 
 impl Default for AdapterConfig {
     fn default() -> Self {
@@ -713,6 +900,7 @@ mod tests {
         assert!(config.wordnet_dir().is_none());
         assert!(config.corpus_path().is_none());
         assert!(config.comfyui_url().is_none());
+        assert!(config.clip_url().is_none());
         for source in KEYED {
             assert!(config.image_key(*source).is_none(), "{source}");
         }
@@ -891,6 +1079,72 @@ mod tests {
         }
     }
 
+    // -- semantic scoring and the codex source ------------------------------
+
+    /// Both wave-9 switches cost somebody else's hardware, so neither is
+    /// something a checkout falls into.
+    #[test]
+    fn semantic_scoring_and_codex_generation_are_both_opt_in() {
+        let config = SourcesConfig::default();
+        let images = ImagesConfig::default();
+        assert!(config.clip_url().is_none(), "no sidecar until one is named");
+        assert_eq!(config.codex_bin(), DEFAULT_CODEX_BIN);
+        assert!(!images.codex_enabled);
+        // …but the identity a score would be stored under is settled anyway, so
+        // turning the sidecar on never leaves rows keyed on an empty model.
+        assert_eq!(
+            images.clip_model_ver(),
+            "clip/1:ViT-B-32/laion2b_s34b_b79k",
+            "the stored identity must name both the algorithm and the model"
+        );
+    }
+
+    /// A blank URL is an operator who exported the variable and then cleared it,
+    /// which is a request to turn the sidecar off, not a request to call "".
+    #[test]
+    fn a_blank_clip_url_counts_as_absent() {
+        let config = SourcesConfig {
+            clip_url: Some("   ".into()),
+            ..SourcesConfig::default()
+        };
+        assert!(config.clip_url().is_none());
+    }
+
+    /// The codex trigger sits inside the band the live lexicon occupies: high
+    /// enough to catch a picture of the wrong thing, low enough that a merely
+    /// mediocre photograph is left alone.
+    #[test]
+    fn the_codex_threshold_and_batch_are_conservative() {
+        let images = ImagesConfig::default();
+        assert!(images.codex_threshold > 0.0 && images.codex_threshold < 0.30);
+        assert!(images.codex_batch > 0 && images.codex_batch <= 16);
+    }
+
+    /// Same mechanism as the scene mark, and it must not collide with any other
+    /// mark the image chain writes.
+    #[test]
+    fn the_codex_mark_carries_the_prompt_version_and_collides_with_nothing() {
+        let mut images = ImagesConfig::default();
+        assert_eq!(images.codex_mark(), "codex_codex_1");
+        images.codex_prompt_ver = CodexPromptVer("codex/2".into());
+        assert_eq!(images.codex_mark(), "codex_codex_2");
+        assert_ne!(images.codex_mark(), images.scene_mark());
+        for source in ImageSource::ALL {
+            assert_ne!(images.codex_mark(), source.as_str());
+        }
+        for pass in IMAGE_SECOND_PASSES {
+            assert_ne!(images.codex_mark(), pass.mark);
+        }
+        let hostile = ImagesConfig {
+            codex_prompt_ver: CodexPromptVer("codex: v2/alpha ".into()),
+            ..ImagesConfig::default()
+        };
+        assert!(hostile
+            .codex_mark()
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_'));
+    }
+
     /// A mark rides in a job subject of the form `{word_id}:{mark}`, so it must
     /// not contain anything that would make that ambiguous.
     #[test]
@@ -1023,7 +1277,9 @@ mod tests {
                 "unsplash",
                 "pexels",
                 "pixabay",
-                "sdxl"
+                "sdxl",
+                "clip",
+                "codex"
             ]
         );
         assert!(described.iter().any(|(_, state)| state == "disabled"));

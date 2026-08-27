@@ -106,6 +106,37 @@ pub async fn get_json<T: serde::de::DeserializeOwned>(
     })
 }
 
+/// POST a JSON body and decode a JSON reply, applying the taxonomy above.
+///
+/// Used only by the local sidecars, which is why it has no header parameter:
+/// nothing on the loopback or the container host needs credentials, and a
+/// service that did would be an external source with its own module.
+pub async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
+    client: &reqwest::Client,
+    url: &str,
+    body: &B,
+    timeout: Duration,
+    context: &str,
+) -> Result<T, TaskError> {
+    let response = client
+        .post(url)
+        .timeout(timeout)
+        .json(body)
+        .send()
+        .await
+        .map_err(|err| transport_error(&err))?;
+    let status = response.status();
+    if let Some(err) = classify_status(status, &response, context) {
+        return Err(err);
+    }
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|err| transport_error(&err))?;
+    serde_json::from_slice(&bytes)
+        .map_err(|err| TaskError::permanent(format!("{context}: malformed JSON: {err}")))
+}
+
 /// Fetch a URL and return the raw body.
 pub async fn get_bytes(
     client: &reqwest::Client,

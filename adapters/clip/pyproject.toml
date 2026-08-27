@@ -1,0 +1,42 @@
+[project]
+name = "morpho-clip-sidecar"
+version = "0.1.0"
+description = "Morpho CLIP sidecar: image-text aptness scoring over HTTP"
+readme = "README.md"
+requires-python = ">=3.12"
+# Deliberately empty, and it stays that way. The service is stdlib-only apart
+# from the model backend, and the model backend is deliberately not installed
+# here: it comes from the venv that already holds a working accelerator build of
+# torch (on this machine, ~/Code/vendor/ComfyUI/.venv, which is also what
+# `ops/clip_rematch.py` ran under). Declaring `torch` here would invite uv to
+# resolve a second, CPU-only copy of it into a venv that is never the one this
+# service runs under — a gigabyte of download to answer a question nobody asked.
+#
+# What the backend needs is stated in the README and checked at import time:
+# `open_clip`, `torch`, `pillow`.
+dependencies = []
+
+[project.scripts]
+clip-sidecar = "morpho_clip.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/morpho_clip"]
+
+[dependency-groups]
+dev = ["pytest>=8.3", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

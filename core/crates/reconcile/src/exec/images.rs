@@ -16,7 +16,7 @@ use morpho_domain::error::{ErrorKind, TaskError};
 use morpho_domain::event::Actor;
 use morpho_domain::job::JobKind;
 use morpho_domain::types::{FetchedImage, ImageSource, MediaKind};
-use morpho_store::ops::{IngestImages, MediaRegistration};
+use morpho_store::ops::{ApplyClipScores, ClipScoreRow, IngestImages, MediaRegistration};
 use morpho_store::{Store, WriteOp};
 
 use crate::config::ImageProvider;
@@ -24,7 +24,7 @@ use crate::engine::EngineContext;
 use crate::exec::{store_error, wrong_payload, Executor};
 use crate::rule::{JobPayload, JobSpec};
 use crate::score::ImageStrategy;
-use crate::sources::{images, proc};
+use crate::sources::{clip, images, proc};
 
 /// Negative prompt for SDXL. Text in a picture ruins a four-image quiz grid.
 const SDXL_NEGATIVE: &str = "text, watermark, logo, caption, letters, signature";
@@ -522,6 +522,211 @@ fn scene_seed(word_id: i64, prompt_ver: &str) -> u64 {
 fn seed_from(prompt: &str) -> u64 {
     let digest = blake3::hash(prompt.as_bytes());
     u64::from_le_bytes(digest.as_bytes()[..8].try_into().expect("8 bytes"))
+}
+
+pub struct ScoreImageClipExecutor {
+    context: Arc<EngineContext>,
+}
+
+impl ScoreImageClipExecutor {
+    pub fn new(context: Arc<EngineContext>) -> Self {
+        Self { context }
+    }
+}
+
+#[async_trait]
+impl Executor for ScoreImageClipExecutor {
+    fn kind(&self) -> JobKind {
+        JobKind::ScoreImageClip
+    }
+
+    async fn run(&self, job: &JobSpec, store: &Store) -> Result<(), TaskError> {
+        let JobPayload::ScoreImageClip {
+            word_id,
+            text,
+            text_hash,
+            file_hashes,
+        } = &job.payload
+        else {
+            return Err(wrong_payload(JobKind::ScoreImageClip));
+        };
+        let Some(base_url) = self.context.sources.config.clip_url() else {
+            // The rule checks this too; reaching here means the sidecar was
+            // unconfigured between derivation and execution.
+            return Err(TaskError::permanent("clip sidecar is not configured"));
+        };
+        if file_hashes.is_empty() {
+            // The rule never derives an empty ask; a job that carries one has
+            // nothing to do and nothing to report.
+            return Ok(());
+        }
+
+        let response = clip::score(&self.context.sources.http, base_url, text, file_hashes).await?;
+
+        // A sidecar quietly serving a different checkpoint would file two
+        // models' cosines under one identity, and nothing downstream could tell
+        // them apart — the exact failure `model_ver` exists to prevent. So the
+        // mismatch is loud and permanent rather than a warning.
+        let expected = self.context.images.clip_model_ver();
+        if response.model_ver() != expected {
+            return Err(TaskError::permanent(format!(
+                "clip sidecar serves {}, but this engine stores scores as {expected}",
+                response.model_ver()
+            )));
+        }
+        if !response.missing.is_empty() {
+            // Bytes the library registered and the sidecar cannot see: a media
+            // root pointed somewhere else, or a file lost to a restore. Worth
+            // saying out loud, not worth failing the other candidates over.
+            tracing::warn!(
+                word_id,
+                missing = response.missing.len(),
+                first = response.missing.first(),
+                "clip sidecar could not read some of this word's pictures"
+            );
+        }
+
+        let rows: Vec<ClipScoreRow> = response
+            .scores
+            .into_iter()
+            .map(|score| ClipScoreRow {
+                file_hash: score.file_hash,
+                text_hash: text_hash.clone(),
+                similarity: score.similarity,
+            })
+            .collect();
+        if rows.is_empty() {
+            // Every picture asked about came back unreadable, so this run made
+            // no progress — and the rule's trigger is "these are still
+            // unscored", which has not changed. Reporting success would derive
+            // the identical job on the very next sweep, forever, one GPU request
+            // a minute for a word whose bytes are gone.
+            //
+            // Permanent is the honest classification: the same files will be
+            // just as unreadable next time. The job backs off, dead-letters, and
+            // shows up in the dead-letter box naming a word whose media the
+            // sidecar cannot see — which is a real thing an operator should fix
+            // (usually a media root pointed somewhere else).
+            return Err(TaskError::permanent(format!(
+                "clip sidecar could not read any of this word's {} picture(s); \
+                 check MORPHO_CLIP_MEDIA_ROOT",
+                file_hashes.len()
+            )));
+        }
+        store
+            .write(
+                Actor::Worker(JobKind::ScoreImageClip),
+                WriteOp::ApplyClipScores(ApplyClipScores {
+                    model_ver: expected,
+                    rows,
+                    touched_words: vec![*word_id],
+                }),
+            )
+            .await
+            .map_err(store_error)?;
+        Ok(())
+    }
+}
+
+pub struct GenImageCodexExecutor {
+    context: Arc<EngineContext>,
+}
+
+impl GenImageCodexExecutor {
+    pub fn new(context: Arc<EngineContext>) -> Self {
+        Self { context }
+    }
+}
+
+#[async_trait]
+impl Executor for GenImageCodexExecutor {
+    fn kind(&self) -> JobKind {
+        JobKind::GenImageCodex
+    }
+
+    async fn run(&self, job: &JobSpec, store: &Store) -> Result<(), TaskError> {
+        let JobPayload::GenImageCodex {
+            word_id,
+            lemma,
+            pos,
+            gloss,
+            sentence,
+            prompt_ver,
+            mark,
+        } = &job.payload
+        else {
+            return Err(wrong_payload(JobKind::GenImageCodex));
+        };
+
+        let staging = self
+            .context
+            .media
+            .staging(&format!("codex-{word_id}"))
+            .map_err(store_error)?;
+        let out_path = staging.out_path("image.webp");
+
+        let result = proc::codex_generate(
+            &self.context.sources.adapters,
+            proc::CodexRequest {
+                word_id: *word_id,
+                lemma,
+                pos: pos.as_deref(),
+                primary_definition: gloss.as_deref(),
+                slot1_sentence: sentence,
+                prompt_ver,
+                width: images::TARGET_WIDTH,
+                height: images::TARGET_HEIGHT,
+                out_path: out_path.to_string_lossy().into_owned(),
+            },
+        )
+        .await?;
+
+        let stored = self
+            .context
+            .media
+            .put_file(&out_path, MediaKind::Image)
+            .map_err(store_error)?;
+
+        store
+            .write(
+                Actor::Worker(JobKind::GenImageCodex),
+                WriteOp::IngestImages(IngestImages {
+                    word_id: *word_id,
+                    source: ImageSource::Codex,
+                    images: vec![FetchedImage {
+                        file_hash: stored.file_hash.clone(),
+                        width: Some(i64::from(images::TARGET_WIDTH)),
+                        height: Some(i64::from(images::TARGET_HEIGHT)),
+                        source: ImageSource::Codex,
+                        // The note says which template drew it, exactly as the
+                        // scene note does, so a later pass can tell a picture
+                        // made under `codex/1` from one made under `codex/2` —
+                        // and so the duplicate-image pressure leaves a picture
+                        // drawn for one word alone.
+                        source_ref: Some(format!(
+                            "codex:{} ({} {prompt_ver})",
+                            result.model,
+                            crate::score::SCENE_NOTE
+                        )),
+                        license: Some("generated".to_string()),
+                        query_used: Some(result.prompt.clone()),
+                    }],
+                    media: vec![MediaRegistration {
+                        file_hash: stored.file_hash,
+                        kind: MediaKind::Image,
+                        rel_path: stored.rel_path,
+                        bytes: stored.bytes,
+                    }],
+                    // Whatever came back, the mark this job was derived against
+                    // is written: one generation per word per template version,
+                    // which is what stops a word being asked for twice.
+                    mark_source: Some(mark.clone()),
+                }),
+            )
+            .await
+            .map_err(store_error)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

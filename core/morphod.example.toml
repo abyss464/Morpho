@@ -124,6 +124,24 @@ http_timeout_secs = 20
 # Local ComfyUI for the SDXL image fallback. Environment: COMFYUI_URL.
 # comfyui_url = "http://127.0.0.1:8188"
 
+# The CLIP scoring sidecar (adapters/clip). Unset — the default — means image
+# selection has no semantic term at all and ranks on the quality prior alone,
+# which is exactly what it did before the sidecar existed. Set, it becomes the
+# dominant signal: a picture that matches the word's own sentence beats a sharper
+# picture of the wrong thing.
+#
+# It is a separate process because it needs a GPU this one does not have. Run it
+# under a venv with a working accelerator build of torch, and point this at it —
+# `http://host.docker.internal:30013` from the container, `http://127.0.0.1:30013`
+# natively. See docs/contracts/clip-service.md. Environment: MORPHO_CLIP_URL.
+# clip_url = "http://127.0.0.1:30013"
+
+# The generator the codex adapter shells out to, for the last link in the image
+# chain. The adapter reads the same MORPHO_CODEX_BIN override, so a machine where
+# this binary does not exist has the source *disabled* rather than dead-lettering
+# every word — the same treatment a stock library with no API key gets.
+# codex_bin = "codex"
+
 # ---------------------------------------------------------------------------
 # Python adapters (docs/contracts/adapter-protocol.md)
 # ---------------------------------------------------------------------------
@@ -200,6 +218,41 @@ sdxl_steps = 4
 sdxl_cfg = 1.0
 sdxl_workflow = "sdxl_turbo_v1"
 
+# The CLIP model the sidecar is expected to be serving. It rides in
+# clip_scores.model_ver next to the algorithm version, so a different model
+# writes different rows rather than making the old ones wrong — and the executor
+# refuses a sidecar reporting anything else, because one lexicon scored two ways
+# is exactly what that column exists to prevent. Environment: MORPHO_CLIP_MODEL.
+clip_model = "ViT-B-32/laion2b_s34b_b79k"
+
+# The codex source: the last link in the image chain, and the only one that fires
+# on a picture being *inapt* rather than absent. Every library, both second
+# passes and local SDXL generation come first; a word reaches here when its best
+# picture still scores below codex_threshold against its own sentence, or when it
+# has no scored picture at all.
+#
+# Off by default, and doubly gated — it also needs the adapter on disk and its
+# generator binary on PATH. Turning it on spends somebody's hosted quota, so it
+# is an explicit decision. Environment: MORPHO_CODEX_ENABLED=1.
+codex_enabled = false
+
+# Version tag of the codex prompt template; same mechanism as scene_prompt_ver.
+# Environment: MORPHO_CODEX_PROMPT_VER.
+codex_prompt_ver = "codex/1"
+
+# Raw CLIP cosine below which a word's best picture is worth replacing. The
+# default sits in the middle of the band the live lexicon occupies: a good match
+# lands near 0.28 and the bottom decile falls under 0.20.
+# Environment: MORPHO_CODEX_THRESHOLD.
+codex_threshold = 0.22
+
+# Most codex jobs one derivation may ask for. The queue is derived rather than
+# stored, so the words a pass does not ask for cost nothing and come back next
+# pass — this is what keeps a first run from putting six thousand generation
+# requests in front of somebody's rate limit.
+# Environment: MORPHO_CODEX_BATCH.
+codex_batch = 8
+
 # ---------------------------------------------------------------------------
 # Learning plan
 # ---------------------------------------------------------------------------
@@ -218,5 +271,10 @@ group_max = 20
 #   MORPHO_WORDNET_DIR     overrides sources.wordnet_dir
 #   MORPHO_CORPUS_PATH     overrides sources.corpus_path
 #   MORPHO_SCENE_MODE      overrides images.scene_mode (1/true/on, 0/false/off)
+#   MORPHO_CLIP_URL        overrides sources.clip_url
+#   MORPHO_CLIP_MODEL      overrides images.clip_model
+#   MORPHO_CODEX_ENABLED   overrides images.codex_enabled (1/true/on, 0/false/off)
+#   MORPHO_CODEX_PROMPT_VER / MORPHO_CODEX_THRESHOLD / MORPHO_CODEX_BATCH
+#   MORPHO_CODEX_BIN       overrides sources.codex_bin (the adapter reads it too)
 #   UNSPLASH_ACCESS_KEY / PEXELS_API_KEY / PIXABAY_API_KEY / COMFYUI_URL
 #   RUST_LOG               overrides --log

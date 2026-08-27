@@ -25,6 +25,10 @@ const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 function sourceRefLabel(candidate: ImageCandidate): string {
   if (!candidate.source_ref) return '—';
+  // A generated candidate that names a prompt template — "sdxl:42 (scene
+  // scene/1)", "codex:codex (scene codex/1)" — is already readable as written,
+  // and the prompt itself is on `query_used`.
+  if (candidate.source === 'codex') return candidate.source_ref;
   if (candidate.source === 'sdxl') {
     try {
       const parsed = JSON.parse(candidate.source_ref) as { seed?: number; model?: string };

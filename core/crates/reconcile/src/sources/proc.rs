@@ -31,6 +31,9 @@ use crate::config::{AdapterConfig, ADAPTERS};
 pub const TTS_TIMEOUT: Duration = Duration::from_secs(60);
 pub const MORFESSOR_TIMEOUT: Duration = Duration::from_secs(120);
 pub const SDXL_TIMEOUT: Duration = Duration::from_secs(600);
+/// Codex generation goes out to a hosted model over somebody else's queue, so
+/// it is given the same budget as a local render plus the round trip.
+pub const CODEX_TIMEOUT: Duration = Duration::from_secs(900);
 
 /// stderr kept for `last_error`. Enough for a traceback, bounded so one broken
 /// adapter cannot bloat the database.
@@ -297,6 +300,63 @@ pub async fn sdxl_generate(
     request: SdxlRequest<'_>,
 ) -> Result<SdxlResult, TaskError> {
     call(config, "sdxl", "sdxl.generate", request, SDXL_TIMEOUT).await
+}
+
+/// `codex.generate` request.
+///
+/// The fields are the ones `ops/genimg_cron.sh` wrote into its word list —
+/// lemma, part of speech, primary definition, slot-1 sentence — because that is
+/// what its prompt asks the model to draw, and this is the same ask made an op
+/// instead of a batch file. The adapter owns the prompt text: a prompt version
+/// belongs with the words it is phrased in, and passing it as a parameter would
+/// let the engine and the adapter drift into two templates.
+#[derive(Debug, Serialize)]
+pub struct CodexRequest<'a> {
+    pub word_id: i64,
+    pub lemma: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pos: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primary_definition: Option<&'a str>,
+    /// The scene the picture must depict. The whole point of the source, and
+    /// the reason it is not optional: mode 1 asks the learner to match sentence
+    /// to picture, and the CLIP score that decides whether the result wins the
+    /// slot queries with this same sentence. A word without one is deferred by
+    /// the rule rather than drawn from its lemma.
+    pub slot1_sentence: &'a str,
+    /// Prompt template version, echoed back so a stored candidate says which
+    /// template drew it.
+    pub prompt_ver: &'a str,
+    pub width: u32,
+    pub height: u32,
+    pub out_path: String,
+}
+
+/// `codex.generate` result.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CodexResult {
+    #[serde(default)]
+    pub model: String,
+    /// The prompt the adapter actually sent, recorded on the candidate as
+    /// `query_used` so a reviewer can see what was asked for.
+    #[serde(default)]
+    pub prompt: String,
+}
+
+pub async fn codex_generate(
+    config: &AdapterConfig,
+    request: CodexRequest<'_>,
+) -> Result<CodexResult, TaskError> {
+    call(config, "codex", "codex.generate", request, CODEX_TIMEOUT).await
+}
+
+/// Is this executable reachable — on `PATH`, or at the absolute path given?
+///
+/// Used for backends an adapter shells out to, so the engine can answer "is
+/// this source available" the same way the adapter will, and disable it rather
+/// than dead-lettering every word (README part 4, "disabled ≡ waived").
+pub fn binary_available(program: &str) -> bool {
+    which(program).is_some()
 }
 
 /// Is the launcher for a given adapter present at all?
@@ -623,6 +683,34 @@ mod tests {
         assert_eq!(TTS_TIMEOUT.as_secs(), 60);
         assert_eq!(MORFESSOR_TIMEOUT.as_secs(), 120);
         assert_eq!(SDXL_TIMEOUT.as_secs(), 600);
+        assert!(
+            CODEX_TIMEOUT > SDXL_TIMEOUT,
+            "a hosted queue is slower than a local render"
+        );
+    }
+
+    /// The codex request carries what the prompt draws from, and omits what the
+    /// word does not have rather than sending an empty string the model would
+    /// try to illustrate.
+    #[test]
+    fn the_codex_request_omits_what_a_word_does_not_have() {
+        let body = serde_json::to_value(CodexRequest {
+            word_id: 7,
+            lemma: "abandon",
+            pos: None,
+            primary_definition: None,
+            slot1_sentence: "She had to abandon the car.",
+            prompt_ver: "codex/1",
+            width: 768,
+            height: 576,
+            out_path: "/tmp/x.webp".into(),
+        })
+        .unwrap();
+        assert_eq!(body["word_id"], 7);
+        assert_eq!(body["slot1_sentence"], "She had to abandon the car.");
+        assert_eq!(body["prompt_ver"], "codex/1");
+        assert!(body.get("pos").is_none());
+        assert!(body.get("primary_definition").is_none());
     }
 
     /// Ruling #17: the adapter runs from `adapters_root`, whatever the process

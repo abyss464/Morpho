@@ -5,13 +5,16 @@
 //! * **in-process** — HTTP via reqwest (Free Dictionary, Wiktionary, Wikimedia
 //!   Commons, Openverse, Tatoeba, three stock-photo APIs), WordNet parsed from
 //!   WNdb files, the exam corpus read from JSONL;
-//! * **subprocess** — the Python adapters (`tts`, `morfessor`, `sdxl`) speaking
-//!   the envelope in `docs/contracts/adapter-protocol.md`.
+//! * **subprocess** — the Python adapters (`tts`, `morfessor`, `sdxl`, `codex`)
+//!   speaking the envelope in `docs/contracts/adapter-protocol.md`;
+//! * **sidecar** — the CLIP scorer, an HTTP service of our own that runs outside
+//!   the engine because it needs a GPU (see [`clip`]).
 //!
 //! Every one of them is a pure function from typed input to typed output plus
 //! the `Permanent | Transient | RateLimited` taxonomy. None of them sees the
 //! database (README Part 4 §"适配器").
 
+pub mod clip;
 pub mod corpus;
 pub mod freedict;
 pub mod http;
@@ -42,6 +45,9 @@ pub struct SourceSet {
     pub http: reqwest::Client,
     pub wordnet: Option<Arc<WordNet>>,
     pub corpus: Option<Arc<ExamCorpus>>,
+    /// The codex adapter's project is on disk and its launcher is runnable.
+    /// Resolved once, at load: see [`SourceSet::has_codex`].
+    codex_available: bool,
 }
 
 impl SourceSet {
@@ -78,12 +84,23 @@ impl SourceSet {
             None => None,
         };
 
+        // Two halves of one question: the adapter's project has to be on disk
+        // *and* the generator it shells out to has to exist. Either missing
+        // means the source is absent rather than broken, so the chain stops at
+        // SDXL and the word honestly reports `missing_image` — the same answer
+        // a stock library with no API key gives.
+        let codex_available = proc::probe_adapters(&adapters)
+            .into_iter()
+            .any(|probe| probe.adapter == "codex" && probe.available())
+            && proc::binary_available(config.codex_bin());
+
         Ok(Self {
             config: Arc::new(config),
             adapters: Arc::new(adapters),
             http,
             wordnet,
             corpus,
+            codex_available,
         })
     }
 
@@ -97,6 +114,26 @@ impl SourceSet {
 
     pub fn has_sdxl(&self) -> bool {
         self.config.comfyui_url().is_some()
+    }
+
+    /// Is there a CLIP sidecar to score against?
+    ///
+    /// `false` is an ordinary configuration, not a fault: image selection then
+    /// ranks on the quality prior alone and every word keeps the picture it has.
+    pub fn has_clip(&self) -> bool {
+        self.config.clip_url().is_some()
+    }
+
+    /// Is the codex adapter actually on disk?
+    ///
+    /// The switch that turns the source on is
+    /// [`crate::config::ImagesConfig::codex_enabled`]; this is the other half of
+    /// the same question, resolved once at startup exactly like WordNet's data
+    /// directory. An operator who enables the source in a container that does
+    /// not carry the adapter gets a disabled source and one warning, rather than
+    /// six thousand dead letters.
+    pub fn has_codex(&self) -> bool {
+        self.codex_available
     }
 
     /// Log one line per source so an operator can see at a glance what is live.

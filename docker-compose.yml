@@ -11,5 +11,17 @@ services:
       - ./content:/app/content
     environment:
       - PIXABAY_API_KEY=${PIXABAY_API_KEY:-}
+      # The CLIP sidecar runs on the host, because it needs the GPU this
+      # container does not have. Unset, image selection ranks on the quality
+      # prior alone — which is the behaviour that predates it, not a failure.
+      - MORPHO_CLIP_URL=${MORPHO_CLIP_URL:-}
+      - MORPHO_CLIP_MODEL=${MORPHO_CLIP_MODEL:-}
+      - MORPHO_CODEX_ENABLED=${MORPHO_CODEX_ENABLED:-}
+      - MORPHO_CODEX_THRESHOLD=${MORPHO_CODEX_THRESHOLD:-}
+      - MORPHO_CODEX_BATCH=${MORPHO_CODEX_BATCH:-}
       - RUST_LOG=${RUST_LOG:-warn}
+    extra_hosts:
+      # Linux has no `host.docker.internal` of its own; this is what makes the
+      # sidecar reachable from inside the container by the name the docs use.
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped

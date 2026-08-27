@@ -116,6 +116,19 @@ pub enum JobPayload {
         /// Only a widened pass reads them.
         gloss_tokens: Vec<String>,
     },
+    /// One word's uncompared pictures, and the text to compare them against.
+    ///
+    /// Carried rather than looked up, for the same reason the image mark is: the
+    /// query the rule decided on and the query the score is filed under cannot
+    /// drift apart across a pass boundary. `text_hash` travels alongside the
+    /// text so the executor never has to re-derive it and reach a different
+    /// answer than the fact set did.
+    ScoreImageClip {
+        word_id: i64,
+        text: String,
+        text_hash: String,
+        file_hashes: Vec<String>,
+    },
     GenImageSdxl {
         word_id: i64,
         lemma: String,
@@ -127,6 +140,24 @@ pub enum JobPayload {
         /// is: the sentence the rule saw and the sentence the prompt describes
         /// cannot drift apart across a pass boundary.
         scene: Option<ScenePrompt>,
+    },
+    /// A codex generation: everything the prompt draws from, plus the mark this
+    /// job writes when it finishes — success or empty-handed alike, so the word
+    /// is never asked twice under the same template.
+    ///
+    /// `sentence` is not optional. This source draws the scene one sentence
+    /// describes; a word without one is deferred by the rule rather than
+    /// generated from its lemma (owner ruling, wave 9). The lemma and gloss ride
+    /// along as disambiguation — which sense of the word the sentence is using —
+    /// never as the subject.
+    GenImageCodex {
+        word_id: i64,
+        lemma: String,
+        pos: Option<String>,
+        gloss: Option<String>,
+        sentence: String,
+        prompt_ver: String,
+        mark: String,
     },
     SynthTts {
         desired: DesiredTts,

@@ -30,7 +30,30 @@ pub const TTS_ALGO_VER: &str = "tts-input/1";
 ///   primary-sense match, never on which provider produced them. The two
 ///   remaining components are rescaled from their old 0.35/0.20 split so they
 ///   still sum to 1.0.
-pub const SCORER_ALGO_VER: &str = "scorer/4";
+/// * `scorer/5` — image selection consults CLIP. The *stored* image score is
+///   unchanged, bit for bit: semantic aptness depends on the word's currently
+///   selected slot-1 sentence, which is mutable state, so — exactly like the
+///   duplicate-image penalty — it is applied at ranking time from `clip_scores`
+///   rather than folded into a value cached under a `scorer_ver`
+///   (see `morpho_reconcile::score::image_selection_score`). The version moves
+///   anyway, because a deployment that changes how a slot is *decided* must
+///   restamp every candidate: it is the marker an operator reads to know which
+///   build produced a selection, and it makes `score_candidates` sweep the whole
+///   library once so nothing is left carrying a version that predates the
+///   semantic term.
+pub const SCORER_ALGO_VER: &str = "scorer/5";
+
+/// Version of the CLIP image-text scoring pass.
+///
+/// Written into `clip_scores.model_ver` together with the model identity, as
+/// `"{CLIP_ALGO_VER}:{model}"` — see
+/// `morpho_reconcile::config::ImagesConfig::clip_model_ver`. A bump here or a
+/// different model produces *different rows* rather than stale ones, exactly
+/// like [`TTS_ALGO_VER`]: the old rows simply lose their readers.
+///
+/// * `clip/1` — open_clip cosine between the image and the word's selected
+///   slot-1 sentence (the lemma when it has none), matching `ops/clip_rematch.py`.
+pub const CLIP_ALGO_VER: &str = "clip/1";
 
 /// Version of the plan builder (Tarjan → condensation → grouping).
 pub const PLAN_ALGO_VER: &str = "plan/1";
@@ -71,7 +94,11 @@ pub const RELEASE_SCHEMA_VER: &str = "2";
 ///   #18a).
 /// * 6 — wave-7: `oos_queue.status` gains `resolved_gloss`, so an out-of-scope
 ///   lemma can be closed by anchoring it instead of promoting or rewriting.
-pub const SCHEMA_USER_VERSION: i32 = 6;
+/// * 7 — wave-9: the `clip_scores` table (semantic image-text aptness, content
+///   addressed on the picture and the sentence) and a widened
+///   `image_candidates.source` union carrying `codex`, the generative source at
+///   the end of the image chain.
+pub const SCHEMA_USER_VERSION: i32 = 7;
 
 /// Version the embedded `docs/contracts/working-db.sql` describes.
 ///
@@ -87,8 +114,7 @@ pub const SCHEMA_USER_VERSION: i32 = 6;
 /// never exceed [`SCHEMA_USER_VERSION`]; `store::schema` asserts that at compile
 /// time.
 ///
-/// It sits at 5 while the code is at 6: the contract already ships
-/// `words.zh_gloss`, but its `oos_queue.status` CHECK has not yet been synced
-/// with `resolved_gloss`, so the rung that widens it carries its own forward
-/// DDL and still has to run over a database created straight from the file.
-pub const CONTRACT_SCHEMA_VERSION: i32 = 6;
+/// It is level with the code: the contract file ships `clip_scores` and the
+/// widened `image_candidates.source` union, so a freshly created database is
+/// stamped 7 and the ladder runs nothing.
+pub const CONTRACT_SCHEMA_VERSION: i32 = 7;

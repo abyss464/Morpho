@@ -37,6 +37,8 @@ pub const CONTRACT_RATE_LIMITS: &[(&str, i64, f64, i64)] = &[
     ("openverse", 2, 50.0, 4),
     ("tatoeba", 2, 60.0, 4),
     ("sdxl", 1, 6.0, 1),
+    ("clip", 2, 120.0, 8),
+    ("codex", 1, 4.0, 1),
     ("edge_tts", 4, 240.0, 8),
     ("llm", 2, 30.0, 4),
     ("cpu", 8, 6000.0, 16),
@@ -100,6 +102,24 @@ const IMAGE_CANDIDATES_V3: &str = "CREATE TABLE image_candidates (
     UNIQUE (word_id, file_hash)
 )";
 
+/// `image_candidates` before wave 9 admitted the codex generator.
+const IMAGE_CANDIDATES_V6: &str = "CREATE TABLE image_candidates (
+    img_cand_id  INTEGER PRIMARY KEY,
+    word_id      INTEGER NOT NULL REFERENCES words(word_id),
+    pos          TEXT,
+    file_hash    TEXT NOT NULL REFERENCES media_files(file_hash),
+    width        INTEGER, height INTEGER,
+    source       TEXT NOT NULL CHECK (source IN ('unsplash','pexels','pixabay','wikimedia','openverse','sdxl','manual')),
+    source_ref   TEXT,
+    license      TEXT,
+    query_used   TEXT,
+    status       TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available','rejected')),
+    auto_score   REAL, score_detail TEXT, scorer_ver TEXT,
+    created_by   TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE (word_id, file_hash)
+)";
+
 /// `oos_queue` as the contract still spells it: before ruling #18a gave the
 /// queue a third way to close a lemma.
 const OOS_QUEUE_V5: &str = "CREATE TABLE oos_queue (
@@ -147,6 +167,12 @@ pub struct Migration {
     pub from: i32,
     pub add_columns: &'static [ColumnAdd],
     pub rebuilds: &'static [TableRebuild],
+    /// Tables this rung introduces, named rather than spelled out: the DDL and
+    /// the indexes come from the embedded contract, which is the whole point of
+    /// that file being normative. A wholly new table needs no data migration —
+    /// there is nothing to carry across — so "create it if it is not there" is
+    /// the entire forward step, and dropping it is the exact inverse.
+    pub creates: &'static [&'static str],
 }
 
 pub const MIGRATIONS: &[Migration] = &[
@@ -157,6 +183,7 @@ pub const MIGRATIONS: &[Migration] = &[
         // hack (admin-api.md wave-2 ruling #5).
         add_columns: &[("words", "core_ready", "INTEGER NOT NULL DEFAULT 0")],
         rebuilds: &[],
+        creates: &[],
     },
     Migration {
         from: 2,
@@ -167,6 +194,7 @@ pub const MIGRATIONS: &[Migration] = &[
         // event detail.
         add_columns: &[("releases", "word_count", "INTEGER NOT NULL DEFAULT 0")],
         rebuilds: &[],
+        creates: &[],
     },
     Migration {
         from: 3,
@@ -187,6 +215,7 @@ pub const MIGRATIONS: &[Migration] = &[
                 previous_ddl: IMAGE_CANDIDATES_V3,
             },
         ],
+        creates: &[],
     },
     Migration {
         from: 4,
@@ -203,6 +232,7 @@ pub const MIGRATIONS: &[Migration] = &[
             ),
         ],
         rebuilds: &[],
+        creates: &[],
     },
     Migration {
         from: 5,
@@ -215,6 +245,21 @@ pub const MIGRATIONS: &[Migration] = &[
             next_ddl: None,
             previous_ddl: OOS_QUEUE_V5,
         }],
+        creates: &[],
+    },
+    Migration {
+        from: 6,
+        // Wave 9: image selection learns what a picture *means*. `clip_scores`
+        // is a wholly new table, so it is created from the contract rather than
+        // migrated into; the `image_candidates` union widens for the codex
+        // generator, which SQLite can only express as a rebuild.
+        add_columns: &[],
+        rebuilds: &[TableRebuild {
+            table: "image_candidates",
+            next_ddl: None,
+            previous_ddl: IMAGE_CANDIDATES_V6,
+        }],
+        creates: &["clip_scores"],
     },
 ];
 
@@ -226,6 +271,17 @@ impl Migration {
     /// Apply this rung. Changes that are already present are skipped, so the
     /// step is safe on a database created from a contract file that ships them.
     fn apply(&self, tx: &rusqlite::Transaction<'_>) -> Result<()> {
+        for table in self.creates {
+            if table_exists(tx, table)? {
+                tracing::debug!(table, "table already present; creation skipped");
+                continue;
+            }
+            let want = contract_ddl(table)?;
+            tx.execute_batch(&want.create)?;
+            for index in &want.indexes {
+                tx.execute_batch(index)?;
+            }
+        }
         for (table, column, definition) in self.add_columns {
             if has_column(tx, table, column)? {
                 tracing::debug!(
@@ -282,8 +338,21 @@ impl Migration {
             }
             tx.execute_batch(&format!("ALTER TABLE {table} DROP COLUMN {column}"))?;
         }
+        for table in self.creates {
+            tx.execute_batch(&format!("DROP TABLE IF EXISTS \"{table}\""))?;
+        }
         Ok(())
     }
+}
+
+/// Does this database have `table` at all?
+fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        rusqlite::params![table],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
 }
 
 /// Does `table` already have `column`?
@@ -683,13 +752,29 @@ mod tests {
                 );
             }
             for rebuild in step.rebuilds {
+                // A table can be rebuilt by more than one rung
+                // (`image_candidates` widened at 3→4 and again at 6→7), and the
+                // fixture carries the shape the *earliest* pending rung starts
+                // from — every later one is still ahead of it.
+                let earliest = MIGRATIONS
+                    .iter()
+                    .filter(|other| other.from >= version)
+                    .flat_map(|other| other.rebuilds)
+                    .find(|other| other.table == rebuild.table)
+                    .expect("this rung is one of them");
                 assert!(
                     same_shape(
                         &live_ddl(conn, rebuild.table).unwrap(),
-                        rebuild.previous_ddl
+                        earliest.previous_ddl
                     ),
-                    "v{version} fixture still carries the new {} shape",
+                    "v{version} fixture does not carry the expected {} shape",
                     rebuild.table
+                );
+            }
+            for table in step.creates {
+                assert!(
+                    !table_exists(conn, table).unwrap(),
+                    "v{version} fixture already carries {table}"
                 );
             }
         }
@@ -784,6 +869,7 @@ mod tests {
         assert!(WORKING_DB_SQL.contains("core_ready"));
         assert!(WORKING_DB_SQL.contains("word_count"));
         assert!(WORKING_DB_SQL.contains("zh_gloss"));
+        assert!(WORKING_DB_SQL.contains("CREATE TABLE clip_scores"));
     }
 
     /// The typed enumerations and the SQL `CHECK` unions are two spellings of
@@ -997,6 +1083,60 @@ mod tests {
         assert_eq!(status, "open");
     }
 
+    /// Wave 9: a v6 database gains `clip_scores` and the codex source, and the
+    /// image candidates it already held come through the rebuild untouched.
+    #[test]
+    fn a_wave_six_database_gains_clip_scores_and_the_codex_source() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        legacy(&mut conn, 6);
+        seed_candidates(&conn);
+        assert!(!table_exists(&conn, "clip_scores").unwrap());
+        assert!(!accepts_source(&conn, "image_candidates", "codex"));
+
+        assert!(!ensure_schema(&mut conn).unwrap());
+
+        assert!(table_exists(&conn, "clip_scores").unwrap());
+        assert!(accepts_source(&conn, "image_candidates", "codex"));
+        // The pictures the library already held survived, keeping the ids their
+        // selections point at.
+        let (source, selected): (String, i64) = conn
+            .query_row(
+                "SELECT c.source, s.img_cand_id FROM image_selections s
+                 JOIN image_candidates c ON c.img_cand_id = s.img_cand_id
+                 WHERE s.word_id = 7",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((source.as_str(), selected), ("unsplash", 21));
+
+        // The new table is a real one, with its key and its foreign key live.
+        conn.execute(
+            "INSERT INTO clip_scores (file_hash, text_hash, model_ver, similarity)
+             VALUES ('abc', 'q1', 'clip/1:ViT-B-32', 0.27)",
+            [],
+        )
+        .unwrap();
+        assert!(conn
+            .execute(
+                "INSERT INTO clip_scores (file_hash, text_hash, model_ver, similarity)
+                 VALUES ('abc', 'q1', 'clip/1:ViT-B-32', 0.31)",
+                [],
+            )
+            .is_err());
+        // A different model is a different row, never an overwrite.
+        conn.execute(
+            "INSERT INTO clip_scores (file_hash, text_hash, model_ver, similarity)
+             VALUES ('abc', 'q1', 'clip/2:ViT-L-14', 0.31)",
+            [],
+        )
+        .unwrap();
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM clip_scores", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 2);
+    }
+
     /// The rebuild puts back everything it took apart.
     #[test]
     fn a_rebuild_restores_the_indexes_and_the_views() {
@@ -1123,6 +1263,7 @@ mod tests {
             ("table", "image_candidates"),
             ("table", "image_selections"),
             ("table", "media_files"),
+            ("table", "clip_scores"),
             ("table", "def_extractions"),
             ("table", "def_tokens"),
             ("table", "oos_queue"),
