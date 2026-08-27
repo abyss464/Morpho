@@ -219,6 +219,15 @@ read it). `word_id` is stable across releases, so user progress survives updates
     The 2026-08-27 unblock found 182 such lemmas behind the 224 the queue
     actually reported. Reopening `auto_closed` on re-entry is an engine fix
     worth filing.
+11a. **"In lexicon" is not "shippable".** A definition edit can be OOV-clean yet
+    still pull an unshippable word into the dependency closure: re-selecting a
+    candidate whose tokens include a promoted-but-empty auxiliary (the §7.11
+    plurals) flips blockers onto every dependent. The readability gate (lemma
+    exists in `words`) and the closure gate (referenced word itself ships) are
+    different gates — bulk re-selections must check `ready OR zh_gloss` on
+    referenced target/auxiliary lemmas, not bare existence. Caught live in the
+    wave-2 #6 rewrite (surgery→incisions, decimal→denominator; both withdrawn
+    for authored in-scope definitions).
 11. **A promoted OOV lemma can become a permanent blocker.** `{"mode":"promote"}`
     creates an *active* auxiliary that now needs a definition, an example, an
     image and TTS like any other word — and lemmas like `crosspiece`,
