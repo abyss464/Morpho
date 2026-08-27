@@ -11,7 +11,6 @@ CREATE TABLE words (
     -- JSON array of morph segments, e.g. ["bene","vol","ent"]. Nullable: a word
     -- with prose but no agreed segmentation renders as prose only.
     etymology_segments TEXT,
-    image_file      TEXT NOT NULL,
     word_audio_file TEXT NOT NULL
 );
 CREATE INDEX ix_words_order ON words(learning_order);
@@ -38,5 +37,5 @@ insert:
 INSERT INTO words (
     word_id, word, phonetic, frequency_rank, role,
     group_id, learning_order, etymology, etymology_segments,
-    image_file, word_audio_file
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    word_audio_file
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);

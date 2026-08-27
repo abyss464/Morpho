@@ -6,7 +6,8 @@ CREATE TABLE examples (
     sentence      TEXT NOT NULL,
     hl_start      INTEGER NOT NULL,
     hl_end        INTEGER NOT NULL,
-    ex_audio_file TEXT NOT NULL
+    ex_audio_file TEXT NOT NULL,
+    image_file    TEXT
 );
 CREATE INDEX ix_examples_word ON examples(word_id);
 
@@ -41,5 +42,5 @@ WHERE hl_start < 0
    OR hl_end > length(CAST(sentence AS BLOB));
 
 insert:
-INSERT INTO examples (example_id, word_id, display_order, sentence, hl_start, hl_end, ex_audio_file)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO examples (example_id, word_id, display_order, sentence, hl_start, hl_end, ex_audio_file, image_file)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);

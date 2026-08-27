@@ -8,16 +8,17 @@ Three phases, run sequentially from __main__:
      file). Response is a WordDetail; the new candidate is the max
      img_cand_id under image.candidates for that word_id (freshly minted).
   2. score   — same CLIP model + query-text formula as ops/clip_rematch.py
-     (sentence + lemma + trimmed definition), embed both the new candidate's
-     image and the incumbent's image (read straight off the media bind mount,
-     no need to re-download), score cosine similarity against the query.
+     (the slot-1 sentence, falling back to the lemma), embed both the new
+     candidate's image and the incumbent's image (read straight off the media
+     bind mount, no need to re-download), score cosine similarity against the
+     query.
   3. select  — where generated > incumbent, POST /api/selections/image then
      /api/selections/image/approve (mint→select→approve, see
      docs/OPERATIONS.md). Where incumbent wins, leave it untouched.
 
 All mutations go through the admin API; the only direct DB access is a
-read-only connection to fetch each word's slot-1 sentence, primary
-definition, and current selection (mirrors ops/clip_rematch.py).
+read-only connection to fetch each word's slot-1 sentence and current
+selection (mirrors ops/clip_rematch.py).
 """
 
 import argparse
@@ -266,15 +267,6 @@ def main(argv=None):
         ).fetchone()
         return r[0] if r else None
 
-    def definition(wid):
-        r = conn.execute(
-            """SELECT dc.text FROM definition_selections ds
-            JOIN definition_candidates dc ON dc.def_cand_id=ds.def_cand_id
-            WHERE ds.word_id=? AND ds.is_primary=1 AND ds.enabled=1""",
-            (wid,),
-        ).fetchone()
-        return r[0] if r else ""
-
     def embed_image_file(path):
         im = preprocess(Image.open(path).convert("RGB")).unsqueeze(0).cuda()
         with torch.no_grad():
@@ -298,8 +290,7 @@ def main(argv=None):
         wid = row["word_id"]
         lemma = row["lemma"]
 
-        s = sentence(wid) or lemma
-        query = f"{s} {lemma}: {definition(wid)[:80]}"
+        query = sentence(wid) or lemma
         q = txt_embed(query)
 
         cur_hash = incumbent_hash.get(wid)

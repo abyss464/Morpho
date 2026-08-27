@@ -85,6 +85,7 @@ data class Example(
     val hlStart: Int,
     val hlEnd: Int,
     val exAudioFile: String,
+    val imageFile: String? = null,
 ) {
     /** Converts the contract's UTF-8 byte offsets into a Kotlin char range. */
     fun highlightCharRange(): IntRange {

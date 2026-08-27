@@ -112,10 +112,12 @@ class ContentRepository(private val db: ContentDatabase) {
                 .groupBy { it.word_id }
 
             words.associate { row ->
+                val wordExamples = examples[row.word_id].orEmpty().map(Examples::toDomain)
+                val mode1ImageFile = wordExamples.firstOrNull { it.displayOrder == 1 }?.imageFile.orEmpty()
                 row.word_id to WordBundle(
-                    word = row.toDomain(),
+                    word = row.toDomain().copy(imageFile = mode1ImageFile),
                     senses = senses[row.word_id].orEmpty().map(Senses::toDomain),
-                    examples = examples[row.word_id].orEmpty().map(Examples::toDomain),
+                    examples = wordExamples,
                     distractorIds = distractors[row.word_id].orEmpty()
                         .sortedBy(Distractors::rank)
                         .map { it.distractor_word_id },
@@ -195,7 +197,7 @@ private fun Words.toDomain() = Word(
     learningOrder = learning_order.toInt(),
     etymology = etymology,
     etymologySegmentsJson = etymology_segments,
-    imageFile = image_file,
+    imageFile = "",
     wordAudioFile = word_audio_file,
 )
 
@@ -216,4 +218,5 @@ private fun Examples.toDomain() = Example(
     hlStart = hl_start.toInt(),
     hlEnd = hl_end.toInt(),
     exAudioFile = ex_audio_file,
+    imageFile = image_file,
 )

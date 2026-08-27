@@ -2,8 +2,9 @@
 """CLIP image re-match against the upgraded slot-1 sentences.
 
 For every active word, embed its available image candidates and its slot-1
-sentence (+ lemma + trimmed definition as the text query), pick the candidate
-with the highest image-text cosine — subject to the per-question distinctness
+sentence (falling back to the lemma when a word has no slot-1 sentence yet)
+as the text query, pick the candidate with the highest image-text cosine —
+subject to the per-question distinctness
 the app needs (a pick that visually duplicates an option already chosen in a
 question this word participates in is skipped). Only re-select when the new
 best beats the current selection's text-match by a margin, so we don't churn
@@ -66,12 +67,6 @@ def sentence(wid):
         WHERE es.word_id=? AND es.slot=1""", (wid,)).fetchone()
     return r[0] if r else None
 
-def definition(wid):
-    r = conn.execute("""SELECT dc.text FROM definition_selections ds
-        JOIN definition_candidates dc ON dc.def_cand_id=ds.def_cand_id
-        WHERE ds.word_id=? AND ds.is_primary=1 AND ds.enabled=1""", (wid,)).fetchone()
-    return r[0] if r else ""
-
 def img_embed(h):
     im = preprocess(Image.open(f"{MEDIA}/{h[:2]}/{h}.webp").convert("RGB")).unsqueeze(0).cuda()
     with torch.no_grad():
@@ -124,8 +119,7 @@ for i, (wid, lemma) in enumerate(words):
                         "selected_img_cand_id": None, "n_candidates": 0,
                         "changed": False})
         continue
-    s = sentence(wid) or lemma
-    query = f"{s} {lemma}: {definition(wid)[:80]}"
+    query = sentence(wid) or lemma
     q = txt_embed(query)
     cur = sel_hash.get(wid)
     mates = {sel_hash[m] for m in qmates.get(wid, ()) if m in sel_hash}

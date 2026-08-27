@@ -253,10 +253,14 @@ class ReleaseDatabaseTest {
     @Test
     fun `media filenames follow the normative bundle layout`() {
         db.wordsQueries.selectAllOrdered().executeAsList().forEach {
-            assertTrue(it.image_file.startsWith("img/") && it.image_file.endsWith(".webp"))
             assertTrue(
                 it.word_audio_file.startsWith("audio/") && it.word_audio_file.endsWith(".ogg"),
             )
+        }
+        query(
+            "SELECT image_file FROM examples WHERE display_order = 1 AND image_file IS NOT NULL",
+        ) { it.getString(0)!! }.forEach {
+            assertTrue(it.startsWith("img/") && it.endsWith(".webp"))
         }
     }
 
