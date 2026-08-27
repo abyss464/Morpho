@@ -6,19 +6,24 @@ All work goes through this file. See CLAUDE.md for the workflow.
 
 ## Inbox
 
-| # | Title | Category | Description |
-|---|-------|----------|-------------|
-| 6 | 104 个自指释义未修复 | content | scorer v3 把 565 降到 104，但剩余 104 个无干净候选，需要 LLM 改写或人工录入 |
-| 8 | 图文不匹配未真正修复 | engine | CLIP rematch 两次都 changed=0（pin 机制阻挡+引擎不内置 CLIP）。实际图片选择没有按语义优化 |
-| 9 | NSFW/不当图片未清理 | content | 发现了 naked/breast/desire/flesh/thigh/rape 等问题图，但只做了发现没做 reject 清理 |
-| 12 | 现有干扰项中的形变词未修正 | content | 新算法只影响未来绑定（494 词），已绑定的 4508 词里的坏配对（adapt/adapter 等）没有修正 |
-| 19 | CLIP 语义评分内化到引擎 + codex 适配器 | engine | 根因修复：引擎 auto_score 不看语义。需要 CLIP 适配器子进程 + codex 图片生成源 |
-| 20 | App 图标和加载动画未进入 APK | app | 代码已提交 (7f64328) 但没有重新导出+打包，手机上还是旧图标 |
-| 21 | 当前 APK 需要重新导出验证 | ops | 图片经历了全量 unpin→re-approve，加上 #14 #18 #20 代码变更都没进 APK |
-| B3 | 学完单词后首页 0/50 不更新 | app | 用户报告的 bug，未在实机确认是否修复 |
-| B5 | codex 生成图质量问题残留 | content | verify_genimg 加了 blank/floor gate，但没有用新 gate 重新过滤已上传的 129 张 codex 图 |
-| 5 | Docker 镜像未包含最新代码 | infra | scorer v4、#14 schema 变更、#17 publish 命令、#20 图标等都提交了但 Docker 镜像没重建 |
-| 17 | morphod publish 命令未验证 | core | 代码已提交 (72598b8) 但从未实际运行过 |
+(empty — 2026-08-27 owner approved implementing the entire inbox, then building the APK and installing to phone via adb. All items triaged into In Progress below.)
+
+## In Progress — wave-2 (dispatched 2026-08-27)
+
+Phase ordering: engine code work and app bugfix are independent of the running
+engine; content operations need the rebuilt Docker image (distractor v2 /
+scorer v4 must be live); the ship chain runs last so the export captures every
+content change exactly once.
+
+| # | Title | Est | Pri | Phase | Status |
+|---|-------|-----|-----|-------|--------|
+| 5 | Docker 镜像重建+重启（纳入 scorer v4、#14 schema、#17 publish、#18 图片评分等全部已提交代码） | S | P0 | 1 | dispatched |
+| 19+8 | CLIP 语义评分内化到引擎 + codex 生成源（图文不匹配根因修复；worktree 内开发，不动线上） | L | P1 | 1 | dispatched |
+| B3 | 学完单词后首页 0/50 不更新 — 代码级定位+修复+单测；真机复验放在收尾阶段 | S | P2 | 1 | dispatched |
+| 9+B5 | NSFW/不当图片清理（reject 落地）+ 已上传 129 张 codex 图用新 blank/floor gate 复检 | M | P1 | 2 | waiting on #5 |
+| 6 | 104 个自指释义 LLM 改写（in-scope 词表约束、防 OOV 回潮、录入+选择+审批） | M | P1 | 2 | waiting on #5 |
+| 12 | 存量 4508 词干扰项形变坏配对（adapt/adapter 等）按 v2 规则修正 | M | P1 | 2 | waiting on #5 |
+| 17+20+21 | 部署含 #19 的新引擎 → unapprove/rescore/re-approve → 验证 morphod publish → 导出 → APK（新图标、schema、图片选择全部进包）→ adb 卸载重装到手机 | L | P1 | 3 | waiting on phases 1-2 |
 
 ## Done (this session, 2026-08-27)
 
