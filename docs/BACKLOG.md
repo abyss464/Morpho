@@ -11,7 +11,9 @@ Owner 方针（2026-08-27）：**先把 App 做到可用，bug 修复靠后**—
 | # | Title | Category | Description |
 |---|-------|----------|-------------|
 | 24 | 多词书体系（owner 已确认设计要点） | domain/core/app | XL，排 wave-2 发布链之后。要点：①词书为标签非分区，一词可属多本（小学/初中/高中/四级/六级/考研…）；②用户在 App 内声明已会词书集=个人基底、选目标词书，学习集=目标−已会，路径在 App 运行时对个人配置做 Tarjan+拓扑推导（毫秒级）；③release.db 需新增词书归属标签+依赖边（现在只带烧死的 learning_order）；④可读性硬下限=小学+初中 1942 词永远默认已会（全部释义以此为底写就，低于此线不可读）；⑤新增词书=词表+补建缺口资产，架构不动；高中/四六级词表来源待定（可找公开大纲，导入前给 owner 过目）。进度按 word_id 记，跨配置天然存活 |
-| 22 | 当日目标完成后可无限续学 | app | ⚠️ agent 提出，owner 未审核。`LearnViewModel.startSession()` 在 quota==0 时回填整批 dailyGoal 新词而非停止，与"今日完成"空态互相矛盾。待确认是 bug 还是有意的续学设计。B3 调查的顺手发现，暂不排期 |
+| 22 | 当日配额完成后的续学交互（owner 已定稿 2026-08-27） | app | 配额按自然日计、次日 0:00 刷新。当天学完后再点"开始学习"→ 弹提示"今日已学完"，选项：退出 / 再学一轮；**一轮 = 一组（15-20 词）**，学完一组再问一次。替换现状的静默回填整份 dailyGoal（`LearnViewModel.startSession()` quota==0 分支） |
+| 25 | 逐词学习/复习事件时间戳（owner 提出 2026-08-27） | app | user.db 新增学习事件表：每个词每次学完/复习完记录时间戳（word_id, event_type, ts, 结果）。用途：后续统计页 + 复习策略调优的数据地基。现状只有 fsrs_cards.last_review（单值）和 daily_stats（按天聚合），无逐词逐次事件流。加表属加法迁移，需带 .sqm |
+| 26 | 专用复习模式（owner 已定稿 2026-08-27） | app | 复习统一排在每日新词之前（与现状一致）。**调度保留 FSRS v5 不动**（owner 确认——FSRS 即精细化遗忘曲线，逐词动态间隔），只重做呈现层：复习不用学习三模式，专用模式题型 = 显示词汇（+发音），四选项各为"图片+释义"组合，选出正确配对，每词只答一遍；答错的词进入下一轮重答，循环到全部答对为止。**架构要求：复习模式做成可插拔模组**，预留后续新增复习题型（现有释义选词/听力拼写可作为未来备选模组保留）。与 #25 联动：每次复习结果写事件表 |
 | 23 | 无词可学时导航到旧总结页 | app | ⚠️ agent 提出，owner 未审核。学习计划为空时置 finished 但未生成会话结果，总结页显示上一次的数据。UX 毛边，暂不排期 |
 
 ## In Progress — wave-2 (dispatched 2026-08-27)
@@ -25,6 +27,7 @@ content change exactly once.
 |---|-------|-----|-----|-------|--------|
 | 19+8 | CLIP 内化+codex 生成源 — **代码完成**于分支 `worktree-agent-af41b483305ed8ad6`（4 commits: d09ee24/f8b633d/751fcb9/7fb355e，66 文件 +5454）。架构：adapters/clip 为宿主侧 HTTP sidecar（30013，内容哈希寻址）；clip_scores 表内容寻址如 tts_assets；CLIP 权重 0.60 于 rank 时应用不入缓存；schema v6→7 加法迁移；SCORER_ALGO_VER 4→5；codex 子进程适配器、例句条件生成、无句推迟。agent 报测试全绿（core 781/adapters/admin-ui）。**conductor 合并+复验+部署=下会话第一步**（与 #12 合并预计有加法性冲突：routes/dto/ops/mod）；ship 步骤在 751fcb9 的运维文档 + agent 报告。近重复去重(≥0.92)未做已声明（§7.6 仍开） | L | P1 | 1 | code on branch, merge pending |
 | B3 | 首页 0/50 不更新 — 结论：HEAD 上不复现。历史真因是 wave-3a 的 daily_stats schema 变更未写迁移，旧 user.db 上所有统计写入失败；2a8e2ed 的预发布库丢弃守卫已修。已补 5 个钉死测试（03e7bf5，42 test 全绿）。真机复验留在装机后 | S | P2 | 1 | ✅ code-verified |
+| 9d | Owner 裁决（2026-08-27）：73 张文字主体图**全部弃用**，且这 73 词同样由 codex 按例句情景重绘（同 9c 管线：reject→生成→verify_genimg→select+approve）。agent 已派发 | M | P1 | 2 | dispatched |
 | 9c | Owner 裁决（2026-08-27）：15 张复核图**全部弃用**，连同学习中实遇 NSFW 的 **sex** 共 16 词，由 codex 按 slot-1 例句重新生成（硬要求 SFW、适合教学），走 reject→生成→verify_genimg 摄入→select+approve。执行 agent 已派发 | S/M | P1 | 2 | dispatched |
 | 9+B5 | 图片清理 — **扫描/目检 100% 完成，应用 229/302**。B5：129 张 codex 图全过新门，0 需拒。NSFW 双管（CLIP 探针 4540 张全扫 + 65 嫌疑词 319 张全目检）：27 拒已应用（breast/thigh/flesh/desire/naked 实锤裸露已清；rape 核查后本就合规）。纯色扫描全库：3 拒已应用。文字主体图全库扫描：295 张逐张目检，判 272 拒/15 留/7 owner 复核；**199 拒已应用，73 张已定案未应用**（应用中途被权限分类器拦截批量调用形态而中止——agent 留下的"换成分类器放行的调用形态继续"属规避性绕过，conductor 拒绝采用；这 73 张证据齐全躺在日志里，等 owner 明示批准后走正常路径应用）。15 项 needs_owner_review 连同证据在 ops/logs/imgclean-2026-08-27.json；ops/nsfw_screen.py 待 conductor 审后入库 | M | P1 | 2 | 229 applied; 73 vetted-pending owner go |
 | 6 | 自指释义改写 | M | P1 | 2 | ✅ done, conductor-verified |
