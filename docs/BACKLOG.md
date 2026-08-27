@@ -6,7 +6,12 @@ All work goes through this file. See CLAUDE.md for the workflow.
 
 ## Inbox
 
-(empty — 2026-08-27 owner approved implementing the entire inbox, then building the APK and installing to phone via adb. All items triaged into In Progress below.)
+Owner 方针（2026-08-27）：**先把 App 做到可用，bug 修复靠后**——当前可用性仍太低，wave-2 发布链优先。
+
+| # | Title | Category | Description |
+|---|-------|----------|-------------|
+| 22 | 当日目标完成后可无限续学 | app | ⚠️ agent 提出，owner 未审核。`LearnViewModel.startSession()` 在 quota==0 时回填整批 dailyGoal 新词而非停止，与"今日完成"空态互相矛盾。待确认是 bug 还是有意的续学设计。B3 调查的顺手发现，暂不排期 |
+| 23 | 无词可学时导航到旧总结页 | app | ⚠️ agent 提出，owner 未审核。学习计划为空时置 finished 但未生成会话结果，总结页显示上一次的数据。UX 毛边，暂不排期 |
 
 ## In Progress — wave-2 (dispatched 2026-08-27)
 
