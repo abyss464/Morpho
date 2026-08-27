@@ -14,12 +14,15 @@ const SOURCES: ImageSource[] = [
 ];
 
 const SORTS: GallerySort[] = ['clip_asc', 'clip_desc'];
+const VIEWS = ['flagged', 'needs_regen'] as const;
+type GalleryViewMode = (typeof VIEWS)[number];
 
 interface GallerySearch {
   source?: ImageSource;
   approved?: 'true' | 'false';
   q?: string;
   sort?: GallerySort;
+  view?: GalleryViewMode;
 }
 
 function validateSearch(search: Record<string, unknown>): GallerySearch {
@@ -33,12 +36,17 @@ function validateSearch(search: Record<string, unknown>): GallerySearch {
     typeof search.sort === 'string' && SORTS.includes(search.sort as GallerySort)
       ? (search.sort as GallerySort)
       : undefined;
+  const view =
+    typeof search.view === 'string' && VIEWS.includes(search.view as GalleryViewMode)
+      ? (search.view as GalleryViewMode)
+      : undefined;
 
   return {
     ...(source ? { source } : {}),
     ...(approved ? { approved } : {}),
     ...(typeof search.q === 'string' && search.q ? { q: search.q } : {}),
     ...(sort ? { sort } : {}),
+    ...(view ? { view } : {}),
   };
 }
 
