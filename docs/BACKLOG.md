@@ -27,16 +27,7 @@ User reports problem/idea
 
 ## Inbox
 
-_New items land here. Not evaluated yet._
-
-| # | Title | Category | Reporter note |
-|---|-------|----------|---------------|
-| # | Title | Category | Reporter note |
-|---|-------|----------|---------------|
-| 18 | 图片评分去掉 source_prior + 自动上传不 pin | engine/ops | source 只是标签不参与评分。CLIP 置信度决定选择。只有人在 admin UI 手动点"Use this"才 pin。脚本/引擎自动上传的候选不 pin，参与正常置信度竞争 |
-| 19 | codex 图片生成适配器 + admin 手动触发 | engine/admin | 和 SDXL 并行的可选生成源。引擎内置速率限制 (5h/80张)。admin Gallery 可手动选低质量图触发生成。source 标记为 codex，不 pin，按置信度竞争 |
-| 17 | 发布链路自动化 morphod publish | core/admin | morphod 新子命令：export → cp release.db → rsync media → 更新测试断言 → gradle build。admin API 留端点 |
-| 20 | App 图标替换 + 通用加载动画 | app | 新图标：墨蓝底 EB Garamond M + 底部四元素（方块+三菱形）。foreground SVG→vector drawable（text 转 path），背景纯色 #22314A。四个底部元素做成 flow 风格加载动画，用在所有需要加载的场景（splash、切题等） |
+_(empty)_
 
 ## Ready
 
@@ -44,13 +35,7 @@ _Triaged, estimated, approved for implementation. Ordered by priority then effor
 
 | # | Title | Cat | Pri | Effort | Notes |
 |---|-------|-----|-----|--------|-------|
-|
-|
-|
-|
-|
-| 14 | 图片绑到 example slot 1 + CLIP rematch | engine/app/ops | P2 | L | schema: release.db 图字段从 words.image_file 移到 examples.image_file (display_order=1)。engine export 适配。App ContentRepository 从 examples 读图。现有图平移。全词库 CLIP rematch 用纯例句查询。working.db image_selections 主键不变（第一阶段仍每词一图） |
-| 17 | 发布链路自动化 morphod publish | core/admin | P2 | L | morphod 新子命令 publish：export → cp release.db → rsync media → 更新测试断言 → gradle build，一条命令完成。admin API 留 POST /api/releases/publish 端点。不含 adb install |
+| 19 | CLIP 语义评分内化到引擎 + codex 适配器 | engine | P1 | XL | 当前 auto_score 只看元数据（分辨率+POS），不看图文语义匹配。应该：引擎在图片候选入库时自动调 CLIP 适配器（子进程），语义分数写入 auto_score，自动选择天然选最匹配的图。codex 图片生成作为并行图片源适配器。外部 clip_rematch.py / verify_genimg.py 退役。需设计：Rust 调 Python CLIP 的适配器协议 |
 
 ## In Progress
 
@@ -70,20 +55,24 @@ _Triaged, estimated, approved for implementation. Ordered by priority then effor
 | 7 | OOV cascade blocker (scorer v3) | 2026-08-27 | 2ec573a |
 | 8 | Release 1.5 | 2026-08-27 | d4f308c |
 | 9 | CLIP score floor + blank-image gate in verify_genimg | 2026-08-27 | be61804 |
-| 10 | Mode-1 orphaned sentence replay removed (半完成，见 #16) | 2026-08-27 | 0daedd9 |
+| 10 | Mode-1 orphaned sentence replay removed | 2026-08-27 | 0daedd9 |
 | 11 | Mode 2/3 skip detail on correct; full-expand on wrong | 2026-08-27 | 0adaf8e |
-| 13 | 逐词进度已确认正确（三轮通关=已学+FSRS时间戳） | 2026-08-27 | 已实现，无需改动 |
-| 16 | 答错后自动播放一次音频（模式1=句子，2/3=单词） | 2026-08-27 | 702a6f3 |
-| 15 | 统一复习模式：单轮模式 2（4 图+释义） | 2026-08-27 | 2899f23 |
-| 12 | 干扰项排除形变词 + 同 POS 优先 | 2026-08-27 | ccbc386 |
+| 12 | Distractor stem exclusion + same-POS preference | 2026-08-27 | ccbc386 |
+| 13 | Per-word progress verified correct | 2026-08-27 | already implemented |
+| 14 | Image_file migrated to examples table | 2026-08-27 | 74e37dc, 90227bd |
+| 15 | Unified review mode (single mode-2 visual) | 2026-08-27 | 2899f23 |
+| 16 | Audio on wrong answer | 2026-08-27 | 702a6f3 |
+| 17 | morphod publish automation | 2026-08-27 | 72598b8 |
+| 18 | Image scoring ignores source; no auto-pin | 2026-08-27 | 611cb62 |
+| 20 | App icon + flow loading animation | 2026-08-27 | 7f64328 |
 
 ## Deferred
 
 | # | Title | Reason |
 |---|-------|--------|
-| D1 | NSFW pipeline filter (CLIP classifier) | Gallery manual screening sufficient for now; revisit when image sources expand |
-| D2 | Distractor semantic near-duplication | Design needed; contain/container both yield container scenes |
-| D3 | ADB overlay install corruption | Workaround: uninstall first; root cause investigation deferred |
+| D1 | NSFW pipeline filter (CLIP classifier) | Gallery manual screening sufficient; revisit when #19 lands (CLIP in engine) |
+| D2 | Distractor semantic near-duplication | Partially solved by #12 stem exclusion; residual (visual overlap for unrelated words) low impact |
+| D3 | ADB overlay install corruption | Workaround: `pm clear` + reinstall; root cause deferred |
 
 ## Won't Do
 
