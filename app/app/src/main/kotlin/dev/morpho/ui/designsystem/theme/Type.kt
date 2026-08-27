@@ -16,11 +16,17 @@ import dev.morpho.R
  * **EB Garamond** is the icon's own face — the "M" wordmark in
  * `ic_launcher_foreground.xml` is drawn from its outlines — so it carries every
  * headline, title and display number and makes the app read as one object with its
- * launcher icon. It also carries the reading styles, which were already serif.
+ * launcher icon. It is reserved for UI chrome: screen titles, stat/hero numerals,
+ * the home greeting and other decorative brand moments.
  *
- * Small functional chrome (labels, body copy, IPA, spell boxes) stays sans: at 11-16sp
- * a text face loses to a UI face on legibility, and letter-by-letter spelling needs
- * unambiguous shapes.
+ * Backlog #34 (owner-confirmed, on-device read): EB Garamond is too thin at reading
+ * sizes for sustained legibility. Content the learner actually reads — definitions,
+ * example sentences, quiz option text, etymology prose — stays on the sans stack, so
+ * `readingFontFamily` points at the UI face rather than the brand face.
+ *
+ * Small functional chrome (labels, body copy, IPA, spell boxes) stays sans too: at
+ * 11-16sp a text face loses to a UI face on legibility, and letter-by-letter
+ * spelling needs unambiguous shapes.
  *
  * The bundled file is the variable roman (`wght` 400-800); Compose's resource `Font`
  * defaults `variationSettings` to the requested weight, so each declared weight is a
@@ -30,7 +36,8 @@ object MorphoFonts {
 
     /**
      * EB Garamond, the icon's face. Swapping the whole brand face is this one
-     * declaration and nothing else.
+     * declaration and nothing else. UI-chrome-only — see the "Backlog #34" note
+     * above; content styles use [uiFontFamily] via [readingFontFamily].
      */
     val displayFontFamily: FontFamily = FontFamily(
         Font(R.font.eb_garamond, FontWeight.Normal),
@@ -41,8 +48,13 @@ object MorphoFonts {
 
     val uiFontFamily: FontFamily = FontFamily.SansSerif
 
-    /** Definitions and example sentences: the same serif as the display face. */
-    val readingFontFamily: FontFamily = displayFontFamily
+    /**
+     * Definitions and example sentences: sans (#34). EB Garamond reads too thin at
+     * body sizes for sustained reading, so content text sits on the UI face even
+     * though it's set with reading-tuned size/line-height in
+     * [MorphoReadingTypography].
+     */
+    val readingFontFamily: FontFamily = uiFontFamily
 }
 
 private val lineHeightStyle = LineHeightStyle(
@@ -122,10 +134,12 @@ val MorphoSectionLabel = TextStyle(
 /**
  * Reading styles: everything the user is meant to *read as English*, plus the
  * phonetic style (sans, alpha applied by the caller at 0.7 per the contract).
+ *
+ * Sans throughout (#34) — see [MorphoFonts.readingFontFamily].
  */
 @Immutable
 data class MorphoReadingTypography(
-    /** Definitions: bodyLarge at 1.5 line height, serif. */
+    /** Definitions: bodyLarge at 1.5 line height. */
     val definition: TextStyle = TextStyle(
         fontFamily = MorphoFonts.readingFontFamily,
         fontSize = 16.sp,
@@ -141,7 +155,7 @@ data class MorphoReadingTypography(
         fontWeight = FontWeight.Normal,
         lineHeightStyle = lineHeightStyle,
     ),
-    /** Mode-3 option cards: a touch larger, still serif. */
+    /** Mode-3 option cards: a touch larger. */
     val definitionOption: TextStyle = TextStyle(
         fontFamily = MorphoFonts.readingFontFamily,
         fontSize = 17.sp,
