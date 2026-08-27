@@ -28,7 +28,10 @@ use morpho_store::Store;
 
 use crate::engine::EngineContext;
 
-pub use distractors::bind_distractors;
+pub use distractors::{
+    bind_distractors, is_stem_violation, plan_stem_rebinds, PosContext, RebindPlan,
+    STEM_VIOLATION_REASON,
+};
 pub use media_gc::{sweep_media, MEDIA_GC_GRACE};
 pub use plan::{build_plan, plan_input_hash};
 pub use readiness::recompute_readiness;
