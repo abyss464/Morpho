@@ -33,7 +33,8 @@ content change exactly once.
 | 6 | 自指释义改写 | M | P1 | 2 | ✅ done, conductor-verified |
 | 12 | 存量干扰项 stem 坏配对修正 — 代码完成并合并（d80c194）：`POST /distractors/rebind-violations`，共享 ranked_candidates 选择逻辑，core_ready 池，乐观守卫，698 测试绿。**待办**：phase-3 部署新引擎后、导出前，dry-run → apply → 复扫为零；admin-ui types.ts 镜像另记 | M→L | P1 | 2 | code merged, live run pending deploy |
 | 29 | morphod publish 的两个 bug（1.7 首验发现） | core | ①repo_root 解析：resolve_adapters_root 存仓库根而 repo_root() 取其 parent，语义打架致 app/ 路径错一级（绕过：显式 MORPHOD_ADAPTERS_ROOT）；②stale 清理只扫 img//audio/ 子目录，扫不到旧平铺布局的根级遗留（25904 个文件 492MB，人工 gio trash 清掉，APK 983→532MB）。另：publish 不补测试体内的计数断言（plan size/checked/gloss index），§6.3 需记录 |
-| 30 | CLIP 重选后文字图回流 | content/engine | 实机截图实锤：author 的在选图是"SAMUEL VALLEE AUTHOR & SPEAKER"文字宣传卡——文字图清扫在 CLIP 重选**之前**跑，池中未在选的文字图被 CLIP 的 typographic bias 抬进了选择槽（图里写着 AUTHOR，泄答案）。需：对 CLIP 重选后的新在选集重跑 text-dominant 筛查+人审+reject；根治在引擎端对文字探针得分高的候选降权。ashtray 图（Smoking kills 烟盒）同类 |
+| 30 | CLIP 重选后不当图回流（重选后需复扫） | content/engine | 文字图清扫跑在 CLIP 重选**之前**，池中未在选的问题图被重选抬进槽位。实锤两例：author 的"AUTHOR & SPEAKER"文字卡（**owner 裁决：此张可留**）；**section 选中剖腹产疤痕特写**（wikimedia 一窝产科手术图，932/930/931/728 已全数 reject，owner 报告后手动改选牛油果剖面 933 并批准）。需对重选后新在选集重跑 NSFW+text 双筛+人审；根治在引擎端降权。CLIP 分位统计（2026-08-27）：4127 在选已评分中 <0.08 仅 8 词、0.08-0.15 弱匹配 725 词 |
+| 31 | reject 后 human 选择行卡死不回退 | core | 实锤（section/4983）：reject 在选候选后选择行变为 selected_by=human, pinned=0 仍指向 rejected 候选，自动重选规则只处理 auto 行 → 永久悬挂，只能人工改选。与 §7.5 的 pin-fallback 设计意图不符，需修 |
 
 关键发现（通读 README/contracts/publish.rs/compose 后）：
 - publish 管线第 2-5 步触碰 app/ 与 gradle，而镜像 .dockerignore 排除了 app/ —— #17 必须以宿主原生 morphod 独占 DB 运行（先停容器，SQLite 单写者纪律）。
