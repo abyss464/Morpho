@@ -43,6 +43,11 @@ pub fn api_router(state: AppState) -> Router {
             post(write::approve).delete(write::unapprove),
         )
         .route("/selections/{kind}", post(write::set_selection))
+        // -- Distractors ---------------------------------------------------
+        .route(
+            "/distractors/rebind-violations",
+            post(write::rebind_violations),
+        )
         // -- OOV queue -----------------------------------------------------
         .route("/oov", get(read::oov))
         .route("/oov/{lemma}/resolve", post(write::resolve_oov))

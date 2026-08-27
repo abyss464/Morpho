@@ -18,8 +18,8 @@ use morpho_domain::types::{
     Role, SelectedBy, SlotRef,
 };
 use morpho_store::ops::{
-    CreateWord, MediaRegistration, MintDefinitionCandidate, MintExampleCandidate,
-    MintImageCandidate, OovResolution, SetApproval, SetGloss, SetSelection,
+    CreateWord, DistractorRebind, MediaRegistration, MintDefinitionCandidate, MintExampleCandidate,
+    MintImageCandidate, OovResolution, RebindDistractors, SetApproval, SetGloss, SetSelection,
 };
 use morpho_store::WriteOp;
 
@@ -533,6 +533,131 @@ pub async fn resolve_oov(
         .read(move |conn| queries::oov_page(conn, &query))
         .await?;
     Ok(Json(body))
+}
+
+// ---------------------------------------------------------------------------
+// Distractors
+// ---------------------------------------------------------------------------
+
+/// Most bindings a single call will report per array. The plan itself is
+/// unbounded — every replacement it writes gets its own `events` row — but a
+/// console does not need ten thousand rows in one response to decide whether
+/// to run it for real.
+const MAX_REBIND_ITEMS: usize = 500;
+
+/// `POST /api/distractors/rebind-violations`
+///
+/// Distractors are bound once and never change (README Part 3), with one
+/// exception: a human replacing a binding that should never have been made.
+/// Rows written before the stem-exclusion rule existed still pair a word with
+/// its own derivation — `adapt`/`adapter`, `invest`/`investor` — which teaches
+/// the elimination pattern instead of the word. This finds them and offers the
+/// replacement the current rule would have chosen.
+///
+/// `dry_run` (default `true`) computes the whole plan and writes nothing.
+pub async fn rebind_violations(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    // The two `Option`s cover the two ways to say nothing: no body at all
+    // (`curl -X POST`), and a literal `null` payload. Both mean "dry run".
+    body: Option<Json<Option<RebindViolationsBody>>>,
+) -> ApiResult<Json<RebindReport>> {
+    let dry_run = body.and_then(|Json(body)| body).unwrap_or_default().dry_run;
+
+    // One snapshot: the plan must be computed against a single consistent read,
+    // or two ranks of the same word could be planned against different pools.
+    let (pairs, plans) = state
+        .store
+        .read(|conn| {
+            let pairs = morpho_store::queries::distractor_pairs(conn)?;
+            let pool = morpho_store::queries::active_words(conn)?;
+
+            let mut pos_ctx = morpho_reconcile::stages::PosContext::default();
+            for (word_id, pos) in morpho_store::queries::primary_pos_map(conn)? {
+                pos_ctx.primary.insert(word_id, pos);
+            }
+            for (word_id, pos) in morpho_store::queries::word_pos_set(conn)? {
+                pos_ctx.all.entry(word_id).or_default().insert(pos);
+            }
+
+            let plans = morpho_reconcile::stages::plan_stem_rebinds(&pairs, &pool, &pos_ctx);
+            Ok((pairs.len(), plans))
+        })
+        .await?;
+
+    let (resolved, unresolvable): (Vec<_>, Vec<_>) = plans
+        .into_iter()
+        .partition(morpho_reconcile::stages::RebindPlan::is_resolved);
+
+    let mut skipped = 0usize;
+    if !dry_run && !resolved.is_empty() {
+        let rebinds: Vec<DistractorRebind> = resolved
+            .iter()
+            .filter_map(|plan| {
+                Some(DistractorRebind {
+                    word_id: plan.word_id,
+                    rank: plan.rank,
+                    old_distractor_word_id: plan.old_word_id,
+                    new_distractor_word_id: plan.new_word_id?,
+                })
+            })
+            .collect();
+        let actor = state.actor(&headers);
+        let outcome = state
+            .store
+            .write(
+                actor,
+                WriteOp::RebindDistractors(RebindDistractors {
+                    rebinds,
+                    algo_ver: morpho_domain::version::DISTRACTOR_ALGO_VER.to_string(),
+                    reason: morpho_reconcile::stages::STEM_VIOLATION_REASON.to_string(),
+                }),
+            )
+            .await?;
+        if let morpho_store::WriteResult::Rebound { skipped: count, .. } = outcome.result {
+            skipped = count;
+        }
+    }
+
+    let planned_or_applied_total = resolved.len();
+    let unresolvable_total = unresolvable.len();
+    Ok(Json(RebindReport {
+        scanned: pairs,
+        violations: planned_or_applied_total + unresolvable_total,
+        planned_or_applied: resolved
+            .iter()
+            .take(MAX_REBIND_ITEMS)
+            .map(rebind_item)
+            .collect(),
+        unresolvable: unresolvable
+            .iter()
+            .take(MAX_REBIND_ITEMS)
+            .map(rebind_item)
+            .collect(),
+        truncated: planned_or_applied_total > MAX_REBIND_ITEMS
+            || unresolvable_total > MAX_REBIND_ITEMS,
+        planned_or_applied_total,
+        unresolvable_total,
+        applied: !dry_run,
+        skipped,
+    }))
+}
+
+fn rebind_item(plan: &morpho_reconcile::stages::RebindPlan) -> RebindItem {
+    RebindItem {
+        word_id: plan.word_id,
+        lemma: plan.lemma.clone(),
+        rank: plan.rank,
+        old: RebindWordRef {
+            word_id: plan.old_word_id,
+            lemma: plan.old_lemma.clone(),
+        },
+        new: plan.new_word_id.map(|word_id| RebindWordRef {
+            word_id,
+            lemma: plan.new_lemma.clone().unwrap_or_default(),
+        }),
+        core_ready_new: plan.core_ready_new,
+    }
 }
 
 // ---------------------------------------------------------------------------

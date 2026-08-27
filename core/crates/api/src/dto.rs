@@ -584,6 +584,68 @@ pub struct SetGlossBody {
     pub zh_gloss: String,
 }
 
+/// `RebindViolationsBody`
+///
+/// `dry_run` defaults to `true`, and an absent body is a dry run: the one
+/// endpoint that rewrites bindings the product rule calls permanent should
+/// never mutate because a field was forgotten.
+#[derive(Debug, Deserialize)]
+pub struct RebindViolationsBody {
+    #[serde(default = "default_true")]
+    pub dry_run: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for RebindViolationsBody {
+    fn default() -> Self {
+        Self { dry_run: true }
+    }
+}
+
+/// `RebindWordRef` — one end of a binding.
+#[derive(Debug, Clone, Serialize)]
+pub struct RebindWordRef {
+    pub word_id: i64,
+    pub lemma: String,
+}
+
+/// `RebindItem` — one binding the scan found, and what happens to it.
+#[derive(Debug, Clone, Serialize)]
+pub struct RebindItem {
+    pub word_id: i64,
+    pub lemma: String,
+    pub rank: i64,
+    pub old: RebindWordRef,
+    /// `null` in the `unresolvable` list, where the old binding stays.
+    pub new: Option<RebindWordRef>,
+    pub core_ready_new: bool,
+}
+
+/// `RebindReport` — the answer to `POST /distractors/rebind-violations`.
+#[derive(Debug, Serialize)]
+pub struct RebindReport {
+    /// Bindings examined: the whole `distractors` table.
+    pub scanned: usize,
+    /// Of those, how many pair a word with a morphological relative.
+    pub violations: usize,
+    /// Replacements, planned (`applied: false`) or written (`applied: true`).
+    pub planned_or_applied: Vec<RebindItem>,
+    /// Violations the pool could not replace; their rows are untouched.
+    pub unresolvable: Vec<RebindItem>,
+    /// Totals before the arrays were capped for transport.
+    pub planned_or_applied_total: usize,
+    pub unresolvable_total: usize,
+    /// True when the arrays above were shortened.
+    pub truncated: bool,
+    pub applied: bool,
+    /// Ranks the writer declined: the row had drifted since the plan was
+    /// computed. Always 0 on a dry run.
+    pub skipped: usize,
+}
+
 /// `OovResolveBody`
 #[derive(Debug, Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case")]
