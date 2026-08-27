@@ -317,7 +317,9 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
             when {
                 // The word graduated, or the user needed a retry: show the detail sheet.
                 // README Part 1: "必须选对后查看详情页".
-                outcome.wordLearned || hadRetry -> showDetail(ui.wordId, outcome)
+                // Modes 2/3 never show the detail sheet on a correct answer.
+                (outcome.wordLearned || hadRetry) && ui.mode == LearnMode.SENTENCE_IMAGE ->
+                    showDetail(ui.wordId, outcome)
 
                 outcome.unitCompleted -> celebrateGroup(outcome)
                 else -> {
