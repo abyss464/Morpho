@@ -48,7 +48,10 @@ pub const READINESS_ALGO_VER: &str = "readiness/1";
 pub const EXPORT_ALGO_VER: &str = "export/1";
 
 /// `meta.schema_ver` written into every `release.db`.
-pub const RELEASE_SCHEMA_VER: &str = "1";
+///
+/// * `1` — wave-1 shape: `words.image_file`.
+/// * `2` — image migrated from `words` to `examples.image_file` (display_order=1).
+pub const RELEASE_SCHEMA_VER: &str = "2";
 
 /// Working-database schema version stamped into `PRAGMA user_version`.
 ///

@@ -32,7 +32,6 @@ CREATE TABLE words (
     learning_order  INTEGER NOT NULL,
     etymology       TEXT,                  -- prose etymology
     etymology_segments TEXT,               -- JSON array of morph segments, e.g. ["bene","vol","ent"]
-    image_file      TEXT NOT NULL,         -- img/{hash}.webp
     word_audio_file TEXT NOT NULL          -- audio/{hash}.ogg
 );
 CREATE INDEX ix_words_order ON words(learning_order);
@@ -55,7 +54,8 @@ CREATE TABLE examples (
     sentence      TEXT NOT NULL,
     hl_start      INTEGER NOT NULL,        -- UTF-8 byte offsets
     hl_end        INTEGER NOT NULL,
-    ex_audio_file TEXT NOT NULL
+    ex_audio_file TEXT NOT NULL,
+    image_file    TEXT                     -- img/{hash}.webp; only display_order=1 carries one
 );
 CREATE INDEX ix_examples_word ON examples(word_id);
 

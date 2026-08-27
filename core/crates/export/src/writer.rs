@@ -13,7 +13,7 @@
 //! <out>/audio/{file_hash}.ogg
 //! ```
 //!
-//! `words.image_file` and the three `*_audio_file` columns hold exactly those
+//! `examples.image_file` and the three `*_audio_file` columns hold exactly those
 //! relative paths, so the app's `ContentStore` resolves a hash name to a stream
 //! with no lookup table.
 //!
@@ -393,18 +393,19 @@ pub fn write_release_db(
             ])?;
         }
     }
+    // Build the word → image path lookup for the example writer below.
+    let mut word_image: std::collections::HashMap<i64, String> =
+        std::collections::HashMap::with_capacity(rows.words.len());
     {
         let mut stmt = tx.prepare(
             "INSERT INTO words (word_id, word, phonetic, frequency_rank, role, group_id,
-                                learning_order, etymology, image_file, word_audio_file)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                                learning_order, etymology, word_audio_file)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )?;
         for word in &rows.words {
-            let image = word
-                .image_file_hash
-                .as_ref()
-                .map(|hash| media_path("image", hash))
-                .ok_or_else(|| ExportError::MissingAsset(word.word_id, "image"))?;
+            if let Some(hash) = &word.image_file_hash {
+                word_image.insert(word.word_id, media_path("image", hash));
+            }
             let audio = word
                 .word_audio_hash
                 .as_ref()
@@ -419,7 +420,6 @@ pub fn write_release_db(
                 word.group_seq,
                 word.learning_order,
                 word.etymology,
-                image,
                 audio,
             ])?;
         }
@@ -448,8 +448,8 @@ pub fn write_release_db(
     {
         let mut stmt = tx.prepare(
             "INSERT INTO examples (example_id, word_id, display_order, sentence, hl_start,
-                                   hl_end, ex_audio_file)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                                   hl_end, ex_audio_file, image_file)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         )?;
         for (index, example) in rows.examples.iter().enumerate() {
             let audio = example
@@ -457,6 +457,12 @@ pub fn write_release_db(
                 .as_ref()
                 .map(|hash| media_path("audio", hash))
                 .ok_or_else(|| ExportError::MissingAsset(example.word_id, "example audio"))?;
+            // Only the slot-1 example carries the word's image.
+            let image: Option<&str> = if example.display_order == 1 {
+                word_image.get(&example.word_id).map(|s| s.as_str())
+            } else {
+                None
+            };
             stmt.execute(rusqlite::params![
                 index as i64 + 1,
                 example.word_id,
@@ -465,6 +471,7 @@ pub fn write_release_db(
                 example.hl_start,
                 example.hl_end,
                 audio,
+                image,
             ])?;
         }
     }

@@ -548,32 +548,52 @@ async fn the_release_db_matches_the_contract_shape() {
     // Media columns point at content-addressed bundle paths, and the files are
     // actually there.
     let conn = rusqlite::Connection::open(&db).unwrap();
+
+    // Word audio lives on the words table.
     let mut stmt = conn
-        .prepare("SELECT image_file, word_audio_file FROM words ORDER BY word_id")
+        .prepare("SELECT word_audio_file FROM words ORDER BY word_id")
         .unwrap();
-    let rows: Vec<(String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+    let word_audios: Vec<String> = stmt
+        .query_map([], |row| row.get(0))
         .unwrap()
         .collect::<rusqlite::Result<Vec<_>>>()
         .unwrap();
-    for (image, audio) in rows {
-        assert!(
-            image.starts_with("img/") && image.ends_with(".webp"),
-            "{image}"
-        );
+    for audio in &word_audios {
         assert!(
             audio.starts_with("audio/") && audio.ends_with(".ogg"),
             "{audio}"
         );
-        assert!(
-            out.join(&image).is_file(),
-            "{image} missing from the bundle"
-        );
-        assert!(
-            out.join(&audio).is_file(),
-            "{audio} missing from the bundle"
-        );
+        assert!(out.join(audio).is_file(), "{audio} missing from the bundle");
     }
+
+    // Image lives on the slot-1 example row.
+    let mut stmt = conn
+        .prepare("SELECT image_file FROM examples WHERE display_order = 1 ORDER BY word_id")
+        .unwrap();
+    let images: Vec<String> = stmt
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(
+        images.len(),
+        4,
+        "every word has a slot-1 example with an image"
+    );
+    for image in &images {
+        assert!(
+            image.starts_with("img/") && image.ends_with(".webp"),
+            "{image}"
+        );
+        assert!(out.join(image).is_file(), "{image} missing from the bundle");
+    }
+
+    // Non-slot-1 examples have no image.
+    let non_slot1_images: i64 = read_db(
+        &db,
+        "SELECT COUNT(*) FROM examples WHERE display_order != 1 AND image_file IS NOT NULL",
+    );
+    assert_eq!(non_slot1_images, 0, "only slot 1 carries an image");
 
     // Exactly one primary sense per word.
     let primaries: i64 = read_db(&db, "SELECT COUNT(*) FROM senses WHERE is_primary = 1");
