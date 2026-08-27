@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,13 +47,14 @@ fun MorphoLoader(modifier: Modifier = Modifier) {
     val staggerMs = durations.press
 
     val transition = rememberInfiniteTransition(label = "morpho-loader")
+    val markSpecs = rememberMarkSpecs()
 
     Row(
         modifier = modifier.clearAndSetSemantics { contentDescription = "Loading" },
         horizontalArrangement = Arrangement.spacedBy(MorphoTheme.spacing.xxs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MarkSpecs.forEachIndexed { index, spec ->
+        markSpecs.forEachIndexed { index, spec ->
             val progress by transition.animateFloat(
                 initialValue = 0f,
                 targetValue = 0f,
@@ -101,19 +103,37 @@ private const val MarkMinScale = 0.55f
 private const val MarkMaxScale = 1.15f
 private const val MarkMinAlpha = 0.3f
 
-// Brand marks from the icon's foreground layer (docs asset: morpho-android-foreground-432.svg).
-private val MistBlue = Color(0xFF6B7893)
-private val CopperGold = Color(0xFFC08F4A)
-private val Parchment = Color(0xFFF2EDE2)
-
 private val SquareShape = RoundedCornerShape(percent = 15)
 
-private val MarkSpecs = listOf(
-    MorphoLoaderMark(color = MistBlue, shape = SquareShape),
-    MorphoLoaderMark(color = CopperGold, shape = RectangleShape, rotationDegrees = 45f),
-    MorphoLoaderMark(color = Parchment, shape = RectangleShape, rotationDegrees = 45f),
-    MorphoLoaderMark(color = Parchment, shape = RectangleShape, rotationDegrees = 45f),
-)
+/**
+ * The icon's four marks, read from the theme rather than hard-coded: the third and
+ * fourth are parchment on the icon's ink field, which would vanish on a parchment page,
+ * so `motifMastered` flips to ink in the light scheme.
+ */
+@Composable
+private fun rememberMarkSpecs(): List<MorphoLoaderMark> {
+    val accents = MorphoTheme.accents
+    return remember(accents) {
+        listOf(
+            MorphoLoaderMark(color = accents.motifBase, shape = SquareShape),
+            MorphoLoaderMark(
+                color = accents.motifActive,
+                shape = RectangleShape,
+                rotationDegrees = 45f,
+            ),
+            MorphoLoaderMark(
+                color = accents.motifMastered,
+                shape = RectangleShape,
+                rotationDegrees = 45f,
+            ),
+            MorphoLoaderMark(
+                color = accents.motifMastered,
+                shape = RectangleShape,
+                rotationDegrees = 45f,
+            ),
+        )
+    }
+}
 
 @ThemePreviews
 @Composable

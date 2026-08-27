@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Mirrors MorphoDarkColorScheme.background -->
-    <color name="morpho_window_background">#0C0E14</color>
+    <!-- Mirrors MorphoDarkColorScheme.background — the icon's own field. -->
+    <color name="morpho_window_background">#22314A</color>
 </resources>

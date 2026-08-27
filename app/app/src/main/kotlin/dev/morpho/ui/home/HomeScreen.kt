@@ -19,11 +19,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,9 +37,11 @@ import dev.morpho.domain.model.HeatmapCell
 import dev.morpho.domain.model.HeatmapData
 import dev.morpho.domain.progress.OverallProgress
 import dev.morpho.domain.progress.TodayProgress
+import dev.morpho.ui.designsystem.component.MotifOrnament
+import dev.morpho.ui.designsystem.component.PreviewBox
+import dev.morpho.ui.designsystem.component.SectionHeading
 import dev.morpho.ui.designsystem.component.StatTile
 import dev.morpho.ui.designsystem.component.ThemePreviews
-import dev.morpho.ui.designsystem.component.PreviewBox
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 import java.time.LocalDate
 
@@ -119,41 +119,58 @@ private fun HomeContent(
             onStartReview = onStartReview,
         )
 
-        Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.home_section_this_week),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                IconButton(
-                    onClick = {
-                        val next = when (state.activityChartStyle) {
-                            ActivityChartStyle.BAR -> ActivityChartStyle.HEATMAP
-                            ActivityChartStyle.HEATMAP -> ActivityChartStyle.BAR
-                        }
-                        onToggleChartStyle(next)
-                    },
-                    modifier = Modifier.size(spacing.minTouchTarget),
-                ) {
-                    Icon(
-                        imageVector = when (state.activityChartStyle) {
-                            ActivityChartStyle.BAR -> Icons.Rounded.GridView
-                            ActivityChartStyle.HEATMAP -> Icons.Rounded.BarChart
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+            SectionHeading(
+                text = stringResource(R.string.home_section_this_week),
+                trailing = {
+                    IconButton(
+                        onClick = {
+                            val next = when (state.activityChartStyle) {
+                                ActivityChartStyle.BAR -> ActivityChartStyle.HEATMAP
+                                ActivityChartStyle.HEATMAP -> ActivityChartStyle.BAR
+                            }
+                            onToggleChartStyle(next)
                         },
-                        contentDescription = stringResource(R.string.settings_activity_chart),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+                        modifier = Modifier.size(spacing.minTouchTarget),
+                    ) {
+                        Icon(
+                            imageVector = when (state.activityChartStyle) {
+                                ActivityChartStyle.BAR -> Icons.Rounded.GridView
+                                ActivityChartStyle.HEATMAP -> Icons.Rounded.BarChart
+                            },
+                            contentDescription = stringResource(R.string.settings_activity_chart),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+            )
 
             when (state.activityChartStyle) {
                 ActivityChartStyle.BAR -> WeeklyBarChart(activity = state.weeklyActivity)
                 ActivityChartStyle.HEATMAP -> ActivityHeatmap(data = state.heatmapData)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                val wordsToday = state.today.newLearned + state.today.reviewed
+                val accuracy = state.today.correctRate
+                StatTile(
+                    value = formatCount(wordsToday),
+                    label = stringResource(R.string.home_stat_words_today),
+                    modifier = Modifier.weight(1f),
+                )
+                StatTile(
+                    value = if (accuracy != null) "${(accuracy * 100).toInt()}%" else "—",
+                    label = stringResource(R.string.home_stat_accuracy),
+                    modifier = Modifier.weight(1f),
+                )
+                StatTile(
+                    value = formatCount(state.overall.inFlightWords),
+                    label = stringResource(R.string.home_stat_in_progress),
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
 
@@ -162,37 +179,7 @@ private fun HomeContent(
             estimatedDaysRemaining = state.estimatedDaysRemaining,
         )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            val wordsToday = state.today.newLearned + state.today.reviewed
-            val accuracy = state.today.correctRate
-            StatTile(
-                value = formatCount(wordsToday),
-                label = stringResource(R.string.home_stat_words_today),
-                modifier = Modifier.weight(1f),
-            )
-            StatTile(
-                value = if (accuracy != null) "${(accuracy * 100).toInt()}%" else "—",
-                label = stringResource(R.string.home_stat_accuracy),
-                modifier = Modifier.weight(1f),
-            )
-            StatTile(
-                value = formatCount(state.overall.inFlightWords),
-                label = stringResource(R.string.home_stat_in_progress),
-                modifier = Modifier.weight(1f),
-            )
-        }
-
-        QuickAccessRow(
-            onFeatureClick = { feature ->
-                when (feature) {
-                    HomeFeature.Learning -> onStartLearning()
-                    HomeFeature.Review -> onStartReview()
-                }
-            },
-        )
+        MotifOrnament()
     }
 }
 

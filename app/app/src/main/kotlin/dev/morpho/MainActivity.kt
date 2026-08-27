@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,7 +41,14 @@ class MainActivity : ComponentActivity() {
 
             val settings by container.settingsRepository.settings.collectAsStateWithLifecycle()
 
-            MorphoTheme(forceReducedMotion = settings.reducedMotion) {
+            // The theme choice is one `meta` row away from the rest of the settings, so
+            // flipping it repaints every screen without any of them knowing.
+            val darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())
+
+            MorphoTheme(
+                darkTheme = darkTheme,
+                forceReducedMotion = settings.reducedMotion,
+            ) {
                 CompositionLocalProvider(
                     LocalContentImageRenderer provides container.contentImageRenderer,
                     // Empty until startup finishes, so definitions render as plain
