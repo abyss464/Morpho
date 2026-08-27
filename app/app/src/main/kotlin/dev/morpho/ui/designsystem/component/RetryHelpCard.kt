@@ -92,7 +92,11 @@ fun RetryHelpCard(
             ) {
                 Text(
                     text = word,
-                    style = MaterialTheme.typography.titleLarge,
+                    // Sans, not the chrome-reserved titleLarge face (#34): the missed
+                    // word is content the learner reads, same as WordHeader's headline.
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontFamily = MorphoTheme.reading.wordHeadline.fontFamily,
+                    ),
                     color = onError,
                 )
                 if (!phonetic.isNullOrBlank()) {
