@@ -271,6 +271,16 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
         if (!correct) {
             container.playSfx(SfxEvent.WRONG)
             container.hapticsManager.perform(HapticPattern.WRONG)
+            // Play the content audio once, on the first miss only — repeat taps
+            // during the retry phase should not replay it.
+            if (!hadRetry) {
+                val contentAudioFile = if (ui.mode == LearnMode.SENTENCE_IMAGE) {
+                    ui.sentenceAudioFile ?: ui.wordAudioFile
+                } else {
+                    ui.wordAudioFile
+                }
+                container.audioPlayer.play(contentAudioFile)
+            }
             _state.value = _state.value.copy(
                 selectedIndex = index,
                 revealed = true,
