@@ -67,7 +67,7 @@ Read the JSON file at $REMAINING_JSON — a list of word entries with fields wor
 
 For EACH entry, generate one image saved as $GENDIR/{word_id}.png.
 
-Requirements: the image must visually depict the MEANING of the word (lemma) as used in its example sentence (slot1_sentence), guided by primary_definition — a learner must be able to pick it out of 4 images as matching the sentence. Photographic or realistic illustration, clear single subject, landscape ~768x576 (4:3), absolutely NO text/letters/numbers in the image. For abstract words use a concrete instantly-readable metaphor.
+Requirements: generate a photorealistic scene image, NOT text, NOT words, NOT letters, NOT a white background. The image must depict a VISUAL SCENE described by the example sentence (slot1_sentence), showing the MEANING of the word (lemma) as used there, guided by primary_definition — a learner must be able to pick it out of 4 images as matching the sentence. Photographic or realistic illustration, clear single subject, landscape ~768x576 (4:3). NEVER generate an image that contains any written text, typography, or letters — no captions, no labels, no signage, no numbers, nothing legible, anywhere in the frame. For abstract words use a concrete instantly-readable metaphor, still rendered as a real photographic scene, never as a text/diagram/icon.
 
 Process in order. If a generation fails, retry once; on a second quota-type failure STOP immediately; on a content-policy failure skip that word and continue.
 PROMPT

@@ -29,6 +29,7 @@ import urllib.error
 import urllib.request
 import uuid
 
+import numpy as np
 import open_clip
 import torch
 from PIL import Image
@@ -102,6 +103,24 @@ def api_post_json(path, body):
 # avoids tripping that limit while losing nothing the server would have
 # discarded regardless.
 UPLOAD_TARGET_BOX = (768, 576)
+
+# Absolute CLIP-score floor: a generated image scoring below this against its
+# own query text is treated as a non-match regardless of the incumbent (catches
+# off-topic renders that happen to still beat a weak/missing incumbent).
+CLIP_FLOOR = 0.08
+
+# Grayscale pixel stddev floor: images at or below this are blank/near-uniform
+# (solid white canvas, flat color field) and never worth CLIP-scoring at all.
+BLANK_STDDEV_THRESHOLD = 0.5
+
+
+def is_blank_image(path, threshold=BLANK_STDDEV_THRESHOLD):
+    """True if `path` is a blank/near-uniform image: grayscale pixel stddev
+    below `threshold`. Catches solid-color renders (e.g. a blank white canvas)
+    before they ever reach CLIP scoring or upload."""
+    im = Image.open(path).convert("L")
+    stddev = float(np.asarray(im, dtype=np.float64).std())
+    return stddev < threshold
 
 
 def _prepare_upload_bytes(file_path):
@@ -211,11 +230,27 @@ def main(argv=None):
     incumbent_cid = {wid: cid for wid, cid in conn.execute("SELECT word_id, img_cand_id FROM image_selections")}
     print(f"  snapshotted {len(incumbent_hash)} incumbents BEFORE upload")
 
-    print("\n=== Phase 1: upload ===")
-    uploaded, upload_failures = upload_all(candidates)
-    print(f"Uploaded {len(uploaded)}/{len(candidates)}; failures: {len(upload_failures)}")
+    results = []
 
-    print("\n=== Phase 2: CLIP scoring ===")
+    print("\n=== Phase 1: blank-image filter (pre-upload) ===")
+    surviving = []
+    for row in candidates:
+        wid = row["word_id"]
+        png_path = f"{GENIMG_DIR}/{wid}.png"
+        if is_blank_image(png_path):
+            print(f"  {wid:>5} {row['lemma']:<16} BLANK IMAGE (stddev < {BLANK_STDDEV_THRESHOLD}) -> skipped, not uploaded")
+            results.append({
+                "word_id": wid,
+                "lemma": row["lemma"],
+                "incumbent_score": None,
+                "generated_score": None,
+                "action": "blank_image",
+            })
+        else:
+            surviving.append(row)
+    print(f"  {len(candidates) - len(surviving)} blank image(s) filtered; {len(surviving)} remain")
+
+    print("\n=== Phase 2: CLIP pre-check (floor, pre-upload) ===")
     model, _, preprocess = open_clip.create_model_and_transforms(
         "ViT-B-32", pretrained="laion2b_s34b_b79k"
     )
@@ -240,8 +275,8 @@ def main(argv=None):
         ).fetchone()
         return r[0] if r else ""
 
-    def img_embed(h):
-        im = preprocess(Image.open(f"{MEDIA}/{h[:2]}/{h}.webp").convert("RGB")).unsqueeze(0).cuda()
+    def embed_image_file(path):
+        im = preprocess(Image.open(path).convert("RGB")).unsqueeze(0).cuda()
         with torch.no_grad():
             f = model.encode_image(im)
             f = f / f.norm(dim=-1, keepdim=True)
@@ -253,47 +288,75 @@ def main(argv=None):
             f = f / f.norm(dim=-1, keepdim=True)
         return f[0]
 
-    results = []
-    for row in candidates:
+    # Score every surviving candidate against the LOCAL generated PNG (no
+    # upload needed yet) plus the incumbent's already-stored image. Anything
+    # below the absolute CLIP floor is dropped here, before it ever reaches
+    # the upload phase.
+    to_upload = []
+    scored = {}
+    for row in surviving:
         wid = row["word_id"]
         lemma = row["lemma"]
-        entry = {
-            "word_id": wid,
-            "lemma": lemma,
-            "incumbent_score": None,
-            "generated_score": None,
-            "action": None,
-        }
-
-        if wid not in uploaded:
-            entry["action"] = "upload_failed"
-            results.append(entry)
-            continue
 
         s = sentence(wid) or lemma
         query = f"{s} {lemma}: {definition(wid)[:80]}"
         q = txt_embed(query)
 
         cur_hash = incumbent_hash.get(wid)
-        if cur_hash is None:
-            entry["action"] = "no_incumbent"
-            incumbent_score = None
-        else:
+        incumbent_score = None
+        if cur_hash is not None:
             try:
-                incumbent_score = float(q @ img_embed(cur_hash))
+                incumbent_score = float(q @ embed_image_file(f"{MEDIA}/{cur_hash[:2]}/{cur_hash}.webp"))
             except FileNotFoundError:
                 incumbent_score = None
-        entry["incumbent_score"] = incumbent_score
 
-        gen_hash = uploaded[wid]["file_hash"]
         try:
-            generated_score = float(q @ img_embed(gen_hash))
+            generated_score = float(q @ embed_image_file(f"{GENIMG_DIR}/{wid}.png"))
         except FileNotFoundError:
             generated_score = None
-        entry["generated_score"] = generated_score
+
+        scored[wid] = (incumbent_score, generated_score)
 
         if generated_score is None:
-            entry["action"] = "score_failed"
+            results.append({
+                "word_id": wid, "lemma": lemma,
+                "incumbent_score": incumbent_score, "generated_score": generated_score,
+                "action": "score_failed",
+            })
+        elif generated_score < CLIP_FLOOR:
+            print(
+                f"  {wid:>5} {lemma:<16} generated={generated_score:.4f} < floor {CLIP_FLOOR} "
+                f"-> below_floor, skipped, not uploaded"
+            )
+            results.append({
+                "word_id": wid, "lemma": lemma,
+                "incumbent_score": incumbent_score, "generated_score": generated_score,
+                "action": "below_floor",
+            })
+        else:
+            to_upload.append(row)
+
+    print(f"  {len(to_upload)}/{len(surviving)} candidate(s) pass the floor check and will be uploaded")
+
+    print("\n=== Phase 3: upload ===")
+    uploaded, upload_failures = upload_all(to_upload)
+    print(f"Uploaded {len(uploaded)}/{len(to_upload)}; failures: {len(upload_failures)}")
+
+    print("\n=== Phase 4: decide (generated vs incumbent) ===")
+    for row in to_upload:
+        wid = row["word_id"]
+        lemma = row["lemma"]
+        incumbent_score, generated_score = scored[wid]
+        entry = {
+            "word_id": wid,
+            "lemma": lemma,
+            "incumbent_score": incumbent_score,
+            "generated_score": generated_score,
+            "action": None,
+        }
+
+        if wid not in uploaded:
+            entry["action"] = "upload_failed"
         elif incumbent_score is None or generated_score > incumbent_score:
             entry["action"] = "pending_select"
         else:
@@ -304,7 +367,7 @@ def main(argv=None):
             f"  {wid:>5} {lemma:<16} incumbent={incumbent_score} generated={generated_score} -> {entry['action']}"
         )
 
-    print("\n=== Phase 3: select winners ===")
+    print("\n=== Phase 5: select winners ===")
     select_failures = []
     for entry in results:
         if entry["action"] != "pending_select":
@@ -335,9 +398,12 @@ def main(argv=None):
     n_upload_failed = sum(1 for e in results if e["action"] == "upload_failed")
     n_select_failed = sum(1 for e in results if e["action"] == "select_failed")
     n_score_failed = sum(1 for e in results if e["action"] == "score_failed")
+    n_blank_image = sum(1 for e in results if e["action"] == "blank_image")
+    n_below_floor = sum(1 for e in results if e["action"] == "below_floor")
 
     print(f"\nDONE selected={n_selected} kept={n_kept} upload_failed={n_upload_failed} "
-          f"select_failed={n_select_failed} score_failed={n_score_failed}")
+          f"select_failed={n_select_failed} score_failed={n_score_failed} "
+          f"blank_image={n_blank_image} below_floor={n_below_floor}")
     print(f"results: {RESULTS_PATH}")
 
 
