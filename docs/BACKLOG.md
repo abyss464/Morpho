@@ -52,6 +52,7 @@ content change exactly once.
 
 | # | Title | Result |
 |---|-------|--------|
+| ops | 全库文风清洗 + 提交历史重写 | 手册/BACKLOG/Skill/记忆按文风规范重写；dev/wave-1 全量提交信息清洗，157 条署名尾行移除，哈希引用同步，main 祖先关系校验通过；回滚 bundle 在会话 scratchpad |
 | 5 | Docker 镜像重建+重启 | image `morpho-morphod:018c9ee9d6cc` @ e82c7fa；数据零漂移（6944 词/资产计数一致）；publish 子命令在位。无代码变更 |
 | ops | morpho-genimg.timer 关闭 | Owner 要求。disable --now 并验证（disabled/inactive/列表清零）。wave2 列表 221 词已生成 81，剩 140 由 #19 引擎内建生成源接管。累计战绩：wave-1 48/48 胜出，wave-2 有非 manual 对手的 77 张全部胜出（先前记录的"最后一批 81 张 0 胜出"为对已上传图重复 ingest 造成的自比自，kept 是 no-op）|
 | 35 | 进度 0/50 根治+实机验证 | 根因：daily_stats 只在整个 50 词计划全部走完时结算一次（wave-1 设计，非回归），且 0 计数自续命。修复 7d246d6：SessionBank 水位线逐题入账、幂等、跨午夜分账，5 新测试。1.7.x 补丁装机（028ed74 含 #34），user.db 备份→回灌 + 今日 22 词补记，实机截图确认 22/50 |
