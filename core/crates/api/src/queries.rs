@@ -304,6 +304,49 @@ pub fn word_list(
 // Gallery
 // ---------------------------------------------------------------------------
 
+/// Every `clip_scores` row recorded under one model, keyed the way
+/// `reconcile::facts::Facts::clip_score` looks them up.
+///
+/// The trivial half of the lookup: `clip_scores` is a plain content-addressed
+/// table, so loading it is a one-line `SELECT`. The half that must not be
+/// reinvented — *which* text a word's pictures are scored against — comes from
+/// [`morpho_reconcile::facts::clip_queries`] below, unchanged from what the
+/// reconciler itself ranks image slots with.
+fn clip_score_lookup(conn: &Connection, model_ver: &str) -> Result<HashMap<(String, String), f64>> {
+    if model_ver.trim().is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut stmt = conn
+        .prepare("SELECT file_hash, text_hash, similarity FROM clip_scores WHERE model_ver = ?1")?;
+    let rows = stmt
+        .query_map(rusqlite::params![model_ver], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, f64>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows
+        .into_iter()
+        .map(|(file_hash, text_hash, similarity)| ((file_hash, text_hash), similarity))
+        .collect())
+}
+
+/// This picture's score against its word's own query, or `None` when the pair
+/// has not been compared (or the word is not one `clip_queries` covers).
+fn resolve_clip_similarity(
+    word_queries: &HashMap<i64, morpho_reconcile::facts::ClipQuery>,
+    scores: &HashMap<(String, String), f64>,
+    word_id: i64,
+    file_hash: &str,
+) -> Option<f64> {
+    let text_hash = &word_queries.get(&word_id)?.text_hash;
+    scores
+        .get(&(file_hash.to_string(), text_hash.clone()))
+        .copied()
+}
+
 pub fn gallery_list(conn: &Connection, query: &GalleryQuery) -> Result<Page<GalleryItem>> {
     let mut clauses: Vec<String> = vec!["w.role IN ('target', 'auxiliary')".into()];
     let mut params: Vec<Box<dyn ToSql>> = Vec::new();
@@ -321,6 +364,85 @@ pub fn gallery_list(conn: &Connection, query: &GalleryQuery) -> Result<Page<Gall
         params.push(Box::new(q.clone()));
     }
     let where_sql = format!("WHERE {}", clauses.join(" AND "));
+
+    // The gallery already only ever shows a word's *selected* image — the
+    // join below is to `image_selections`, not the full candidate pool — so
+    // there is no separate "selected only" mode to add here.
+    let base_sql = format!(
+        "SELECT w.word_id, w.lemma, w.role,
+                ic.img_cand_id, ic.file_hash, ic.source, ic.auto_score,
+                isel.approved, isel.selected_by, isel.pinned
+         FROM words w
+         JOIN image_selections isel ON w.word_id = isel.word_id
+         JOIN image_candidates ic ON isel.img_cand_id = ic.img_cand_id
+         {where_sql}"
+    );
+
+    let mut images_cfg = morpho_reconcile::ImagesConfig::default();
+    images_cfg.apply_env();
+    let clip_model_ver = images_cfg.clip_model_ver();
+    let word_queries = morpho_reconcile::facts::clip_queries(conn)?;
+    let clip_similarities = clip_score_lookup(conn, &clip_model_ver)?;
+
+    let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<GalleryItem> {
+        let word_id: i64 = row.get("word_id")?;
+        let file_hash: String = row.get("file_hash")?;
+        let clip_similarity =
+            resolve_clip_similarity(&word_queries, &clip_similarities, word_id, &file_hash);
+        Ok(GalleryItem {
+            word_id,
+            lemma: row.get("lemma")?,
+            role: row.get("role")?,
+            img_cand_id: row.get("img_cand_id")?,
+            file_hash,
+            source: row.get("source")?,
+            auto_score: row.get("auto_score")?,
+            approved: row.get::<_, i64>("approved")? != 0,
+            selected_by: row.get("selected_by")?,
+            pinned: row.get::<_, i64>("pinned")? != 0,
+            clip_similarity,
+        })
+    };
+
+    if let Some(sort) = query.sort {
+        // The sort key lives in a correlated table, not a gallery column, so
+        // it cannot be pushed into `ORDER BY`: fetch every filtered row, rank
+        // in memory, then paginate the ranking. Still offset-based, matching
+        // the default page below — with a lexicon sized for one operator's
+        // review queue rather than a public catalog, ranking the full
+        // filtered set in memory is the simple choice, not a scaling risk.
+        let refs: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let sql = format!("{base_sql} ORDER BY w.word_id");
+        let mut stmt = conn.prepare(&sql)?;
+        let mut items = stmt
+            .query_map(refs.as_slice(), map_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        items.sort_by(|a, b| {
+            match (a.clip_similarity, b.clip_similarity) {
+                // Nulls last regardless of direction: an unscored pair is not
+                // a "worst" or "best" match, it is simply not answerable yet.
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => a.word_id.cmp(&b.word_id),
+                (Some(x), Some(y)) => {
+                    let ord = x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal);
+                    let ord = match sort {
+                        GallerySort::ClipAsc => ord,
+                        GallerySort::ClipDesc => ord.reverse(),
+                    };
+                    ord.then_with(|| a.word_id.cmp(&b.word_id))
+                }
+            }
+        });
+
+        let total = items.len() as i64;
+        let page = query.pagination();
+        let offset = page.offset() as usize;
+        let limit = page.limit() as usize;
+        let items = items.into_iter().skip(offset).take(limit).collect();
+        return Ok(Page { items, total });
+    }
 
     let refs: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let total: i64 = conn.query_row(
@@ -342,32 +464,13 @@ pub fn gallery_list(conn: &Connection, query: &GalleryQuery) -> Result<Page<Gall
     let refs: Vec<&dyn ToSql> = paged.iter().map(|p| p.as_ref()).collect();
 
     let sql = format!(
-        "SELECT w.word_id, w.lemma, w.role,
-                ic.img_cand_id, ic.file_hash, ic.source, ic.auto_score,
-                isel.approved, isel.selected_by, isel.pinned
-         FROM words w
-         JOIN image_selections isel ON w.word_id = isel.word_id
-         JOIN image_candidates ic ON isel.img_cand_id = ic.img_cand_id
-         {where_sql}
+        "{base_sql}
          ORDER BY COALESCE(w.frequency_rank, 9223372036854775807), w.word_id
          LIMIT ? OFFSET ?"
     );
     let mut stmt = conn.prepare(&sql)?;
     let items = stmt
-        .query_map(refs.as_slice(), |row| {
-            Ok(GalleryItem {
-                word_id: row.get("word_id")?,
-                lemma: row.get("lemma")?,
-                role: row.get("role")?,
-                img_cand_id: row.get("img_cand_id")?,
-                file_hash: row.get("file_hash")?,
-                source: row.get("source")?,
-                auto_score: row.get("auto_score")?,
-                approved: row.get::<_, i64>("approved")? != 0,
-                selected_by: row.get("selected_by")?,
-                pinned: row.get::<_, i64>("pinned")? != 0,
-            })
-        })?
+        .query_map(refs.as_slice(), map_row)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     Ok(Page { items, total })
