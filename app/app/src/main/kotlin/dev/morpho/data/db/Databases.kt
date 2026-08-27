@@ -105,7 +105,7 @@ class DatabaseProvider(private val context: Context) {
         val file = context.getDatabasePath(USER_DB_NAME)
         if (!file.isFile) return
         val stored = readUserSchemaVersion(file) ?: return
-        if (stored >= PRE_RELEASE_USER_SCHEMA_VER) return
+        if (!isPreReleaseUserSchema(stored)) return
 
         Log.w(TAG, "user.db schema_ver $stored predates the pre-release baseline; recreating")
         listOf("", "-wal", "-shm").forEach { suffix ->
@@ -238,5 +238,18 @@ class DatabaseProvider(private val context: Context) {
 
         /** The user.db schema the first release ships. Never raise this — see above. */
         private const val PRE_RELEASE_USER_SCHEMA_VER = 2
+
+        /**
+         * True for a `user.db` stamped from before the pre-release baseline settled
+         * (wave 1's `daily_stats.correct_rate` shape) — the file
+         * [discardPreReleaseUserDatabase] must wipe rather than open. Opening it as-is
+         * hands SQLDelight's generated queries a `daily_stats` table that does not name
+         * the columns they write (`new_learned`, `reviewed`, ...), so every session's
+         * progress write — including the one behind the home screen's "new words today"
+         * counter — fails silently against it (2a8e2ed, "schema changes bricking
+         * wave-1 installs").
+         */
+        internal fun isPreReleaseUserSchema(storedSchemaVer: Int): Boolean =
+            storedSchemaVer < PRE_RELEASE_USER_SCHEMA_VER
     }
 }
