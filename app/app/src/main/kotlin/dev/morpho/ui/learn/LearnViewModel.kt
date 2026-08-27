@@ -309,11 +309,6 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
             },
         )
 
-        // Mode 1 reveals the sentence audio only after the answer is in.
-        if (ui.mode == LearnMode.SENTENCE_IMAGE) {
-            container.audioPlayer.play(ui.sentenceAudioFile ?: ui.wordAudioFile)
-        }
-
         advancing = true
         viewModelScope.launch {
             delay(container.tokenDurations.correct.toLong())
