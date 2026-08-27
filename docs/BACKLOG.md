@@ -33,12 +33,12 @@ content change exactly once.
 | # | Title | Est | Pri | Phase | Status |
 |---|-------|-----|-----|-------|--------|
 | 19+8 | CLIP 内化+codex 生成源 — 代码在分支 `worktree-agent-af41b483305ed8ad6`（4 commits: d09ee24/f8b633d/751fcb9/7fb355e，66 文件 +5454）。架构：adapters/clip 为宿主侧 HTTP sidecar（30013，内容哈希寻址）；clip_scores 表内容寻址如 tts_assets；CLIP 权重 0.60 于 rank 时应用不入缓存；schema v6→7 加法迁移；SCORER_ALGO_VER 4→5；codex 子进程适配器、例句条件生成、无句推迟。agent 自报测试全绿（core 781/adapters/admin-ui），待独立复验。下一步：合并 + 复验 + 部署（与 #12 合并预计有加法性冲突：routes/dto/ops/mod）；ship 步骤见 751fcb9 的运维文档。近重复去重(≥0.92)未实现，§7.6 仍开 | L | P1 | 1 | code on branch, merge pending |
-| B3 | 首页 0/50 不更新 — HEAD 上不复现。成因：wave-3a 的 daily_stats schema 变更未写迁移，旧 user.db 上统计写入全部失败；2a8e2ed 的预发布库丢弃守卫已覆盖。补 5 个回归测试（03e7bf5，42 test 绿）。真机复验待装机 | S | P2 | 1 | ✅ code-verified |
+| B3 | 首页 0/50 不更新 — HEAD 上不复现。成因：wave-3a 的 daily_stats schema 变更未写迁移，旧 user.db 上统计写入全部失败；00df8fc 的预发布库丢弃守卫已覆盖。补 5 个回归测试（fedb00b，42 test 绿）。真机复验待装机 | S | P2 | 1 | ✅ code-verified |
 | 9d | Owner 裁决（2026-08-27）：73 张文字主体图全部弃用，这 73 词由 codex 按例句情景重绘（同 9c 管线：reject→生成→verify_genimg→select+approve） | M | P1 | 2 | dispatched |
 | 9c | Owner 裁决（2026-08-27）：15 张复核图全部弃用，连同学习中遇到 NSFW 的 **sex** 共 16 词，由 codex 按 slot-1 例句重新生成（硬要求 SFW、适合教学），走 reject→生成→verify_genimg 摄入→select+approve | S/M | P1 | 2 | dispatched |
 | 9+B5 | 图片清理 — 扫描/目检 100% 完成，应用 229/302。B5：129 张 codex 图全过新门，0 需拒。NSFW 双管（CLIP 探针 4540 张全扫 + 65 嫌疑词 319 张全目检）：27 拒已应用（breast/thigh/flesh/desire/naked 裸露已清；rape 核查后合规）。纯色扫描全库：3 拒已应用。文字主体图全库扫描：295 张逐张目检，判 272 拒/15 留/7 owner 复核；199 拒已应用，73 张已定案未应用——应用批量调用被权限系统拦截而中止，证据齐全在日志中，待 owner 批准后走正常路径应用。15 项 needs_owner_review 连同证据在 ops/logs/imgclean-2026-08-27.json；ops/nsfw_screen.py 待审后入库 | M | P1 | 2 | 229 applied; 73 vetted-pending owner go |
 | 6 | 自指释义改写 | M | P1 | 2 | ✅ done, conductor-verified |
-| 12 | 存量干扰项 stem 坏配对修正 — 代码已合并（d80c194）：`POST /distractors/rebind-violations`，共享 ranked_candidates 选择逻辑，core_ready 池，乐观守卫，698 测试绿。待办：phase-3 部署新引擎后、导出前，dry-run → apply → 复扫为零；admin-ui types.ts 镜像另记 | M→L | P1 | 2 | code merged, live run pending deploy |
+| 12 | 存量干扰项 stem 坏配对修正 — 代码已合并（49d0f30）：`POST /distractors/rebind-violations`，共享 ranked_candidates 选择逻辑，core_ready 池，乐观守卫，698 测试绿。待办：phase-3 部署新引擎后、导出前，dry-run → apply → 复扫为零；admin-ui types.ts 镜像另记 | M→L | P1 | 2 | code merged, live run pending deploy |
 | 29 | morphod publish 的两个 bug | core | ①repo_root 解析：resolve_adapters_root 存仓库根而 repo_root() 取其 parent，语义冲突致 app/ 路径错一级（绕过：显式 MORPHOD_ADAPTERS_ROOT）；②stale 清理只扫 img/、audio/ 子目录，扫不到旧平铺布局的根级遗留（25904 个文件 492MB，人工 gio trash 清除后 APK 983→532MB）。另：publish 不补测试体内的计数断言（plan size/checked/gloss index），§6.3 需记录 |
 | 30 | CLIP 重选后不当图回流（重选后需复扫） | content/engine | 现状：文字图清扫跑在 CLIP 重选之前，池中未在选的问题图被重选抬进槽位。两例：author 的"AUTHOR & SPEAKER"文字卡（owner 裁决：可留）；section 选中剖腹产疤痕特写（wikimedia 产科手术图 932/930/931/728 已全数 reject，改选牛油果剖面 933 并批准）。目标：重选后新在选集重跑 NSFW+text 双筛 + 人审；引擎端对该类图降权。CLIP 分位统计（2026-08-27）：4127 在选已评分中 <0.08 仅 8 词、0.08-0.15 弱匹配 725 词 |
 | 31 | reject 后 human 选择行卡死不回退 | core | 现状（样本 section/4983）：reject 在选候选后，选择行为 selected_by=human, pinned=0 且仍指向 rejected 候选，自动重选规则只处理 auto 行，槽位永久悬挂，只能人工改选。与 §7.5 的 pin-fallback 设计不符 |
@@ -52,29 +52,29 @@ content change exactly once.
 
 | # | Title | Result |
 |---|-------|--------|
-| 5 | Docker 镜像重建+重启 | image `morpho-morphod:018c9ee9d6cc` @ 0ea2f5d；数据零漂移（6944 词/资产计数一致）；publish 子命令在位。无代码变更 |
+| 5 | Docker 镜像重建+重启 | image `morpho-morphod:018c9ee9d6cc` @ e82c7fa；数据零漂移（6944 词/资产计数一致）；publish 子命令在位。无代码变更 |
 | ops | morpho-genimg.timer 关闭 | Owner 要求。disable --now 并验证（disabled/inactive/列表清零）。wave2 列表 221 词已生成 81，剩 140 由 #19 引擎内建生成源接管。累计战绩：wave-1 48/48 胜出，wave-2 有非 manual 对手的 77 张全部胜出（先前记录的"最后一批 81 张 0 胜出"为对已上传图重复 ingest 造成的自比自，kept 是 no-op）|
-| 35 | 进度 0/50 根治+实机验证 | 根因：daily_stats 只在整个 50 词计划全部走完时结算一次（wave-1 设计，非回归），且 0 计数自续命。修复 f865ac2：SessionBank 水位线逐题入账、幂等、跨午夜分账，5 新测试。1.7.x 补丁装机（7037f04 含 #34），user.db 备份→回灌 + 今日 22 词补记，实机截图确认 22/50 |
-| 34 | 学习内容回无衬线 | 5cb0bb8→7037f04 合并：readingFontFamily 单点根修级联 6 内容样式，chrome 保衬线，一并修正 RetryHelpCard 字体不一致 |
-| 17+20+21 | 发布链走通，release 1.7 装机 | `2026.08.27+0847bb29`，4225 词，APK 532MB（陈旧媒体清理后减半），干净卸载重装（真实包名 dev.morpho.debug，首装==更新时间戳已验证），实机启动 + 截图确认新主题生效。#17 publish 首验发现 2 bug → #29。commit 1cefae5 |
-| 27 | 主页重设计（图标语言/双主题/motif/删冗余入口） | 合并 ffe0a8b（76c7524，22 文件 +1032/−484）：四色 ramp、EB Garamond 内嵌（OFL 留档）、Motif.kt 组件族、Settings 内 System/Light/Dark 切换、QuickAccessRow 删除。gate 绿。待办：docs/contracts/app-design.md Brand 段落仍写旧 morpho blue，发布后更新 |
-| 22+23 | 续学弹窗（一组制）+ 空计划不再进旧总结页 | 合并 a90f3a5（worktree gate 绿，8 新测试；LearnSessionPlanner 纯逻辑抽取）。#22 附带验证：配额本就按 LocalDate 自然日归零，无需改。ReviewScreen 有同款 #23 隐患（无到期词时可能进旧总结页），未动，待 owner 审 |
+| 35 | 进度 0/50 根治+实机验证 | 根因：daily_stats 只在整个 50 词计划全部走完时结算一次（wave-1 设计，非回归），且 0 计数自续命。修复 7d246d6：SessionBank 水位线逐题入账、幂等、跨午夜分账，5 新测试。1.7.x 补丁装机（028ed74 含 #34），user.db 备份→回灌 + 今日 22 词补记，实机截图确认 22/50 |
+| 34 | 学习内容回无衬线 | 5cb0bb8→028ed74 合并：readingFontFamily 单点根修级联 6 内容样式，chrome 保衬线，一并修正 RetryHelpCard 字体不一致 |
+| 17+20+21 | 发布链走通，release 1.7 装机 | `2026.08.27+0847bb29`，4225 词，APK 532MB（陈旧媒体清理后减半），干净卸载重装（真实包名 dev.morpho.debug，首装==更新时间戳已验证），实机启动 + 截图确认新主题生效。#17 publish 首验发现 2 bug → #29。commit cbedd76 |
+| 27 | 主页重设计（图标语言/双主题/motif/删冗余入口） | 合并 fa9ebfb（76c7524，22 文件 +1032/−484）：四色 ramp、EB Garamond 内嵌（OFL 留档）、Motif.kt 组件族、Settings 内 System/Light/Dark 切换、QuickAccessRow 删除。gate 绿。待办：docs/contracts/app-design.md Brand 段落仍写旧 morpho blue，发布后更新 |
+| 22+23 | 续学弹窗（一组制）+ 空计划不再进旧总结页 | 合并 6917c92（worktree gate 绿，8 新测试；LearnSessionPlanner 纯逻辑抽取）。#22 附带验证：配额本就按 LocalDate 自然日归零，无需改。ReviewScreen 有同款 #23 隐患（无到期词时可能进旧总结页），未动，待 owner 审 |
 | 6 | 自指释义清零 | 权威集 271 处（266 词；粗查 126 偏低是 LIKE 漏屈折形和标点边界所致）。264 条新撰 + 7 条改选既有干净候选，全部 manual 带血缘。独立复核：自指 0、§7.10 未解析词元 0、oos_queue 与基线一致、TTS 收敛 missing/failed/死信全 0、blocked 维持 7。附带处理：9 个退化义项（owl=鸽子、source=源代码等）改为常用义。副作用：33 个辅助词因新释义用词更平实而失去引用、自动退休（1146→1113，设计内可逆）。日志 ops/logs/defrewrite-2026-08-27.json |
 
 ## Done — wave-1 (2026-08-27)
 
 | # | Title | Commit |
 |---|-------|--------|
-| 1 | Home screen redesign (component architecture) | af9b9e4..2fec6f6 |
-| 2 | Admin image gallery (infinite scroll) | 62a9ca0 |
-| 3 | Docker deployment (port 30012) | 776e2f8 |
-| 4 | Self-referencing definitions scorer fix (565→104) | 058e95f |
-| 5 | Obscure primary senses / POS correction (482 words) | 058e95f, fa479fc |
-| 7 | OOV cascade blocker (scorer v3) | 2ec573a |
-| 10 | Mode-1 audio replay removed on correct | 0daedd9 |
-| 11 | Mode 2/3 detail page behavior fixed | 0adaf8e |
+| 1 | Home screen redesign (component architecture) | b9a0887..e472155 |
+| 2 | Admin image gallery (infinite scroll) | 109398e |
+| 3 | Docker deployment (port 30012) | a9a81ec |
+| 4 | Self-referencing definitions scorer fix (565→104) | b84bd89 |
+| 5 | Obscure primary senses / POS correction (482 words) | b84bd89, 1f774ec |
+| 7 | OOV cascade blocker (scorer v3) | 5d6e0b8 |
+| 10 | Mode-1 audio replay removed on correct | 3240c21 |
+| 11 | Mode 2/3 detail page behavior fixed | 6e26ccc |
 | 13 | Per-word progress verified already correct | — |
-| 14 | Image_file migrated to examples (code) | 74e37dc, 90227bd |
-| 15 | Unified review mode | 2899f23 |
-| 16 | Audio on wrong answer | 702a6f3 |
-| 18 | Image scoring ignores source; no auto-pin | 611cb62 |
+| 14 | Image_file migrated to examples (code) | d0b9fd8, 5a8148a |
+| 15 | Unified review mode | d7af2f6 |
+| 16 | Audio on wrong answer | 8ef630d |
+| 18 | Image scoring ignores source; no auto-pin | 963b798 |
