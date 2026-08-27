@@ -68,12 +68,8 @@
 
     <!-- Review -->
     <string name="review_title">Review</string>
-    <string name="review_definition_prompt">Which word means this?</string>
-    <string name="review_spell_prompt">Listen, then spell the word.</string>
-    <string name="review_spell_hint">Tap to hear it again.</string>
+    <string name="review_prompt">Which picture and meaning fit this word?</string>
     <string name="review_progress">%1$d of %2$d</string>
-    <string name="review_correct">Correct</string>
-    <string name="review_wrong">The word was %1$s</string>
     <string name="review_none_due">Nothing is due for review.</string>
 
     <!-- Session summary -->

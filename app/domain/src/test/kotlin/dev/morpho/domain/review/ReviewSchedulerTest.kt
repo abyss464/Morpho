@@ -31,46 +31,16 @@ class ReviewSchedulerTest {
     }
 
     @Test
-    fun `spell probability rises with lapses and is capped`() {
-        assertEquals(0.20, scheduler.spellProbability(0), 1e-12)
-        assertEquals(0.40, scheduler.spellProbability(1), 1e-12)
-        assertEquals(0.60, scheduler.spellProbability(2), 1e-12)
-        assertEquals(0.80, scheduler.spellProbability(3), 1e-12)
-        assertEquals(0.80, scheduler.spellProbability(40), 1e-12)
-    }
-
-    @Test
-    fun `heavily lapsed cards skew towards listening spell`() {
-        val fresh = (1L..400L).map { card(it, -1, lapses = 0) }
-        val lapsed = (1L..400L).map { card(it, -1, lapses = 5) }
-
-        val freshSpell = fresh.count {
-            scheduler.questionTypeFor(it, daySeed = 42L) == ReviewQuestionType.LISTENING_SPELL
-        }
-        val lapsedSpell = lapsed.count {
-            scheduler.questionTypeFor(it, daySeed = 42L) == ReviewQuestionType.LISTENING_SPELL
-        }
-
-        assertTrue(freshSpell < fresh.size / 2, "fresh cards spelled too often: $freshSpell/400")
-        assertTrue(lapsedSpell > lapsed.size / 2, "lapsed cards spelled too rarely: $lapsedSpell/400")
-        assertTrue(lapsedSpell > freshSpell)
-    }
-
-    @Test
-    fun `question type is stable within a day and varies across days`() {
-        val c = card(77, -1, lapses = 1)
-        val a = scheduler.questionTypeFor(c, daySeed = 1000L)
-        val b = scheduler.questionTypeFor(c, daySeed = 1000L)
-        assertEquals(a, b)
-
-        val across = (1L..50L).map { scheduler.questionTypeFor(c, daySeed = it) }.toSet()
-        assertEquals(2, across.size, "question type never varies across days")
+    fun `buildQueue returns ReviewItems wrapping each due card`() {
+        val cards = listOf(card(1, -2), card(2, -1), card(3, 5))
+        val queue = scheduler.buildQueue(cards, now)
+        assertEquals(listOf(1L, 2L), queue.map { it.card.wordId })
     }
 
     @Test
     fun `queue respects the limit and keeps the earliest cards`() {
         val cards = (1L..10L).map { card(it, -it) }
-        val queue = scheduler.buildQueue(cards, now, daySeed = 5L, limit = 3)
+        val queue = scheduler.buildQueue(cards, now, limit = 3)
         assertEquals(listOf(10L, 9L, 8L), queue.map { it.card.wordId })
     }
 

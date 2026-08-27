@@ -12,14 +12,14 @@ import dev.morpho.di.SessionResult
 import dev.morpho.domain.learning.OptionAssembler
 import dev.morpho.domain.model.FsrsCard
 import dev.morpho.domain.model.ProgressDefaults
+import dev.morpho.domain.model.WordBundle
 import dev.morpho.domain.progress.ProgressTracker
 import dev.morpho.domain.review.ReviewItem
-import dev.morpho.domain.review.ReviewQuestionType
 import dev.morpho.domain.util.seedOf
 import dev.morpho.ui.common.toWordDetail
 import dev.morpho.ui.designsystem.component.FeedbackSignal
-import dev.morpho.ui.designsystem.component.SpellState
-import dev.morpho.ui.designsystem.component.TextOption
+import dev.morpho.ui.designsystem.component.ImageOption
+import dev.morpho.ui.designsystem.component.SenseDetail
 import dev.morpho.ui.designsystem.component.WordDetail
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,18 +29,16 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 
+/** UI model for a single review question — unified mode-2 visual layout. */
 data class ReviewQuestionUi(
     val wordId: Long,
-    val type: ReviewQuestionType,
     val word: String,
     val phonetic: String?,
     val wordAudioFile: String,
-    val definition: String,
-    val definitionAudioFile: String,
-    val pos: String,
-    /** Definition-to-word only. */
-    val wordOptions: List<TextOption> = emptyList(),
-    val correctIndex: Int = 0,
+    val imageOptions: List<ImageOption>,
+    val correctIndex: Int,
+    /** All senses of the answer word, for the wrong-answer retry help card. */
+    val senses: List<SenseDetail>,
 )
 
 data class ReviewUiState(
@@ -52,16 +50,18 @@ data class ReviewUiState(
     val total: Int = 0,
     val selectedIndex: Int? = null,
     val revealed: Boolean = false,
-    val spelling: String = "",
-    val spellState: SpellState = SpellState.TYPING,
+    /** True after a wrong answer: the user must pick the correct option to proceed. */
+    val mustRetry: Boolean = false,
     val feedback: FeedbackSignal = FeedbackSignal.None,
     val detail: WordDetail? = null,
     val nowPlayingFile: String? = null,
 )
 
 /**
- * Runs the due-review queue: FSRS decides what is due, [dev.morpho.domain.review.ReviewScheduler]
- * decides how to ask it, and every answer feeds a grade straight back into the card.
+ * Runs the due-review queue using a unified image+definition grid (mode-2 visual)
+ * for every card. FSRS decides what is due,
+ * [dev.morpho.domain.review.ReviewScheduler] builds the queue, and every answer
+ * feeds a grade straight back into the card.
  */
 class ReviewViewModel(private val container: AppContainer) : ViewModel() {
 
@@ -90,8 +90,6 @@ class ReviewViewModel(private val container: AppContainer) : ViewModel() {
         queue = container.reviewScheduler.buildQueue(
             cards = cards,
             now = now,
-            daySeed = LocalDate.now().toEpochDay(),
-            // Bounded, or a mature deck eventually opens a session nobody can finish.
             limit = goal * ProgressDefaults.REVIEW_SESSION_MULTIPLIER,
         )
         if (queue.isEmpty()) {
@@ -110,8 +108,6 @@ class ReviewViewModel(private val container: AppContainer) : ViewModel() {
         }
         val ui = buildQuestion(item)
         if (ui == null) {
-            // Card points at a word this release does not ship — skip it silently
-            // (README Part 6: dropped words leave the review queue via the join).
             cursor++
             render()
             return
@@ -123,14 +119,13 @@ class ReviewViewModel(private val container: AppContainer) : ViewModel() {
             total = queue.size,
             selectedIndex = null,
             revealed = false,
-            spelling = "",
-            spellState = SpellState.TYPING,
+            mustRetry = false,
             feedback = FeedbackSignal.None,
             detail = null,
         )
-        if (ui.type == ReviewQuestionType.LISTENING_SPELL) {
-            container.audioPlayer.play(ui.wordAudioFile)
-        }
+        // Auto-play word pronunciation on entry, same as learning mode 2.
+        container.audioPlayer.play(ui.wordAudioFile)
+        // Preload the next card's audio.
         queue.getOrNull(cursor + 1)?.let { next ->
             container.contentRepository.bundle(next.card.wordId)?.let {
                 container.audioPlayer.preload(it.word.wordAudioFile)
@@ -141,97 +136,110 @@ class ReviewViewModel(private val container: AppContainer) : ViewModel() {
     private suspend fun buildQuestion(item: ReviewItem): ReviewQuestionUi? {
         val content = container.contentRepository.questionBundles(item.card.wordId) ?: return null
         val answer = content.answer
-        val sense = answer.primarySense
 
-        return when (item.type) {
-            ReviewQuestionType.LISTENING_SPELL -> ReviewQuestionUi(
-                wordId = answer.word.wordId,
-                type = item.type,
-                word = answer.word.word,
-                phonetic = answer.word.phonetic,
-                wordAudioFile = answer.word.wordAudioFile,
-                definition = sense.definition,
-                definitionAudioFile = sense.defAudioFile,
-                pos = sense.pos,
-            )
+        val optionIds = OptionAssembler.assemble(
+            answerWordId = answer.word.wordId,
+            distractorIds = answer.distractorIds,
+            seed = seedOf(LocalDate.now().toEpochDay(), answer.word.wordId, 7L),
+        )
+        val byId = content.options.associateBy { it.word.wordId }
+        val ordered = optionIds.mapNotNull { byId[it] }
+        if (ordered.size != OptionAssembler.OPTION_COUNT) return null
 
-            ReviewQuestionType.DEFINITION_TO_WORD -> {
-                val optionIds = OptionAssembler.assemble(
-                    answerWordId = answer.word.wordId,
-                    distractorIds = answer.distractorIds,
-                    seed = seedOf(LocalDate.now().toEpochDay(), answer.word.wordId, 7L),
-                )
-                val byId = content.options.associateBy { it.word.wordId }
-                val options = optionIds.mapNotNull { byId[it] }
-                if (options.size != OptionAssembler.OPTION_COUNT) return null
-                ReviewQuestionUi(
-                    wordId = answer.word.wordId,
-                    type = item.type,
-                    word = answer.word.word,
-                    phonetic = answer.word.phonetic,
-                    wordAudioFile = answer.word.wordAudioFile,
-                    definition = sense.definition,
-                    definitionAudioFile = sense.defAudioFile,
+        return ReviewQuestionUi(
+            wordId = answer.word.wordId,
+            word = answer.word.word,
+            phonetic = answer.word.phonetic,
+            wordAudioFile = answer.word.wordAudioFile,
+            imageOptions = ordered.mapIndexed { index, bundle ->
+                bundle.toImageOption(index, ordered.size)
+            },
+            correctIndex = optionIds.indexOf(answer.word.wordId),
+            senses = answer.senses.map { sense ->
+                SenseDetail(
                     pos = sense.pos,
-                    wordOptions = options.map {
-                        TextOption(it.word.wordId, it.word.word, serif = false)
-                    },
-                    correctIndex = optionIds.indexOf(answer.word.wordId),
+                    definition = sense.definition,
+                    isPrimary = sense.isPrimary,
+                    audioFile = sense.defAudioFile,
                 )
-            }
-        }
+            },
+        )
     }
+
+    private fun WordBundle.toImageOption(index: Int, total: Int) = ImageOption(
+        wordId = word.wordId,
+        imageFile = word.imageFile,
+        caption = primarySense.definition,
+        accessibilityLabel = "Option ${index + 1} of $total: ${primarySense.definition}",
+    )
 
     // --------------------------------------------------------------- answers
 
     fun onOptionSelected(index: Int) {
         if (advancing) return
         val ui = _state.value.question ?: return
-        grade(ui, correct = index == ui.correctIndex, selectedIndex = index)
-    }
+        val correct = index == ui.correctIndex
+        val hadRetry = _state.value.mustRetry
 
-    fun onSpellingChanged(value: String) {
-        if (advancing) return
-        _state.value = _state.value.copy(spelling = value)
-    }
+        if (!correct) {
+            // First-try miss: count it and grade the FSRS card.
+            if (!hadRetry) {
+                answeredCount++
+                viewModelScope.launch {
+                    val card: FsrsCard = queue[cursor].card
+                    val updated = container.reviewScheduler.applyAnswer(card, false, Instant.now())
+                    container.progressRepository.upsertCards(listOf(updated))
+                }
+            }
 
-    fun onSpellingSubmitted() {
-        if (advancing) return
-        val ui = _state.value.question ?: return
-        val typed = _state.value.spelling.trim()
-        if (typed.isEmpty()) return
-        grade(ui, correct = typed.equals(ui.word, ignoreCase = true), selectedIndex = null)
-    }
+            container.playSfx(SfxEvent.WRONG)
+            container.hapticsManager.perform(HapticPattern.WRONG)
+            // Play word audio on the first miss only.
+            if (!hadRetry) {
+                container.audioPlayer.play(ui.wordAudioFile)
+            }
+            _state.value = _state.value.copy(
+                selectedIndex = index,
+                revealed = true,
+                mustRetry = true,
+                feedback = FeedbackSignal.Wrong,
+            )
+            viewModelScope.launch {
+                delay(container.tokenDurations.flash.toLong())
+                _state.value = _state.value.copy(feedback = FeedbackSignal.None)
+            }
+            return
+        }
 
-    private fun grade(ui: ReviewQuestionUi, correct: Boolean, selectedIndex: Int?) {
-        advancing = true
-        answeredCount++
-        if (correct) correctCount++
+        // Correct tap.
+        if (!hadRetry) {
+            answeredCount++
+            correctCount++
+            viewModelScope.launch {
+                val card: FsrsCard = queue[cursor].card
+                val updated = container.reviewScheduler.applyAnswer(card, true, Instant.now())
+                container.progressRepository.upsertCards(listOf(updated))
+            }
+        }
 
-        container.playSfx(if (correct) SfxEvent.CORRECT else SfxEvent.WRONG)
-        container.hapticsManager.perform(
-            if (correct) HapticPattern.CORRECT else HapticPattern.WRONG,
-        )
+        container.playSfx(SfxEvent.CORRECT)
+        container.hapticsManager.perform(HapticPattern.CORRECT)
 
         _state.value = _state.value.copy(
-            selectedIndex = selectedIndex,
+            selectedIndex = index,
             revealed = true,
-            spellState = if (correct) SpellState.CORRECT else SpellState.WRONG,
-            feedback = if (correct) FeedbackSignal.Correct else FeedbackSignal.Wrong,
+            mustRetry = false,
+            feedback = FeedbackSignal.Correct,
         )
 
+        advancing = true
         viewModelScope.launch {
-            val card: FsrsCard = queue[cursor].card
-            val updated = container.reviewScheduler.applyAnswer(card, correct, Instant.now())
-            container.progressRepository.upsertCards(listOf(updated))
-
             delay(FEEDBACK_HOLD_MS)
             _state.value = _state.value.copy(feedback = FeedbackSignal.None)
 
-            if (!correct) {
-                // A miss always shows the word in full before moving on.
+            if (hadRetry) {
+                // Wrong-then-correct: show detail sheet before advancing.
                 container.contentRepository.bundle(ui.wordId)?.let { bundle ->
-                    container.audioPlayer.play(bundle.word.wordAudioFile)
                     _state.value = _state.value.copy(detail = bundle.toWordDetail())
                 }
                 return@launch
@@ -306,3 +314,7 @@ class ReviewViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 }
+
+/** Durations live in the Compose token layer; the view model needs the raw numbers. */
+private val AppContainer.tokenDurations: dev.morpho.ui.designsystem.token.Durations
+    get() = dev.morpho.ui.designsystem.token.Durations()
