@@ -15,6 +15,7 @@ import type {
   DistractorView,
   ExampleSlotNumber,
   ExampleSlotView,
+  GalleryItem,
   HoldbackReport,
   ImageSlotView,
   JobsSnapshot,
@@ -57,6 +58,7 @@ import {
   type DefCandRow,
   type ExCandRow,
   type ImgCandRow,
+  type ImgSelRow,
   type WordRow,
 } from './db';
 import { placeholderImageSvg, silentOggBytes } from './fixtures/media';
@@ -457,6 +459,72 @@ export const handlers = [
       .sort((a, b) => a.lemma.localeCompare(b.lemma));
 
     return HttpResponse.json(paginate(rows, page, pageSize));
+  }),
+
+  /** GET /gallery — one row per word's *selected* image (never the full
+   * candidate pool), joined against its clip_similarity the same way
+   * `core/crates/api/src/queries.rs::gallery_list` does. */
+  http.get(`${BASE}/gallery`, async ({ request }) => {
+    await delay(LATENCY_MS);
+    const s = db();
+    const url = new URL(request.url);
+    const { page, pageSize } = readPage(url);
+    const source = url.searchParams.get('source');
+    const approvedParam = url.searchParams.get('approved');
+    const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+    const sort = url.searchParams.get('sort');
+
+    const matches = s.imgSels
+      .map((sel) => {
+        const word = s.words.find((w) => w.word_id === sel.word_id);
+        const cand = s.imgCands.find((c) => c.img_cand_id === sel.img_cand_id);
+        return word && cand ? { word, sel, cand } : null;
+      })
+      .filter((row): row is { word: WordRow; sel: ImgSelRow; cand: ImgCandRow } => row !== null)
+      .filter(({ word }) => word.role === 'target' || word.role === 'auxiliary')
+      .filter(({ cand }) => (source ? cand.source === source : true))
+      .filter(({ sel }) =>
+        approvedParam === null || approvedParam === ''
+          ? true
+          : sel.approved === (approvedParam === 'true'),
+      )
+      .filter(({ word }) => (q ? word.lemma.toLowerCase().includes(q) : true));
+
+    if (sort === 'clip_asc' || sort === 'clip_desc') {
+      // Nulls last regardless of direction — an unscored pair is not "worse"
+      // than a low score, it simply has no answer yet.
+      matches.sort((a, b) => {
+        const x = a.cand.clip_similarity;
+        const y = b.cand.clip_similarity;
+        if (x === null && y === null) return a.word.word_id - b.word.word_id;
+        if (x === null) return 1;
+        if (y === null) return -1;
+        const diff = sort === 'clip_asc' ? x - y : y - x;
+        return diff !== 0 ? diff : a.word.word_id - b.word.word_id;
+      });
+    } else {
+      matches.sort((a, b) => {
+        const rankA = a.word.frequency_rank ?? Number.MAX_SAFE_INTEGER;
+        const rankB = b.word.frequency_rank ?? Number.MAX_SAFE_INTEGER;
+        return rankA !== rankB ? rankA - rankB : a.word.word_id - b.word.word_id;
+      });
+    }
+
+    const items: GalleryItem[] = matches.map(({ word, sel, cand }) => ({
+      word_id: word.word_id,
+      lemma: word.lemma,
+      role: word.role,
+      img_cand_id: cand.img_cand_id,
+      file_hash: cand.file_hash,
+      source: cand.source,
+      auto_score: cand.auto_score,
+      approved: sel.approved,
+      selected_by: sel.selected_by,
+      pinned: sel.pinned,
+      clip_similarity: cand.clip_similarity,
+    }));
+
+    return HttpResponse.json(paginate(items, page, pageSize));
   }),
 
   http.get(`${BASE}/words/:id`, async ({ params }) => {

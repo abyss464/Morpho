@@ -276,6 +276,7 @@ export function mapGalleryItem(raw: unknown): GalleryItem {
     approved: toBool(wire.approved),
     selected_by: toString(wire.selected_by, 'auto') as GalleryItem['selected_by'],
     pinned: toBool(wire.pinned),
+    clip_similarity: toNullableNumber(wire.clip_similarity),
   };
 }
 

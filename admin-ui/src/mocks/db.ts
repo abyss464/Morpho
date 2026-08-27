@@ -140,6 +140,9 @@ export interface ImgCandRow {
   scorer_ver: string;
   created_by: string;
   created_at: string;
+  /** CLIP cosine against this word's own query text, or `null` when the
+   * sidecar has not scored this pair yet — mirrors `clip_scores`. */
+  clip_similarity: number | null;
 }
 
 export interface ImgSelRow {
@@ -605,6 +608,13 @@ function seedWordAssets(seedWord: SeedWord, wordId: number): void {
         scorer_ver: SCORER_VER,
         created_by: `worker:fetch_images`,
         created_at: ts(-470 + i),
+        // Deterministic stand-in for the sidecar's cosine, spread across the
+        // whole [0.05, 0.96] band the review mode cares about; one row in
+        // seven is left unscored so the "—" badge has fixture coverage too.
+        clip_similarity:
+          (wordId + i) % 7 === 0
+            ? null
+            : Number((0.05 + ((wordId * 31 + i * 13) % 92) / 100).toFixed(3)),
       };
       state.imgCands.push(row);
       imgRows.push(row);
@@ -1382,6 +1392,8 @@ export function mintImageCandidate(wordId: number, filename: string, bytes: numb
     scorer_ver: SCORER_VER,
     created_by: 'admin:lin',
     created_at: nowIso(),
+    // A fresh upload has not been through the CLIP sidecar yet.
+    clip_similarity: null,
   };
   state.imgCands.push(row);
   return row;

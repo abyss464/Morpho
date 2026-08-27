@@ -15,12 +15,14 @@ use tower::ServiceExt;
 use morpho_api::{build_router, AppState};
 use morpho_domain::event::Actor;
 use morpho_domain::tts::TtsConfig;
-use morpho_domain::types::{CreatedBy, DefinitionSource, ExampleSource, Role, SelectedBy, SlotRef};
+use morpho_domain::types::{
+    CreatedBy, DefinitionSource, ExampleSource, ImageSource, MediaKind, Role, SelectedBy, SlotRef,
+};
 use morpho_export::ExportSettings;
 use morpho_reconcile::JobRegistry;
 use morpho_store::ops::{
-    ApplyReadiness, BindDistractors, CreateWord, DistractorBinding, MintExampleCandidate,
-    ReadinessRow,
+    ApplyClipScores, ApplyReadiness, BindDistractors, ClipScoreRow, CreateWord, DistractorBinding,
+    MediaRegistration, MintExampleCandidate, MintImageCandidate, ReadinessRow,
 };
 use morpho_store::{Store, StoreConfig, WriteOp};
 
@@ -974,6 +976,148 @@ async fn an_empty_gloss_is_refused_and_an_unknown_word_is_not_found() {
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+// ---------------------------------------------------------------------------
+// Gallery
+// ---------------------------------------------------------------------------
+
+/// A target word with one selected image candidate, optionally scored against
+/// the word's own query text (its lemma, since none of these words get a
+/// slot-1 example — matching the fallback branch of
+/// `morpho_reconcile::facts::clip_queries`).
+async fn seed_gallery_word(h: &Harness, lemma: &str, rank: i64, similarity: Option<f64>) -> i64 {
+    let word = seed_word(&h.store, lemma, Role::Target, Some(rank)).await;
+    let file_hash = format!("hash-{lemma}");
+
+    let cand_id = h
+        .store
+        .write(
+            Actor::Cli,
+            WriteOp::MintImageCandidate(MintImageCandidate {
+                word_id: word,
+                pos: None,
+                file_hash: file_hash.clone(),
+                media: Some(MediaRegistration {
+                    file_hash: file_hash.clone(),
+                    kind: MediaKind::Image,
+                    rel_path: format!("media/{file_hash}.webp"),
+                    bytes: 1024,
+                }),
+                width: Some(512),
+                height: Some(512),
+                source: ImageSource::Manual,
+                source_ref: None,
+                license: None,
+                query_used: None,
+                created_by: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .result
+        .cand_id()
+        .unwrap();
+
+    h.store
+        .write(
+            Actor::Reconciler,
+            WriteOp::select(SlotRef::Image { word_id: word }, cand_id, SelectedBy::Auto),
+        )
+        .await
+        .unwrap();
+
+    if let Some(similarity) = similarity {
+        let mut images_cfg = morpho_reconcile::ImagesConfig::default();
+        images_cfg.apply_env();
+        h.store
+            .write(
+                Actor::Cli,
+                WriteOp::ApplyClipScores(ApplyClipScores {
+                    model_ver: images_cfg.clip_model_ver(),
+                    rows: vec![ClipScoreRow {
+                        file_hash,
+                        text_hash: morpho_domain::text_hash(lemma),
+                        similarity,
+                    }],
+                    touched_words: vec![word],
+                }),
+            )
+            .await
+            .unwrap();
+    }
+
+    word
+}
+
+#[tokio::test]
+async fn gallery_exposes_clip_similarity_and_null_when_unscored() {
+    let h = harness();
+    seed_gallery_word(&h, "lucent", 100, Some(0.314)).await;
+    seed_gallery_word(&h, "murky", 200, None).await;
+
+    let (status, body) = get(&h.router, "/api/gallery").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["total"], 2);
+
+    let items = body["items"].as_array().unwrap();
+    let lucent = items.iter().find(|item| item["lemma"] == "lucent").unwrap();
+    assert!((lucent["clip_similarity"].as_f64().unwrap() - 0.314).abs() < 1e-9);
+
+    let murky = items.iter().find(|item| item["lemma"] == "murky").unwrap();
+    assert!(murky["clip_similarity"].is_null());
+}
+
+#[tokio::test]
+async fn gallery_sort_clip_asc_puts_the_worst_match_first_with_nulls_last() {
+    let h = harness();
+    seed_gallery_word(&h, "radiant", 100, Some(0.81)).await;
+    seed_gallery_word(&h, "dim", 200, Some(0.12)).await;
+    seed_gallery_word(&h, "vague", 300, None).await;
+
+    let (status, body) = get(&h.router, "/api/gallery?sort=clip_asc").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["total"], 3);
+
+    let lemmas: Vec<&str> = body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["lemma"].as_str().unwrap())
+        .collect();
+    // Worst semantic match first, best last, the unscored pair after both —
+    // it is not "worse" than 0.12, it simply has no answer yet.
+    assert_eq!(lemmas, vec!["dim", "radiant", "vague"]);
+}
+
+#[tokio::test]
+async fn gallery_sort_clip_desc_reverses_scored_order_and_paginates_by_offset() {
+    let h = harness();
+    seed_gallery_word(&h, "radiant", 100, Some(0.81)).await;
+    seed_gallery_word(&h, "dim", 200, Some(0.12)).await;
+    seed_gallery_word(&h, "vague", 300, None).await;
+
+    let (status, body) = get(&h.router, "/api/gallery?sort=clip_desc&page=1&page_size=2").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["total"], 3);
+    let page1: Vec<&str> = body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["lemma"].as_str().unwrap())
+        .collect();
+    assert_eq!(page1, vec!["radiant", "dim"]);
+
+    let (status, body) = get(&h.router, "/api/gallery?sort=clip_desc&page=2&page_size=2").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["total"], 3);
+    let page2: Vec<&str> = body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["lemma"].as_str().unwrap())
+        .collect();
+    assert_eq!(page2, vec!["vague"]);
 }
 
 // ---------------------------------------------------------------------------

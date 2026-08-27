@@ -104,7 +104,7 @@ export async function listWords(
   return mapPaginated(raw, mapWordListItem);
 }
 
-/** GET /gallery?source=&approved=&q=&page=&page_size= */
+/** GET /gallery?source=&approved=&q=&sort=&page=&page_size= */
 export async function listGallery(
   query: GalleryQuery = {},
   signal?: AbortSignal,

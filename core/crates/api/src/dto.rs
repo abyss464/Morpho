@@ -782,6 +782,25 @@ pub struct GalleryItem {
     pub approved: bool,
     pub selected_by: String,
     pub pinned: bool,
+    /// Cosine similarity between this picture and the word's own query text
+    /// (its slot-1 sentence, falling back to the lemma), under whatever model
+    /// `MORPHO_CLIP_MODEL` currently names — the same correlation
+    /// `reconcile::stages::select` ranks image slots with. `None` when the
+    /// pair has not been scored yet (backlog #32: worst-match review mode).
+    pub clip_similarity: Option<f64>,
+}
+
+/// `?sort=clip_asc|clip_desc` (backlog #32). Absent keeps the gallery's
+/// default order (frequency rank, then word id).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GallerySort {
+    /// Worst semantic match first — scored items ascending by
+    /// `clip_similarity`, unscored items last. The review mode's default.
+    ClipAsc,
+    /// Best semantic match first — scored items descending, unscored items
+    /// still last.
+    ClipDesc,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -792,6 +811,8 @@ pub struct GalleryQuery {
     pub approved: Option<bool>,
     #[serde(default)]
     pub q: Option<String>,
+    #[serde(default)]
+    pub sort: Option<GallerySort>,
     #[serde(default)]
     pub page: Option<i64>,
     #[serde(default)]
