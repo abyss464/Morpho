@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +35,7 @@ import dev.morpho.di.AppContainer
 import dev.morpho.ui.designsystem.component.AnswerFeedbackOverlay
 import dev.morpho.ui.designsystem.component.DetailSheet
 import dev.morpho.ui.designsystem.component.ImageOption
+import dev.morpho.ui.designsystem.component.MorphoLoader
 import dev.morpho.ui.designsystem.component.QuizImageDefGrid
 import dev.morpho.ui.designsystem.component.QuizLayout
 import dev.morpho.ui.designsystem.component.RetryHelpCard
@@ -107,7 +107,7 @@ fun ReviewScreen(
                 state.loading -> Box(
                     Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
-                ) { CircularProgressIndicator() }
+                ) { MorphoLoader() }
 
                 state.empty -> Box(
                     Modifier.fillMaxSize().padding(padding),

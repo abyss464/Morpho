@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,6 +40,7 @@ import dev.morpho.ui.designsystem.component.GroupProgressBar
 import dev.morpho.ui.designsystem.component.GroupSegmentState
 import dev.morpho.ui.designsystem.component.ImageOption
 import dev.morpho.ui.designsystem.component.ModePips
+import dev.morpho.ui.designsystem.component.MorphoLoader
 import dev.morpho.ui.designsystem.component.QuizImageDefGrid
 import dev.morpho.ui.designsystem.component.QuizImageGrid
 import dev.morpho.ui.designsystem.component.QuizLayout
@@ -304,7 +304,7 @@ private fun Stimulus(
 @Composable
 private fun LoadingBox(modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator()
+        MorphoLoader()
     }
 }
 

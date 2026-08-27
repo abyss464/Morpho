@@ -2,7 +2,6 @@ package dev.morpho.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -15,6 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import dev.morpho.di.AppContainer
 import dev.morpho.di.SessionKind
 import dev.morpho.di.StartupReport
+import dev.morpho.ui.designsystem.component.MorphoLoader
 import dev.morpho.ui.designsystem.motion.rememberSharedAxis
 import dev.morpho.ui.home.HomeScreen
 import dev.morpho.ui.learn.LearnScreen
@@ -45,7 +45,7 @@ fun MorphoApp(
     ) {
         if (startup == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                MorphoLoader()
             }
             return@Surface
         }
