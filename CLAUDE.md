@@ -21,15 +21,17 @@ When the user reports a problem, request, or idea:
 When the user says to triage, evaluate, or start implementing:
 1. **Triage first**: for each Inbox item, assess effort (S/M/L/XL), priority (P0-P3), dependencies, and feasibility. Move to Ready with estimates, or to Deferred/Won't-do with a clear reason.
 2. **Present the plan**: show the ordered Ready list. The user approves, reorders, or removes items before any code is written.
-3. **Implement one at a time** (unless items are independent and parallelizable). Move to In Progress, then Done with commit reference.
-4. If mid-implementation you discover an item is larger than estimated, stop and re-estimate rather than silently expanding scope.
+3. **Dispatch to subagents**: write a precise prompt and launch an Agent for each approved item. Independent items run in parallel. The orchestrator (main loop) never writes code directly — it records, evaluates, dispatches, and verifies.
+4. **Verify on return**: when a subagent completes, check its output (compilation, tests, correctness). Move to Done with commit reference, or send the agent back with fixes.
 
 ### Key rules
 
-- Reporting and building are **decoupled**: the user can report items at any time, including while an implementation is running. Recording an Inbox item never interrupts ongoing work.
-- Never start coding from a report. The path is always: Inbox → Triage → Ready → approved → In Progress.
+- **The orchestrator never codes.** It reads, evaluates, dispatches agents, and verifies results. This keeps the main conversation always responsive to the user.
+- Reporting and building are **decoupled**: the user can report items at any time, including while subagents are implementing. Recording an Inbox item never interrupts ongoing work.
+- Never start coding from a report. The path is always: Inbox → Triage → Ready → approved → Agent dispatched → verified → Done.
 - An item in Ready is a commitment to feasibility, not to immediate implementation. Order matters.
 - Deferred is not rejected — it has a reason and can be revisited. Won't-do is permanent with rationale.
+- If a subagent mid-implementation discovers the item is larger than estimated, it stops and reports back. The orchestrator re-estimates and consults the user rather than silently expanding scope.
 
 ## Code conventions
 
