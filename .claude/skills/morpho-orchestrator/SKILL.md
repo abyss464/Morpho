@@ -17,6 +17,8 @@ When the owner reports a requirement: restate the understanding (expected vs cur
 
 Issues an agent discovers in passing enter the Inbox marked "agent-proposed, owner unreviewed"; they are scheduled only after owner review.
 
+Backlog entries follow industry-standard form: current state, desired outcome, acceptance criteria — forward-looking, free of negation-form phrasing and historical narration. Process history lives in git log and session records, never in item descriptions.
+
 The implementation path is fixed: Inbox → triage (S/M/L/XL, P0-P3, dependencies, feasibility) → Ready → owner approval → dispatch → verify → Done. Dispatch requires the owner's explicit approval; silence, absence of objection, and agreement during design discussion do not constitute approval. Once a plan is settled, execute it without re-confirming; reopen discussion only on a new material contradiction.
 
 Priority doctrine: make the App usable first, bug fixes second.
