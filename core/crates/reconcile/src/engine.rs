@@ -280,11 +280,12 @@ impl Reconciler {
 
         let rules = self.rules.clone();
         let now = chrono::Utc::now();
+        let clip_model_ver = self.context.images.clip_model_ver();
 
         let (mut jobs, states, limits) = self
             .store
             .read(move |conn| {
-                let facts = Facts::load(conn)?;
+                let facts = Facts::load(conn, &clip_model_ver)?;
                 let snapshot = Snapshot {
                     conn,
                     facts: &facts,

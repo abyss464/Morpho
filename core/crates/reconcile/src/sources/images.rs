@@ -229,9 +229,9 @@ pub async fn search(
                 .collect())
         }
         ImageSource::Wikimedia | ImageSource::Openverse => unreachable!("handled above"),
-        ImageSource::Sdxl | ImageSource::Manual => Err(TaskError::permanent(format!(
-            "{source} is not a searchable image provider"
-        ))),
+        ImageSource::Sdxl | ImageSource::Codex | ImageSource::Manual => Err(TaskError::permanent(
+            format!("{source} is not a searchable image provider"),
+        )),
     }
 }
 

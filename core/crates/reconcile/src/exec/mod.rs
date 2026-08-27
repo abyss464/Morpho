@@ -29,7 +29,9 @@ pub use definitions::FetchDefinitionsExecutor;
 pub use etymology::{FetchEtymologyExecutor, SegmentMorphologyExecutor};
 pub use examples::FetchExamplesExecutor;
 pub use extract_tokens::ExtractTokensExecutor;
-pub use images::{FetchImagesExecutor, GenImageSdxlExecutor};
+pub use images::{
+    FetchImagesExecutor, GenImageCodexExecutor, GenImageSdxlExecutor, ScoreImageClipExecutor,
+};
 pub use tts::SynthTtsExecutor;
 
 #[async_trait]
@@ -60,7 +62,9 @@ pub fn default_executors(context: Arc<EngineContext>) -> Vec<Arc<dyn Executor>> 
         Arc::new(FetchEtymologyExecutor::new(context.clone())),
         Arc::new(SegmentMorphologyExecutor::new(context.clone())),
         Arc::new(FetchImagesExecutor::new(context.clone())),
+        Arc::new(ScoreImageClipExecutor::new(context.clone())),
         Arc::new(GenImageSdxlExecutor::new(context.clone())),
+        Arc::new(GenImageCodexExecutor::new(context.clone())),
         Arc::new(SynthTtsExecutor::new(context)),
     ]
 }

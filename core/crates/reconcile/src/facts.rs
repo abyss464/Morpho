@@ -81,17 +81,64 @@ pub struct Facts {
     /// `words` — classified every one of them; a token that resolves to no word
     /// at all is out of scope for the learner and is no basis for a search.
     pub primary_gloss_tokens: HashMap<i64, Vec<String>>,
+    /// Part of speech of each word's primary sense.
+    pub primary_pos: HashMap<i64, String>,
+    /// Available image candidates per word, as `(img_cand_id, file_hash)`, in
+    /// candidate order.
+    pub image_candidates: HashMap<i64, Vec<(i64, String)>>,
+    /// `file_hash` of each word's currently selected picture.
+    pub selected_image: HashMap<i64, String>,
+    /// Every word that shares a question card with this one: its three bound
+    /// distractors, and every word that bound *it* as a distractor.
+    ///
+    /// Both directions, because a card is rendered from one word's perspective
+    /// but the constraint it imposes — four different pictures — is symmetric.
+    /// Bindings never change once made (README Part 3 §"干扰项"), so this is a
+    /// fixed graph rather than something that moves under the selector.
+    pub question_mates: HashMap<i64, HashSet<i64>>,
+    /// What each word's pictures are judged against: its selected slot-1
+    /// sentence, or its lemma when it has none.
+    ///
+    /// The same formula `ops/clip_rematch.py` used, and for the same reason —
+    /// the mode-1 card shows that sentence beside the four pictures, so it is
+    /// the question the picture has to answer.
+    pub clip_query: HashMap<i64, ClipQuery>,
+    /// Every `(file_hash, text_hash)` comparison already made under the current
+    /// model, and what it came to.
+    pub clip_scores: HashMap<(String, String), f64>,
     /// Desired TTS texts resolved against the current voice configuration.
     pub tts_desired: Vec<(TtsKind, String)>,
     /// Existing `tts_assets`, keyed by `input_hash`.
     pub tts_assets: HashMap<String, TtsAssetRow>,
 }
 
+/// The text one word's pictures are scored against.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipQuery {
+    pub text: String,
+    /// `blake3` of the canonicalized text — the key `clip_scores` stores under,
+    /// so two words asking the same question share one answer.
+    pub text_hash: String,
+}
+
 impl Facts {
     /// Load the whole fact set from one read connection.
-    pub fn load(conn: &Connection) -> Result<Self> {
+    ///
+    /// `clip_model_ver` is the identity semantic scores are stored under; rows
+    /// written by any other model are not loaded, because comparing two models'
+    /// cosines would be comparing two different rulers. An unconfigured sidecar
+    /// simply finds none.
+    pub fn load(conn: &Connection, clip_model_ver: &str) -> Result<Self> {
         let coverage = image_coverage(conn)?;
+        let slot_one_example = slot_one_examples(conn)?;
+        let image_candidates = image_candidates(conn)?;
         Ok(Self {
+            clip_query: clip_queries(conn)?,
+            clip_scores: clip_scores(conn, clip_model_ver)?,
+            question_mates: question_mates(conn)?,
+            selected_image: selected_images(conn)?,
+            primary_pos: primary_positions(conn)?,
+            image_candidates,
             active: queries::active_words(conn)?,
             definitions_fetched: queries::source_fetches(conn, FETCH_DEFINITIONS)?,
             examples_fetched: queries::source_fetches(conn, FETCH_EXAMPLES)?,
@@ -113,7 +160,7 @@ impl Facts {
             words_with_distinct_images: coverage.distinct,
             words_with_library_images: coverage.library,
             scene_image_vers: coverage.scene_vers,
-            slot_one_example: slot_one_examples(conn)?,
+            slot_one_example,
             primary_gloss: primary_glosses(conn)?,
             primary_gloss_tokens: primary_gloss_tokens(conn)?,
             tts_desired: queries::tts_desired(conn)?,
@@ -148,6 +195,62 @@ impl Facts {
     /// tier that can serve a word the libraries have nothing for.
     pub fn needs_library_image(&self, word_id: i64) -> bool {
         !self.words_with_library_images.contains(&word_id)
+    }
+
+    /// What this picture scored against this word's query, if it has been
+    /// compared under the current model.
+    pub fn clip_score(&self, word_id: i64, file_hash: &str) -> Option<f64> {
+        let query = self.clip_query.get(&word_id)?;
+        self.clip_scores
+            .get(&(file_hash.to_string(), query.text_hash.clone()))
+            .copied()
+    }
+
+    /// The best score among this word's available candidates, or `None` when it
+    /// has no candidate that has been compared.
+    ///
+    /// This is what the generative tier reads: a word whose best picture is
+    /// still a poor answer to its own sentence is exactly the word the codex
+    /// pass exists for, and it may well be a word with a full pool.
+    pub fn best_clip_score(&self, word_id: i64) -> Option<f64> {
+        self.image_candidates
+            .get(&word_id)?
+            .iter()
+            .filter_map(|(_, file_hash)| self.clip_score(word_id, file_hash))
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+    }
+
+    /// Comparisons this word still needs before its pool can be ranked
+    /// semantically: every available candidate with no score under the current
+    /// model.
+    pub fn unscored_images(&self, word_id: i64) -> Vec<String> {
+        let Some(candidates) = self.image_candidates.get(&word_id) else {
+            return Vec::new();
+        };
+        let mut seen = HashSet::new();
+        candidates
+            .iter()
+            .map(|(_, file_hash)| file_hash)
+            .filter(|file_hash| self.clip_score(word_id, file_hash).is_none())
+            .filter(|file_hash| seen.insert((*file_hash).clone()))
+            .cloned()
+            .collect()
+    }
+
+    /// Pictures this word may not show, because a word it shares a question
+    /// card with already shows them.
+    ///
+    /// Byte identity, which is exactly what the exporter's
+    /// `question_images_distinct` gate checks. The word's own current selection
+    /// is included when a mate also holds it — an incumbent that duplicates a
+    /// mate is the problem this set exists to move, not something to protect.
+    pub fn mate_image_hashes(&self, word_id: i64) -> HashSet<&str> {
+        self.question_mates
+            .get(&word_id)
+            .into_iter()
+            .flatten()
+            .filter_map(|mate| self.selected_image.get(mate).map(String::as_str))
+            .collect()
     }
 
     /// Does this word already hold a scene image made under `prompt_ver`?
@@ -309,6 +412,7 @@ pub const fn image_source_name(source: ImageSource) -> &'static str {
         ImageSource::Wikimedia => "wikimedia",
         ImageSource::Openverse => "openverse",
         ImageSource::Sdxl => "sdxl",
+        ImageSource::Codex => "codex",
         ImageSource::Manual => "manual",
     }
 }
@@ -413,6 +517,117 @@ fn image_coverage(conn: &Connection) -> Result<ImageCoverage> {
         }
     }
     Ok(coverage)
+}
+
+/// Available image candidates per word, in candidate order.
+fn image_candidates(conn: &Connection) -> Result<HashMap<i64, Vec<(i64, String)>>> {
+    let mut stmt = conn.prepare(
+        "SELECT word_id, img_cand_id, file_hash FROM image_candidates
+         WHERE status = 'available' ORDER BY word_id, img_cand_id",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut out: HashMap<i64, Vec<(i64, String)>> = HashMap::new();
+    for (word_id, cand_id, file_hash) in rows {
+        out.entry(word_id).or_default().push((cand_id, file_hash));
+    }
+    Ok(out)
+}
+
+/// `file_hash` of every word's currently selected picture.
+pub fn selected_images(conn: &Connection) -> Result<HashMap<i64, String>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.word_id, c.file_hash FROM image_selections s
+         JOIN image_candidates c ON c.img_cand_id = s.img_cand_id",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows.into_iter().collect())
+}
+
+/// The undirected question graph: who appears on a card with whom.
+pub fn question_mates(conn: &Connection) -> Result<HashMap<i64, HashSet<i64>>> {
+    let mut stmt = conn.prepare("SELECT word_id, distractor_word_id FROM distractors")?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut out: HashMap<i64, HashSet<i64>> = HashMap::new();
+    for (word_id, distractor) in rows {
+        out.entry(word_id).or_default().insert(distractor);
+        out.entry(distractor).or_default().insert(word_id);
+    }
+    Ok(out)
+}
+
+/// Part of speech of each word's primary sense.
+fn primary_positions(conn: &Connection) -> Result<HashMap<i64, String>> {
+    let mut stmt =
+        conn.prepare("SELECT word_id, pos FROM definition_selections WHERE is_primary = 1")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows.into_iter().collect())
+}
+
+/// The text every active word's pictures are judged against.
+///
+/// `ops/clip_rematch.py`'s formula: the selected slot-1 sentence, falling back
+/// to the lemma. The fallback is not a placeholder — a word with no sentence
+/// yet still has a name, and "does this picture look like `serene`" is a real
+/// question, just a blunter one than the sentence asks.
+pub fn clip_queries(conn: &Connection) -> Result<HashMap<i64, ClipQuery>> {
+    let slot_one = slot_one_examples(conn)?;
+    let mut stmt = conn.prepare("SELECT word_id, lemma FROM active_words")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows
+        .into_iter()
+        .map(|(word_id, lemma)| {
+            let text = slot_one.get(&word_id).cloned().unwrap_or(lemma);
+            let text_hash = morpho_domain::hash::text_hash(&text);
+            (word_id, ClipQuery { text, text_hash })
+        })
+        .collect())
+}
+
+/// Every comparison already made under one model.
+pub(crate) fn clip_scores(
+    conn: &Connection,
+    model_ver: &str,
+) -> Result<HashMap<(String, String), f64>> {
+    if model_ver.trim().is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut stmt = conn
+        .prepare("SELECT file_hash, text_hash, similarity FROM clip_scores WHERE model_ver = ?1")?;
+    let rows = stmt
+        .query_map(rusqlite::params![model_ver], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, f64>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows
+        .into_iter()
+        .map(|(file_hash, text_hash, similarity)| ((file_hash, text_hash), similarity))
+        .collect())
 }
 
 /// Each word's selected slot-1 sentence: the one the mode-1 card shows.

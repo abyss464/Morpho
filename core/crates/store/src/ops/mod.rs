@@ -19,6 +19,7 @@ use morpho_domain::types::{
 use crate::error::Result;
 
 mod candidates;
+mod clip;
 mod derived;
 mod distractors;
 mod jobs;
@@ -34,6 +35,7 @@ pub use candidates::{
     IngestDefinitions, IngestExamples, IngestImages, MediaRegistration, MintExampleCandidate,
     MintImageCandidate, FETCH_DEFINITIONS, FETCH_ETYMOLOGY, FETCH_EXAMPLES, FETCH_IMAGES,
 };
+pub use clip::{ApplyClipScores, ClipScoreRow};
 pub use derived::{MarkMediaGc, RecordDefExtraction};
 pub use distractors::{BindDistractors, DistractorBinding};
 pub use jobs::UpsertJobState;
@@ -73,6 +75,8 @@ pub enum WriteOp {
     ApplyAutoSelections(ApplyAutoSelections),
     /// Store candidate scores.
     ApplyScores(ApplyScores),
+    /// Store semantic image-text scores computed by the CLIP sidecar.
+    ApplyClipScores(ApplyClipScores),
     /// Approve or un-approve the current content of a slot.
     SetApproval(SetApproval),
     /// Move `is_primary` to one part of speech.
@@ -301,6 +305,7 @@ pub(crate) fn apply_op(op: WriteOp, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResu
         WriteOp::SetSelection(req) => selections::set_selection(req, ctx),
         WriteOp::ApplyAutoSelections(req) => selections::apply_auto_selections(req, ctx),
         WriteOp::ApplyScores(req) => selections::apply_scores(req, ctx),
+        WriteOp::ApplyClipScores(req) => clip::apply_clip_scores(req, ctx),
         WriteOp::SetApproval(req) => selections::set_approval(req, ctx),
         WriteOp::SetPrimarySense { word_id, pos } => {
             selections::set_primary_sense(word_id, &pos, ctx)

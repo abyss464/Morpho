@@ -60,6 +60,7 @@ use crate::engine::EngineContext;
 use crate::facts::{image_source_name, Facts, FetchKind};
 use crate::rule::{JobPayload, JobSpec, Rule, ScenePrompt, Snapshot};
 use crate::score::ImageStrategy;
+use crate::sources::clip::MAX_IMAGES_PER_REQUEST;
 
 /// Has this image pass finished, one way or another?
 ///
@@ -407,5 +408,208 @@ impl Rule for GenSceneImageRule {
             );
         }
         Ok(jobs)
+    }
+}
+
+/// Score a word's pictures against the sentence its card shows.
+///
+/// The desired state is one row in `clip_scores` per `(available candidate,
+/// word's query, current model)`. Because the key is the *comparison* and not
+/// the candidate, the work shrinks on its own: two words that ended up with the
+/// same stock photo and the same sentence need one score between them, a word
+/// that re-selects a sentence it once had needs none at all, and a rejected
+/// candidate takes nothing with it.
+///
+/// A word derives a job when anything in its pool is uncompared. There is no
+/// completion mark and none is wanted: the rows themselves are the mark, and a
+/// mark would have to be invalidated every time slot 1 moved. What a word does
+/// get is the ordinary `job_state` treatment — a sidecar that keeps failing
+/// backs the word off and eventually dead-letters it, and selection carries on
+/// ranking that word on quality alone.
+pub struct ScoreImageClipRule {
+    context: Arc<EngineContext>,
+}
+
+impl ScoreImageClipRule {
+    pub fn new(context: Arc<EngineContext>) -> Self {
+        Self { context }
+    }
+}
+
+impl Rule for ScoreImageClipRule {
+    fn name(&self) -> &'static str {
+        "score_image_clip"
+    }
+
+    fn derive(&self, snapshot: &Snapshot<'_>) -> Result<Vec<JobSpec>> {
+        if !self.context.sources.has_clip() {
+            return Ok(Vec::new());
+        }
+        let facts = snapshot.facts;
+        let mut jobs = Vec::new();
+        for word in &facts.active {
+            // A gloss anchor is never learned, so it is never shown a picture.
+            if word.zh_gloss.is_some() {
+                continue;
+            }
+            let Some(query) = facts.clip_query.get(&word.word_id) else {
+                continue;
+            };
+            let mut pending = facts.unscored_images(word.word_id);
+            if pending.is_empty() {
+                continue;
+            }
+            // One request per word per pass. A pool larger than the sidecar's
+            // batch is scored a slice at a time, and the next pass asks for the
+            // rest — the same way the second-pass chain walks one stage at a
+            // time.
+            pending.truncate(MAX_IMAGES_PER_REQUEST);
+            jobs.push(
+                JobSpec::new(
+                    JobKey::new(JobKind::ScoreImageClip, SubjectRef::word(word.word_id)),
+                    RateKey::Clip,
+                    // P2: backfilling the semantic evidence for a library that
+                    // already exists, ordered by frequency like every other
+                    // backfill.
+                    Priority::P2,
+                )
+                .with_tiebreak(word.frequency_rank, word.word_id)
+                .with_payload(JobPayload::ScoreImageClip {
+                    word_id: word.word_id,
+                    text: query.text.clone(),
+                    text_hash: query.text_hash.clone(),
+                    file_hashes: pending,
+                }),
+            );
+        }
+        Ok(jobs)
+    }
+}
+
+/// The last image source: generate a picture for a word nothing depicts aptly.
+///
+/// Every other tier fires on *absence* — a word with no candidate at all. This
+/// one fires on **inaptness**, which is the whole reason it exists: the words
+/// the 2026-08 wave generated for had full pools of sharp, correctly licensed
+/// photographs of the wrong thing, and no rule that counts candidates can see
+/// that. CLIP can, so the trigger is the word's best score against its own
+/// sentence, and a word with nothing at all — nothing to score, no score —
+/// qualifies for the same reason it qualifies everywhere else.
+///
+/// It sits behind SDXL rather than beside it. A locally generated picture costs
+/// an evening of a GPU that is already paid for; this one costs somebody's
+/// hosted quota, so it is only asked for what the whole rest of the chain, local
+/// generation included, has failed to serve.
+///
+/// Three things keep it conservative: it is off unless an operator turns it on,
+/// it is off unless its adapter is on disk, and one pass asks for at most
+/// [`crate::config::ImagesConfig::codex_batch`] words. The queue is derived, so
+/// the words it does not ask for this pass are simply asked for next pass.
+pub struct GenImageCodexRule {
+    context: Arc<EngineContext>,
+}
+
+impl GenImageCodexRule {
+    pub fn new(context: Arc<EngineContext>) -> Self {
+        Self { context }
+    }
+}
+
+impl Rule for GenImageCodexRule {
+    fn name(&self) -> &'static str {
+        "gen_image_codex"
+    }
+
+    fn derive(&self, snapshot: &Snapshot<'_>) -> Result<Vec<JobSpec>> {
+        let images = &self.context.images;
+        if !images.codex_enabled || !self.context.sources.has_codex() {
+            return Ok(Vec::new());
+        }
+        let facts = snapshot.facts;
+        let enabled = self.context.sources.config.enabled_image_sources();
+        let mark = images.codex_mark();
+        let sdxl_name = image_source_name(ImageSource::Sdxl);
+
+        let mut jobs = Vec::new();
+        for word in &facts.active {
+            if word.zh_gloss.is_some() {
+                continue;
+            }
+            if jobs.len() >= images.codex_batch {
+                break;
+            }
+            // One generation per word per prompt version, ever. Bumping the
+            // version moves the subject, which is how an operator asks for the
+            // pass again without clearing a mark or resetting a dead letter.
+            if facts.fetched(&FetchKind::Images, word.word_id, &mark) {
+                continue;
+            }
+            // Everything cheaper first: every library, both second passes, and
+            // local generation. `libraries_spent` covers the libraries;
+            // SDXL is spent when it has answered or will not.
+            if !libraries_spent(facts, &enabled, word.word_id) {
+                continue;
+            }
+            if self.context.sources.has_sdxl() && !generation_spent(facts, word.word_id, sdxl_name)
+            {
+                continue;
+            }
+            if !inapt(facts, word.word_id, images.codex_threshold) {
+                continue;
+            }
+            jobs.push(
+                JobSpec::new(
+                    JobKey::new(
+                        JobKind::GenImageCodex,
+                        SubjectRef::word_source(word.word_id, &mark),
+                    ),
+                    RateKey::Codex,
+                    // P3, with SDXL: the expensive generative fallbacks.
+                    Priority::P3,
+                )
+                .with_tiebreak(word.frequency_rank, word.word_id)
+                .with_payload(JobPayload::GenImageCodex {
+                    word_id: word.word_id,
+                    lemma: word.lemma.clone(),
+                    pos: facts.primary_pos.get(&word.word_id).cloned(),
+                    gloss: facts.primary_gloss.get(&word.word_id).cloned(),
+                    sentence: facts.slot_one_example.get(&word.word_id).cloned(),
+                    prompt_ver: images.codex_prompt_ver().to_string(),
+                    mark: mark.clone(),
+                }),
+            );
+        }
+        Ok(jobs)
+    }
+}
+
+/// Has the local generator had its turn on this word?
+///
+/// Both scene mode and the bare-concept rule write their marks into the same
+/// `source_fetch` family, and either one having run — or died, or been waived —
+/// means SDXL has said what it has to say about this word.
+fn generation_spent(facts: &Facts, word_id: i64, sdxl_name: &str) -> bool {
+    let bare = pass_spent(facts, word_id, sdxl_name);
+    let scene = facts
+        .scene_image_vers
+        .get(&word_id)
+        .is_some_and(|vers| !vers.is_empty());
+    bare || scene
+}
+
+/// Is the best picture this word has a poor answer to its own sentence?
+///
+/// Two ways to qualify, and they are the same condition seen from either end:
+/// no candidate has a score — a word with an empty pool, or one the sidecar has
+/// not reached yet — or the best score there is falls below the threshold.
+///
+/// An unscored word is admitted rather than skipped because the alternative is
+/// worse in exactly the case that matters: a word with no pictures at all has
+/// nothing to score, and refusing to generate for it would leave the last link
+/// in the chain unreachable by the words that need it most.
+fn inapt(facts: &Facts, word_id: i64, threshold: f64) -> bool {
+    match facts.best_clip_score(word_id) {
+        Some(best) => best < threshold,
+        None => true,
     }
 }

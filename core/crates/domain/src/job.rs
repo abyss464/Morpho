@@ -64,7 +64,9 @@ job_enum!(
         FetchEtymology => "fetch_etymology",
         FetchImages => "fetch_images",
         SegmentMorphology => "segment_morphology",
+        ScoreImageClip => "score_image_clip",
         GenImageSdxl => "gen_image_sdxl",
+        GenImageCodex => "gen_image_codex",
         RewriteDefinition => "rewrite_definition",
         SynthTts => "synth_tts",
     }
@@ -87,6 +89,8 @@ job_enum!(
         Openverse => "openverse",
         Tatoeba => "tatoeba",
         Sdxl => "sdxl",
+        Clip => "clip",
+        Codex => "codex",
         EdgeTts => "edge_tts",
         Llm => "llm",
     }
@@ -130,7 +134,9 @@ impl JobKind {
             Self::FetchDefinitions => RateKey::Freedict,
             Self::FetchEtymology => RateKey::Wiktionary,
             Self::FetchImages => RateKey::Unsplash,
+            Self::ScoreImageClip => RateKey::Clip,
             Self::GenImageSdxl => RateKey::Sdxl,
+            Self::GenImageCodex => RateKey::Codex,
             Self::RewriteDefinition => RateKey::Llm,
             Self::SynthTts => RateKey::EdgeTts,
         }
@@ -140,7 +146,13 @@ impl JobKind {
     /// (README Part 4: HTTP 8, TTS 5, SDXL 3, LLM 4).
     pub const fn dead_after_attempts(self) -> u32 {
         match self {
-            Self::GenImageSdxl => 3,
+            // Generation is expensive and a repeated refusal is usually a
+            // quota or a content policy, neither of which a fourth try fixes.
+            Self::GenImageSdxl | Self::GenImageCodex => 3,
+            // The CLIP sidecar is either up or it is not; a word that cannot be
+            // scored after four attempts should stop asking and simply fall
+            // back to the quality-only ranking.
+            Self::ScoreImageClip => 4,
             Self::RewriteDefinition => 4,
             Self::SynthTts => 5,
             Self::FetchDefinitions | Self::FetchEtymology | Self::FetchImages => 8,
@@ -307,6 +319,8 @@ mod tests {
             "openverse",
             "tatoeba",
             "sdxl",
+            "clip",
+            "codex",
             "edge_tts",
             "llm",
             "cpu",
@@ -331,7 +345,20 @@ mod tests {
         assert_eq!(JobKind::FetchDefinitions.dead_after_attempts(), 8);
         assert_eq!(JobKind::SynthTts.dead_after_attempts(), 5);
         assert_eq!(JobKind::GenImageSdxl.dead_after_attempts(), 3);
+        assert_eq!(JobKind::GenImageCodex.dead_after_attempts(), 3);
         assert_eq!(JobKind::RewriteDefinition.dead_after_attempts(), 4);
+    }
+
+    /// The two wave-9 lanes ride their own buckets rather than borrowing the
+    /// generative one: CLIP scoring is cheap and frequent, codex generation is
+    /// expensive and rare, and metering them together would let either starve
+    /// the other.
+    #[test]
+    fn the_semantic_lanes_are_their_own() {
+        assert_eq!(JobKind::ScoreImageClip.default_rate_key(), RateKey::Clip);
+        assert_eq!(JobKind::GenImageCodex.default_rate_key(), RateKey::Codex);
+        assert_ne!(RateKey::Clip, RateKey::Sdxl);
+        assert_ne!(RateKey::Codex, RateKey::Sdxl);
     }
 
     #[test]

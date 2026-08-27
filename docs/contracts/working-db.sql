@@ -133,7 +133,7 @@ CREATE TABLE image_candidates (
     pos          TEXT,                        -- optional sense hint
     file_hash    TEXT NOT NULL REFERENCES media_files(file_hash),
     width        INTEGER, height INTEGER,
-    source       TEXT NOT NULL CHECK (source IN ('unsplash','pexels','pixabay','wikimedia','openverse','sdxl','manual')),
+    source       TEXT NOT NULL CHECK (source IN ('unsplash','pexels','pixabay','wikimedia','openverse','sdxl','codex','manual')),
     source_ref   TEXT,                        -- photo id / {prompt,seed,model} JSON / note
     license      TEXT,
     query_used   TEXT,
@@ -233,6 +233,24 @@ CREATE TABLE tts_assets (
     built_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX ix_tts_text ON tts_assets(text_hash);
+
+-- Semantic image-text aptness, content addressed exactly like tts_assets: the
+-- key is *what was compared*, never which candidate wanted the comparison. Two
+-- words holding the same picture and the same sentence share one row; a word
+-- that re-selects a sentence it once had finds its scores already there; a
+-- rejected candidate never invalidates anything.
+--
+-- A model or algorithm change writes rows under a different model_ver rather
+-- than making these stale, so the old ones simply lose their readers.
+CREATE TABLE clip_scores (
+    file_hash   TEXT NOT NULL REFERENCES media_files(file_hash),
+    text_hash   TEXT NOT NULL,         -- blake3 of the canonicalized query text
+    model_ver   TEXT NOT NULL,         -- "<algo_ver>:<model>", e.g. clip/1:ViT-B-32/laion2b_s34b_b79k
+    similarity  REAL NOT NULL,         -- cosine of the two unit embeddings, [-1, 1]
+    computed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY (file_hash, text_hash, model_ver)
+);
+CREATE INDEX ix_clip_query ON clip_scores(text_hash, model_ver);
 
 -- Desired TTS texts (engine combines rows with current voice/params config).
 CREATE VIEW tts_desired AS
@@ -345,6 +363,8 @@ INSERT OR IGNORE INTO rate_limits VALUES
     ('openverse', 2, 50.0, 4),
     ('tatoeba', 2, 60.0, 4),
     ('sdxl', 1, 6.0, 1),
+    ('clip', 2, 120.0, 8),
+    ('codex', 1, 4.0, 1),
     ('edge_tts', 4, 240.0, 8),
     ('llm', 2, 30.0, 4),
     ('cpu', 8, 6000.0, 16);

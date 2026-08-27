@@ -14,8 +14,8 @@ use morpho_reconcile::exec::{Executor, ExtractTokensExecutor};
 use morpho_reconcile::rules::ExtractTokensRule;
 use morpho_reconcile::sources::{sentence, SourceSet};
 use morpho_reconcile::{
-    AdapterConfig, EngineContext, Facts, JobSpec, PassStats, Reconciler, ReconcilerConfig, Rule,
-    Scope, Snapshot, SourcesConfig,
+    AdapterConfig, EngineContext, Facts, ImagesConfig, JobSpec, PassStats, Reconciler,
+    ReconcilerConfig, Rule, Scope, Snapshot, SourcesConfig,
 };
 use morpho_store::ops::{CreateWord, MintExampleCandidate, MintImageCandidate};
 use morpho_store::{MediaStore, Store, StoreConfig, WriteOp};
@@ -282,11 +282,81 @@ pub async fn mark_fetched(store: &Store, kind: &str, word_id: i64, source: &str,
         .unwrap();
 }
 
-/// Run one rule against a fresh fact snapshot, the way a pass would.
-pub async fn derive(store: &Store, rule: Arc<dyn Rule>) -> Vec<JobSpec> {
+/// Bind one word's three distractors by hand.
+///
+/// The sweep binds them itself, but by edit distance — a test that needs a
+/// *known* question card states it instead of arranging for the binder to
+/// produce one.
+pub async fn seed_distractors(store: &Store, word_id: i64, others: [i64; 3]) {
+    store
+        .write(
+            Actor::Cli,
+            WriteOp::BindDistractors(morpho_store::ops::BindDistractors {
+                bindings: vec![morpho_store::ops::DistractorBinding {
+                    word_id,
+                    ranks: others
+                        .iter()
+                        .enumerate()
+                        .map(|(index, other)| (index as i64 + 1, *other))
+                        .collect(),
+                }],
+                algo_ver: "test/1".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+}
+
+/// Record what the CLIP sidecar would have said about one picture, against one
+/// word's query, under the identity this build stores scores as.
+///
+/// A test seeds these directly for the same reason it seeds candidates
+/// directly: the sidecar is a GPU on the other end of a socket, and what the
+/// selector reads is the table.
+pub async fn seed_clip_score(store: &Store, word_id: i64, file_hash: &str, similarity: f64) {
+    let text_hash = clip_query_hash(store, word_id).await;
+    store
+        .write(
+            Actor::Cli,
+            WriteOp::ApplyClipScores(morpho_store::ops::ApplyClipScores {
+                model_ver: ImagesConfig::default().clip_model_ver(),
+                rows: vec![morpho_store::ops::ClipScoreRow {
+                    file_hash: file_hash.to_string(),
+                    text_hash,
+                    similarity,
+                }],
+                touched_words: vec![word_id],
+            }),
+        )
+        .await
+        .unwrap();
+}
+
+/// The `text_hash` one word's pictures are scored against right now.
+pub async fn clip_query_hash(store: &Store, word_id: i64) -> String {
     store
         .read(move |conn| {
-            let facts = Facts::load(conn)?;
+            Ok(morpho_reconcile::facts::clip_queries(conn)?
+                .get(&word_id)
+                .map(|query| query.text_hash.clone())
+                .unwrap_or_default())
+        })
+        .await
+        .unwrap()
+}
+
+/// Run one rule against a fresh fact snapshot, the way a pass would.
+pub async fn derive(store: &Store, rule: Arc<dyn Rule>) -> Vec<JobSpec> {
+    derive_as(store, rule, &ImagesConfig::default().clip_model_ver()).await
+}
+
+/// The same, under a named CLIP identity — for the tests that seed
+/// `clip_scores` and need the fact set to read them back.
+pub async fn derive_as(store: &Store, rule: Arc<dyn Rule>, clip_model_ver: &str) -> Vec<JobSpec> {
+    let clip_model_ver = clip_model_ver.to_string();
+    store
+        .read(move |conn| {
+            let facts = Facts::load(conn, &clip_model_ver)?;
             let scope = Scope::Full;
             rule.derive(&Snapshot {
                 conn,

@@ -633,23 +633,85 @@ fn clamp(value: f64) -> f64 {
     value.clamp(0.0, 1.0)
 }
 
+// ---------------------------------------------------------------------------
+// Semantic aptness (CLIP)
+// ---------------------------------------------------------------------------
+
+/// Cosine at or below which a picture is judged to depict something else.
+///
+/// `ops/verify_genimg.py` used exactly this number as its absolute floor: a
+/// generated image scoring under it was refused however weak the incumbent was,
+/// because a score that low means the model sees no relationship between the
+/// picture and the sentence at all. Here it is the bottom of the band rather
+/// than a rejection, for the same reason [`out_of_scope_factor`] is a factor
+/// rather than a veto — a word whose every picture is below the floor still
+/// needs one of them in the slot.
+pub const CLIP_FLOOR: f64 = 0.08;
+
+/// Cosine at which a picture is as apt as this model's scale usefully reports.
+///
+/// Above roughly 0.30 a ViT-B-32 cosine stops separating a good match from a
+/// perfect one — the tail is dominated by how photographic the image is rather
+/// than by what it shows — so marks up there are not evidence worth ranking on.
+pub const CLIP_CEIL: f64 = 0.30;
+
+/// How much of an image's selection score semantic aptness carries.
+///
+/// It dominates on purpose, which is the whole of backlog #8: for two years the
+/// only thing choosing between a word's pictures was resolution and a
+/// part-of-speech hint, so the library optimized for *sharp* pictures of the
+/// wrong thing. A candidate at the ceiling with nothing else going for it
+/// (`0.60 * 1.0`) outranks a flawless candidate at the floor (`0.40 * 1.0`) —
+/// a picture of the right thing beats a better picture of the wrong one.
+pub const CLIP_WEIGHT: f64 = 0.60;
+
+/// Semantic aptness must actually be able to move a slot, and the margin it has
+/// to clear is [`HYSTERESIS_DELTA`]. At this weight and band that takes a raw
+/// cosine gap of `0.05 / 0.60 * (0.30 - 0.08) ≈ 0.018`, which is the same
+/// regime `ops/clip_rematch.py` re-selected at (its `MARGIN` was 0.02).
+const _: () = assert!(CLIP_WEIGHT > 0.5);
+
+/// What a raw cosine is worth, on the `[0, 1]` scale the other components use.
+pub fn clip_component(similarity: f64) -> f64 {
+    if similarity.is_nan() {
+        return 0.0;
+    }
+    ((similarity - CLIP_FLOOR) / (CLIP_CEIL - CLIP_FLOOR)).clamp(0.0, 1.0)
+}
+
 /// The score automatic selection ranks an image candidate by.
 ///
 /// [`score_image`] is a pure function of the candidate and is cached in
-/// `auto_score` under a `scorer_ver`; whether a picture is *also* somebody
-/// else's is a property of the selection table, which changes every time a slot
-/// moves. Folding it into the stored score would make every selection invalidate
-/// scores across the whole lexicon and rescore a live database in circles. So it
-/// is subtracted here, at ranking time, from a value nothing persists.
+/// `auto_score` under a `scorer_ver`. Two things a slot must nevertheless be
+/// decided on are not: whether a picture is *also* somebody else's is a property
+/// of the selection table, which changes every time a slot moves, and how well a
+/// picture matches the word's sentence depends on which sentence slot 1
+/// currently holds. Folding either into the stored score would make an unrelated
+/// edit invalidate scores across the whole lexicon and rescore a live database
+/// in circles. So both are applied here, at ranking time, to a value nothing
+/// persists.
+///
+/// `clip` is `None` when no comparison exists — the sidecar is unconfigured,
+/// still working through the backlog, or dead-lettered on this word. Then the
+/// ranking is the bare quality prior, bit for bit what it was before semantic
+/// scoring existed. The caller decides *per word* whether to pass `None`
+/// uniformly (see `stages::select`), because blending a scored candidate against
+/// an unscored one would compare two different rulers.
 ///
 /// The result is deliberately not clamped into `[0, 1]`: it is a comparison key,
 /// and flooring it at zero would let two weak candidates tie where the
 /// preference is real.
-pub fn image_selection_score(auto_score: f64, duplicate: bool) -> f64 {
+pub fn image_selection_score(auto_score: f64, clip: Option<f64>, duplicate: bool) -> f64 {
+    let merit = match clip {
+        Some(similarity) => {
+            (1.0 - CLIP_WEIGHT) * auto_score + CLIP_WEIGHT * clip_component(similarity)
+        }
+        None => auto_score,
+    };
     if duplicate {
-        auto_score - DUPLICATE_IMAGE_PENALTY
+        merit - DUPLICATE_IMAGE_PENALTY
     } else {
-        auto_score
+        merit
     }
 }
 
@@ -1438,8 +1500,8 @@ mod tests {
 
     #[test]
     fn a_picture_another_word_already_shows_ranks_below_a_fresh_one() {
-        let taken = image_selection_score(0.865, true);
-        let free = image_selection_score(0.865, false);
+        let taken = image_selection_score(0.865, None, true);
+        let free = image_selection_score(0.865, None, false);
         assert!(taken < free);
         assert!((free - taken - DUPLICATE_IMAGE_PENALTY).abs() < 1e-9);
     }
@@ -1450,8 +1512,8 @@ mod tests {
     #[test]
     fn the_duplicate_penalty_clears_the_switching_margin() {
         const { assert!(DUPLICATE_IMAGE_PENALTY > HYSTERESIS_DELTA) };
-        let incumbent = image_selection_score(0.865, true);
-        let challenger = image_selection_score(0.865, false);
+        let incumbent = image_selection_score(0.865, None, true);
+        let challenger = image_selection_score(0.865, None, false);
         assert!(should_switch(Some(incumbent), challenger));
         // And one hundredth of a mark would not have: the compile-time
         // assertion above is what keeps that from being tuned into the code.
@@ -1463,10 +1525,10 @@ mod tests {
     #[test]
     fn a_pool_with_no_shared_hash_is_scored_exactly_as_before() {
         for raw in [0.0, 0.3, 0.865, 1.0] {
-            assert_eq!(image_selection_score(raw, false), raw);
+            assert_eq!(image_selection_score(raw, None, false), raw);
         }
-        let incumbent = image_selection_score(0.90, false);
-        let challenger = image_selection_score(0.88, false);
+        let incumbent = image_selection_score(0.90, None, false);
+        let challenger = image_selection_score(0.88, None, false);
         assert!(!should_switch(Some(incumbent), challenger));
     }
 
@@ -1475,8 +1537,8 @@ mod tests {
     /// score.
     #[test]
     fn two_duplicates_keep_their_relative_order_even_at_the_bottom() {
-        let better = image_selection_score(0.06, true);
-        let worse = image_selection_score(0.03, true);
+        let better = image_selection_score(0.06, None, true);
+        let worse = image_selection_score(0.03, None, true);
         assert!(better > worse);
         assert!(worse < 0.0, "a comparison key may go negative");
     }
@@ -1496,6 +1558,7 @@ mod tests {
                 strategy: ImageStrategy::Strict,
             })
             .score,
+            None,
             true,
         );
         let widened = image_selection_score(
@@ -1507,9 +1570,93 @@ mod tests {
                 strategy: ImageStrategy::WidenedQuery,
             })
             .score,
+            None,
             false,
         );
         assert!(stock > widened);
+    }
+
+    // -- semantic aptness ---------------------------------------------------
+
+    #[test]
+    fn the_clip_band_maps_the_range_the_model_actually_uses() {
+        assert_eq!(clip_component(CLIP_FLOOR), 0.0);
+        assert_eq!(clip_component(CLIP_CEIL), 1.0);
+        // Outside the band in either direction, and for a number that is not
+        // one: the component is a comparison input, never a source of NaN.
+        assert_eq!(clip_component(-0.4), 0.0);
+        assert_eq!(clip_component(0.9), 1.0);
+        assert_eq!(clip_component(f64::NAN), 0.0);
+        assert!((clip_component(0.19) - 0.5).abs() < 0.03);
+        for pair in [(0.10, 0.15), (0.15, 0.22), (0.22, 0.29)] {
+            assert!(clip_component(pair.0) < clip_component(pair.1));
+        }
+    }
+
+    /// Backlog #8, stated as an assertion: a sharp picture of the wrong thing
+    /// loses to a soft picture of the right one.
+    #[test]
+    fn semantic_aptness_outweighs_every_quality_signal_combined() {
+        let apt_but_poor = image_selection_score(0.0, Some(CLIP_CEIL), false);
+        let flawless_but_wrong = image_selection_score(1.0, Some(CLIP_FLOOR), false);
+        assert!(
+            apt_but_poor > flawless_but_wrong,
+            "{apt_but_poor} vs {flawless_but_wrong}"
+        );
+        assert!(should_switch(Some(flawless_but_wrong), apt_but_poor));
+    }
+
+    /// The margin the whole re-selection rests on: the raw-cosine gap
+    /// `ops/clip_rematch.py` re-selected at has to move a slot here too.
+    #[test]
+    fn a_clip_gap_of_two_hundredths_takes_the_slot() {
+        let incumbent = image_selection_score(0.9, Some(0.20), false);
+        let challenger = image_selection_score(0.9, Some(0.22), false);
+        assert!(should_switch(Some(incumbent), challenger));
+        // …and a gap of a thousandth does not, so a rescore does not churn the
+        // library over noise.
+        let hair = image_selection_score(0.9, Some(0.201), false);
+        assert!(!should_switch(Some(incumbent), hair));
+    }
+
+    /// Degraded mode is not "CLIP scored zero": it is the ranking that existed
+    /// before CLIP did, bit for bit, so a sidecar that is down cannot reorder
+    /// anything.
+    #[test]
+    fn an_absent_score_leaves_the_ranking_exactly_as_it_was() {
+        for raw in [0.0, 0.3, 0.55, 0.865, 1.0] {
+            assert_eq!(image_selection_score(raw, None, false), raw);
+            assert_eq!(
+                image_selection_score(raw, None, true),
+                raw - DUPLICATE_IMAGE_PENALTY
+            );
+        }
+        // And a word ranked without scores keeps the order its quality prior
+        // gives it, rather than collapsing towards a neutral middle.
+        let better = image_selection_score(0.90, None, false);
+        let worse = image_selection_score(0.60, None, false);
+        assert!(better - worse > HYSTERESIS_DELTA);
+    }
+
+    /// A picture below the floor is a last resort, not a rejection: a word whose
+    /// every candidate is off-topic still gets one of them rather than an empty
+    /// slot, and among those the quality prior still separates them.
+    #[test]
+    fn a_below_floor_picture_still_wins_a_slot_nothing_better_can_fill() {
+        let sharp = image_selection_score(0.95, Some(0.03), false);
+        let soft = image_selection_score(0.40, Some(0.01), false);
+        assert!(sharp > 0.0);
+        assert!(sharp > soft);
+    }
+
+    /// The duplicate pressure survives the new term: two identical option
+    /// pictures make a card unanswerable whatever either of them depicts.
+    #[test]
+    fn the_duplicate_penalty_still_applies_on_top_of_the_semantic_term() {
+        let taken = image_selection_score(0.8, Some(0.25), true);
+        let free = image_selection_score(0.8, Some(0.25), false);
+        assert!((free - taken - DUPLICATE_IMAGE_PENALTY).abs() < 1e-9);
+        assert!(should_switch(Some(taken), free));
     }
 
     #[test]

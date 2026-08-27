@@ -148,6 +148,10 @@ string_enum!(
         Wikimedia => "wikimedia",
         Openverse => "openverse",
         Sdxl => "sdxl",
+        // `codex` is the generative source at the very end of the image chain
+        // (`adapters/codex`): prompted with the word's own slot-1 sentence, for
+        // a word every library — and SDXL — left without an apt picture.
+        Codex => "codex",
         Manual => "manual",
     }
 );

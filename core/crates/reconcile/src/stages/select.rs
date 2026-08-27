@@ -21,7 +21,7 @@
 //! write re-checks what the read saw — so a human editing a slot mid-sweep
 //! wins, and the discarded decision is simply recomputed next pass.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rusqlite::Connection;
 
@@ -43,6 +43,8 @@ use crate::score::{
     self, DefinitionFacts, ExampleFacts, ImageFacts, ImageStrategy, Scored, TokenCoverage,
     HYSTERESIS_DELTA,
 };
+#[cfg(test)]
+use crate::score::{CLIP_CEIL, CLIP_FLOOR};
 use crate::sources::wordnet::{WnPos, WordNet};
 use crate::text::TextPipeline;
 
@@ -322,8 +324,9 @@ struct Decisions {
 /// Run automatic selection over every slot of every active word.
 pub async fn auto_select(store: &Store, context: &EngineContext) -> Result<usize> {
     let wordnet = context.sources.wordnet.clone();
+    let clip_model_ver = context.images.clip_model_ver();
     let decisions = store
-        .read(move |conn| collect_selections(conn, wordnet.as_deref()))
+        .read(move |conn| collect_selections(conn, wordnet.as_deref(), &clip_model_ver))
         .await?;
     let mut applied = 0usize;
     if !decisions.selections.is_empty() {
@@ -359,7 +362,11 @@ pub async fn auto_select(store: &Store, context: &EngineContext) -> Result<usize
     Ok(applied)
 }
 
-fn collect_selections(conn: &Connection, wordnet: Option<&WordNet>) -> Result<Decisions> {
+fn collect_selections(
+    conn: &Connection,
+    wordnet: Option<&WordNet>,
+    clip_model_ver: &str,
+) -> Result<Decisions> {
     let mut decisions = Vec::new();
 
     // -- definitions -------------------------------------------------------
@@ -555,12 +562,30 @@ fn collect_selections(conn: &Connection, wordnet: Option<&WordNet>) -> Result<De
 
     // -- images: exactly one slot ------------------------------------------
     //
-    // Media is content-addressed, so two words searching for neighbouring ideas
-    // come back holding the same `file_hash`. A question renders the word beside
-    // its three fixed distractors, and two identical option pictures make the
-    // card unanswerable — so a candidate somebody else already shows is ranked
-    // below one nobody does, on both sides of the hysteresis comparison.
+    // Three things decide a picture, and only the first of them is cached on the
+    // candidate:
+    //
+    // * how good a picture it is — resolution and primary-sense match, the
+    //   `auto_score` [`score::score_image`] computed;
+    // * how well it answers the word's own sentence, from `clip_scores`. This
+    //   dominates: for two years nothing here knew what a picture *depicted*, so
+    //   the library optimized for sharp pictures of the wrong thing (backlog #8);
+    // * whether it is already somebody else's picture. Media is
+    //   content-addressed, so two words searching for neighbouring ideas come
+    //   back holding the same `file_hash`; a question renders the word beside its
+    //   three fixed distractors, and two identical option pictures make the card
+    //   unanswerable.
+    //
+    // The last one is enforced twice, at two strengths. Across the lexicon it is
+    // a *penalty*, because a shared picture is a preference and merit can
+    // outweigh it. Inside one question card it is a **veto**: an option grid with
+    // one picture twice has no right answer, and that is not a matter of merit.
+    // The veto is what makes the exporter's `question_images_distinct` gate
+    // structurally unreachable from an automatic selection.
     let taken = facts::selected_image_hashes(conn)?;
+    let mates = question_mate_images(conn)?;
+    let queries = clip_queries(conn)?;
+    let clip = clip_scores(conn, clip_model_ver)?;
     let mut stmt = conn.prepare(
         "SELECT ic.word_id, ic.img_cand_id, COALESCE(ic.auto_score, 0.0), ic.file_hash
          FROM image_candidates ic
@@ -578,26 +603,46 @@ fn collect_selections(conn: &Connection, wordnet: Option<&WordNet>) -> Result<De
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut by_word: BTreeMap<i64, Vec<Choice>> = BTreeMap::new();
+    let mut pools: BTreeMap<i64, Vec<ImageChoice>> = BTreeMap::new();
     for (word_id, cand_id, auto_score, file_hash) in rows {
-        by_word.entry(word_id).or_default().push(Choice {
+        let clip_score = queries
+            .get(&word_id)
+            .and_then(|text_hash| clip.get(&(file_hash.clone(), text_hash.clone())))
+            .copied();
+        pools.entry(word_id).or_default().push(ImageChoice {
             cand_id,
-            score: score::image_selection_score(
-                auto_score,
-                facts::is_duplicate_image(&taken, &file_hash, word_id),
-            ),
+            auto_score,
+            clip: clip_score,
+            duplicate: facts::is_duplicate_image(&taken, &file_hash, word_id),
+            conflicts: mates
+                .get(&word_id)
+                .is_some_and(|held| held.contains(&file_hash)),
         });
     }
-    let image_slots = image_slot_states(conn, &taken)?;
-    for (word_id, choices) in &by_word {
-        let state = image_slots.get(word_id).copied();
-        let Some(cand_id) = pick(choices, state) else {
+    let image_slots = image_slot_states(conn, &taken, &queries, &clip, &mates)?;
+    for (word_id, pool) in &pools {
+        let state = image_slots.get(word_id);
+        let choices = rank_images(pool);
+        // An incumbent a question mate also shows is not an occupant to be
+        // out-argued — it is an invalid one, so the slot is decided as if it
+        // were empty and the best admissible picture takes it outright. Without
+        // that, the two words would each need to beat the other by the
+        // hysteresis margin, and a card with one picture twice could sit there
+        // through every future pass. A *pinned* slot is still never touched:
+        // a human who chose that picture outranks this, and the export gate is
+        // the right place for them to hear about it.
+        let incumbent = state.and_then(|slot| (!slot.conflicts).then_some(slot.state));
+        let effective = match state {
+            Some(slot) if slot.state.pinned => Some(slot.state),
+            _ => incumbent,
+        };
+        let Some(cand_id) = pick(&choices, effective) else {
             continue;
         };
         decisions.push(AutoSelection {
             slot: SlotRef::Image { word_id: *word_id },
             cand_id,
-            expected_cand_id: state.map(|s| s.cand_id),
+            expected_cand_id: state.map(|slot| slot.state.cand_id),
             make_primary: false,
         });
     }
@@ -606,6 +651,50 @@ fn collect_selections(conn: &Connection, wordnet: Option<&WordNet>) -> Result<De
         selections: decisions,
         primaries: moves,
     })
+}
+
+/// One image candidate with everything the ranking needs, before the ranking
+/// happens.
+#[derive(Debug, Clone)]
+struct ImageChoice {
+    cand_id: i64,
+    auto_score: f64,
+    /// Raw cosine against the word's query, when the comparison exists.
+    clip: Option<f64>,
+    /// Some *other* word's selected picture, anywhere in the lexicon.
+    duplicate: bool,
+    /// A picture one of this word's question mates is currently showing.
+    conflicts: bool,
+}
+
+/// Turn one word's pool into ranked [`Choice`]s.
+///
+/// Two decisions live here, and both are per word rather than per candidate:
+///
+/// * **semantic scoring is all or nothing.** A pool where some candidates have
+///   been compared and some have not is ranked on quality alone, because
+///   blending a scored candidate against an unscored one measures them with two
+///   different rulers — and a word mid-backfill would otherwise flip its slot to
+///   whichever candidate the sidecar happened to reach first. As soon as every
+///   candidate has a score the whole pool is ranked semantically; until then the
+///   word behaves exactly as it did before the sidecar existed.
+/// * **a picture a question mate shows is removed, not docked.** If that empties
+///   the pool the word makes no decision at all and keeps reporting
+///   `missing_image`, which is honest: the image chain then walks it down to a
+///   picture nobody else holds, up to and including generating one.
+fn rank_images(pool: &[ImageChoice]) -> Vec<Choice> {
+    let scored_uniformly = !pool.is_empty() && pool.iter().all(|choice| choice.clip.is_some());
+    pool.iter()
+        .filter(|choice| !choice.conflicts)
+        .map(|choice| Choice {
+            cand_id: choice.cand_id,
+            score: score::image_selection_score(
+                choice.auto_score,
+                scored_uniformly.then_some(choice.clip).flatten(),
+                choice.duplicate,
+            ),
+        })
+        .collect()
 }
 
 /// What the sources say about one part of speech of one word.
@@ -818,10 +907,21 @@ fn example_slot_states(conn: &Connection) -> Result<HashMap<(i64, i64), SlotStat
     Ok(rows.into_iter().collect())
 }
 
+/// One image slot: what fills it, and whether what fills it is admissible.
+#[derive(Debug, Clone, Copy)]
+struct ImageSlot {
+    state: SlotState,
+    /// The picture this slot holds is one a question mate also shows.
+    conflicts: bool,
+}
+
 fn image_slot_states(
     conn: &Connection,
     taken: &HashMap<String, Vec<i64>>,
-) -> Result<HashMap<i64, SlotState>> {
+    queries: &HashMap<i64, String>,
+    clip: &HashMap<(String, String), f64>,
+    mates: &HashMap<i64, HashSet<String>>,
+) -> Result<HashMap<i64, ImageSlot>> {
     let mut stmt = conn.prepare(
         "SELECT s.word_id, s.img_cand_id, s.pinned, c.auto_score, c.file_hash
          FROM image_selections s
@@ -841,20 +941,64 @@ fn image_slot_states(
     Ok(rows
         .into_iter()
         .map(|(word_id, cand_id, pinned, auto_score, file_hash)| {
-            // The incumbent is measured on the same ruler as its challengers:
-            // a slot holding a picture another word also holds is the one this
-            // pressure is meant to move.
+            // The incumbent is measured on the same ruler as its challengers —
+            // same semantic term, same duplicate pressure — because a slot
+            // holding a picture another word also holds, or a picture of the
+            // wrong thing, is exactly what these are meant to move.
             let duplicate = facts::is_duplicate_image(taken, &file_hash, word_id);
+            let clip_score = queries
+                .get(&word_id)
+                .and_then(|text_hash| clip.get(&(file_hash.clone(), text_hash.clone())))
+                .copied();
             (
                 word_id,
-                SlotState {
-                    cand_id,
-                    pinned,
-                    score: auto_score.map(|score| score::image_selection_score(score, duplicate)),
+                ImageSlot {
+                    state: SlotState {
+                        cand_id,
+                        pinned,
+                        score: auto_score.map(|score| {
+                            score::image_selection_score(score, clip_score, duplicate)
+                        }),
+                    },
+                    conflicts: mates
+                        .get(&word_id)
+                        .is_some_and(|held| held.contains(&file_hash)),
                 },
             )
         })
         .collect())
+}
+
+/// For every word, the pictures its question mates are currently showing.
+///
+/// The bindings are fixed for the life of a word (README Part 3 §"干扰项"), so
+/// this graph never moves; what moves is which picture each mate has selected.
+fn question_mate_images(conn: &Connection) -> Result<HashMap<i64, HashSet<String>>> {
+    let mates = facts::question_mates(conn)?;
+    let selected = facts::selected_images(conn)?;
+    Ok(mates
+        .into_iter()
+        .map(|(word_id, others)| {
+            let held: HashSet<String> = others
+                .iter()
+                .filter_map(|mate| selected.get(mate).cloned())
+                .collect();
+            (word_id, held)
+        })
+        .collect())
+}
+
+/// Word → the `text_hash` its pictures are scored against.
+fn clip_queries(conn: &Connection) -> Result<HashMap<i64, String>> {
+    Ok(facts::clip_queries(conn)?
+        .into_iter()
+        .map(|(word_id, query)| (word_id, query.text_hash))
+        .collect())
+}
+
+/// Every comparison made under the model this build stores scores as.
+fn clip_scores(conn: &Connection, model_ver: &str) -> Result<HashMap<(String, String), f64>> {
+    facts::clip_scores(conn, model_ver)
 }
 
 /// Which part of speech currently holds `is_primary`, per word.
@@ -911,6 +1055,87 @@ mod tests {
     fn a_tie_breaks_on_the_lowest_id() {
         let choices = vec![choice(7, 0.8), choice(3, 0.8)];
         assert_eq!(pick(&choices, None), Some(3));
+    }
+
+    // -- image pools: semantics, and the per-question veto -------------------
+
+    fn image(cand_id: i64, auto_score: f64, clip: Option<f64>) -> ImageChoice {
+        ImageChoice {
+            cand_id,
+            auto_score,
+            clip,
+            duplicate: false,
+            conflicts: false,
+        }
+    }
+
+    /// A pool nothing has scored ranks exactly on the quality prior, with the
+    /// scores passed through untouched — this is what a lexicon looks like
+    /// before the sidecar has reached it, and it must be indistinguishable from
+    /// the behaviour that predates semantic scoring.
+    #[test]
+    fn an_unscored_pool_is_ranked_on_quality_alone() {
+        let pool = vec![image(1, 0.90, None), image(2, 0.60, None)];
+        let ranked = rank_images(&pool);
+        assert_eq!(ranked.len(), 2);
+        assert_eq!(ranked[0].score, 0.90);
+        assert_eq!(ranked[1].score, 0.60);
+        assert_eq!(pick(&ranked, None), Some(1));
+    }
+
+    /// A pool where the sidecar has answered for some candidates and not others
+    /// is ranked on quality alone as well. Mixing the two would measure them
+    /// with different rulers, and the word would flip to whichever picture was
+    /// scored first and flip back when the rest arrived.
+    #[test]
+    fn a_half_scored_pool_falls_back_to_quality() {
+        let pool = vec![image(1, 0.90, None), image(2, 0.60, Some(CLIP_CEIL))];
+        let ranked = rank_images(&pool);
+        assert_eq!(ranked[0].score, 0.90, "the unscored candidate is untouched");
+        assert_eq!(ranked[1].score, 0.60);
+        assert_eq!(pick(&ranked, None), Some(1));
+
+        // …and once the pool is complete, semantics decides.
+        let pool = vec![
+            image(1, 0.90, Some(CLIP_FLOOR)),
+            image(2, 0.60, Some(CLIP_CEIL)),
+        ];
+        assert_eq!(pick(&rank_images(&pool), None), Some(2));
+    }
+
+    /// The veto: a picture a question mate shows is not in the running at all,
+    /// however good it is.
+    #[test]
+    fn a_picture_a_question_mate_shows_is_removed_from_the_pool() {
+        let mut best = image(1, 1.0, Some(CLIP_CEIL));
+        best.conflicts = true;
+        let pool = vec![best, image(2, 0.10, Some(CLIP_FLOOR))];
+        let ranked = rank_images(&pool);
+        assert_eq!(ranked.len(), 1);
+        assert_eq!(ranked[0].cand_id, 2);
+    }
+
+    /// An empty pool after the veto is no decision — never a fallback to the
+    /// vetoed candidate. The word keeps whatever it has and the image chain goes
+    /// looking for something nobody else holds.
+    #[test]
+    fn a_wholly_vetoed_pool_decides_nothing() {
+        let pool: Vec<ImageChoice> = vec![1, 2]
+            .into_iter()
+            .map(|id| ImageChoice {
+                conflicts: true,
+                ..image(id, 0.9, Some(CLIP_CEIL))
+            })
+            .collect();
+        let ranked = rank_images(&pool);
+        assert!(ranked.is_empty());
+        assert_eq!(pick(&ranked, None), None);
+        let incumbent = SlotState {
+            cand_id: 1,
+            pinned: false,
+            score: Some(0.9),
+        };
+        assert_eq!(pick(&ranked, Some(incumbent)), None);
     }
 
     #[test]

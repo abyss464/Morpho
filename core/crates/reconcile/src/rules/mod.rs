@@ -35,7 +35,10 @@ pub use definitions::FetchDefinitionsRule;
 pub use etymology::{FetchEtymologyRule, SegmentMorphologyRule};
 pub use examples::FetchExamplesRule;
 pub use extract_tokens::ExtractTokensRule;
-pub use images::{FetchImagesRule, FetchImagesSecondPassRule, GenImageSdxlRule, GenSceneImageRule};
+pub use images::{
+    FetchImagesRule, FetchImagesSecondPassRule, GenImageCodexRule, GenImageSdxlRule,
+    GenSceneImageRule, ScoreImageClipRule,
+};
 pub use tts::SynthTtsRule;
 
 use crate::engine::EngineContext;
@@ -51,8 +54,10 @@ pub fn default_rules(context: Arc<EngineContext>) -> Vec<Arc<dyn Rule>> {
         Arc::new(SegmentMorphologyRule::new(context.clone())),
         Arc::new(FetchImagesRule::new(context.clone())),
         Arc::new(FetchImagesSecondPassRule::new(context.clone())),
+        Arc::new(ScoreImageClipRule::new(context.clone())),
         Arc::new(GenImageSdxlRule::new(context.clone())),
         Arc::new(GenSceneImageRule::new(context.clone())),
+        Arc::new(GenImageCodexRule::new(context.clone())),
         Arc::new(SynthTtsRule::new(context)),
     ]
 }
