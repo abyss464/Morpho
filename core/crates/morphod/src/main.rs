@@ -7,6 +7,7 @@
 mod config;
 mod export;
 mod import;
+mod publish;
 mod serve;
 mod status;
 
@@ -81,6 +82,18 @@ enum Command {
         /// Free-text note stored with the release.
         #[arg(long, value_name = "TEXT")]
         notes: Option<String>,
+    },
+    /// Export, sync to Android project, run tests, and build the APK.
+    Publish {
+        /// Export notes.
+        #[arg(long, value_name = "TEXT")]
+        notes: Option<String>,
+        /// Skip the Gradle build (export + sync only).
+        #[arg(long)]
+        no_build: bool,
+        /// Recorded in `releases.exported_by`.
+        #[arg(long, value_name = "USER", default_value = "cli")]
+        actor: String,
     },
 }
 
@@ -158,6 +171,15 @@ async fn main() -> Result<()> {
         } => {
             let store = open_store(&config)?;
             export::run(&config, &store, out, &actor, notes, preview).await
+        }
+        Command::Publish {
+            notes,
+            no_build,
+            actor,
+        } => {
+            let store = open_store(&config)?;
+            publish::publish(&config, &store, notes, no_build, actor).await?;
+            Ok(())
         }
     }
 }

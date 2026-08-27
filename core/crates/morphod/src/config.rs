@@ -256,6 +256,24 @@ impl Config {
         morpho_reconcile::TextPipeline::from_wordnet_dir(self.sources.wordnet_dir())
     }
 
+    /// The repository root (parent of `adapters/`).
+    ///
+    /// The adapters root is resolved at load time; its parent is the checkout.
+    /// Falls back to the current working directory when no adapters root was
+    /// found (e.g. in tests without a real checkout).
+    pub fn repo_root(&self) -> PathBuf {
+        self.adapters
+            .adapters_root
+            .as_deref()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+            .or_else(|| {
+                let cwd = std::env::current_dir().ok()?;
+                repo_root_above(&cwd)
+            })
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+    }
+
     /// Settings for the exporter. The tokenizer/lemmatizer versions must match
     /// the engine's, or every word would look stale.
     pub fn export_settings(&self) -> morpho_export::ExportSettings {

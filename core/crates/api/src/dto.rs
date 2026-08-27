@@ -488,6 +488,15 @@ pub struct ExportBody {
     pub notes: Option<String>,
 }
 
+/// `PublishBody`
+#[derive(Debug, Default, Deserialize)]
+pub struct PublishBody {
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub no_build: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Mutation request bodies
 // ---------------------------------------------------------------------------

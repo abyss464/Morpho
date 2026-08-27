@@ -25,7 +25,8 @@ pub async fn serve(config: Config, store: Store) -> Result<()> {
         config.data_dir.clone(),
         config.export_settings(),
     )
-    .with_releases_dir(config.releases_dir.clone());
+    .with_releases_dir(config.releases_dir.clone())
+    .with_repo_root(config.repo_root());
     let admin_ui = config.admin_ui_dist.clone();
     let router = build_router(state, Some(admin_ui.as_path()));
 

@@ -56,6 +56,7 @@ pub fn api_router(state: AppState) -> Router {
         .route("/releases", get(read::releases))
         .route("/releases/preview", get(read::release_preview))
         .route("/releases/export", post(write::export_release))
+        .route("/releases/publish", post(write::publish_release))
         // -- Media ----------------------------------------------------------
         .route("/media/{file_hash}", get(read::media))
         .with_state(state)

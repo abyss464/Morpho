@@ -697,3 +697,227 @@ pub async fn export_release(
         Err(err) => Err(ApiError::internal(err.to_string())),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Publish
+// ---------------------------------------------------------------------------
+
+/// `POST /api/releases/publish`
+///
+/// Runs the full export-to-APK pipeline: export, sync release.db and media
+/// into the Android project, patch the test assertion, and optionally run the
+/// Gradle build. Returns the publish result.
+pub async fn publish_release(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Option<Json<PublishBody>>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let (notes, no_build) = body
+        .map(|Json(b)| (b.notes, b.no_build))
+        .unwrap_or_default();
+    let user = state.user(&headers);
+
+    let out_dir = state.releases_dir.join(format!(
+        "export-{}",
+        chrono::Utc::now().format("%Y%m%dT%H%M%S%3fZ")
+    ));
+
+    // 1. Export
+    let (written, _report) =
+        match morpho_export::export(&state.store, &state.export, &out_dir, &user, notes).await {
+            Ok(pair) => pair,
+            Err(morpho_export::ExportError::GatesFailed(failures)) => {
+                return Err(ApiError::export_conflict(failures));
+            }
+            Err(morpho_export::ExportError::NoPlan) => {
+                return Err(ApiError::conflict("no plan has been built yet"));
+            }
+            Err(err) => return Err(ApiError::internal(err.to_string())),
+        };
+
+    let repo_root = state.repo_root.clone();
+    let content_version = written.content_version.clone();
+    let word_count = written.word_count;
+    let media_count = written.media_hashes.len();
+    let export_dir = written.out_dir.display().to_string();
+
+    // Clone for the closure; the original stays for the response.
+    let version_for_patch = content_version.clone();
+
+    // 2-4. Sync + patch (blocking I/O in a spawn_blocking task)
+    let sync_result =
+        tokio::task::spawn_blocking(move || -> Result<Option<(String, u64)>, String> {
+            // Sync release.db
+            let release_db_dest = repo_root.join("app/app/src/main/assets/release.db");
+            std::fs::copy(written.out_dir.join("release.db"), &release_db_dest)
+                .map_err(|e| format!("copy release.db: {e}"))?;
+
+            // Sync media
+            publish_sync_media(&written, &repo_root).map_err(|e| format!("sync media: {e}"))?;
+
+            // Patch test
+            publish_patch_test(&version_for_patch, &repo_root)
+                .map_err(|e| format!("patch test: {e}"))?;
+
+            // Gradle build
+            if !no_build {
+                let (apk_path, apk_size) =
+                    publish_gradle_build(&repo_root).map_err(|e| format!("gradle: {e}"))?;
+                Ok(Some((apk_path, apk_size)))
+            } else {
+                Ok(None)
+            }
+        })
+        .await
+        .map_err(|e| ApiError::internal(format!("publish task panicked: {e}")))?
+        .map_err(ApiError::internal)?;
+
+    let (apk_path, apk_size) = match sync_result {
+        Some((p, s)) => (Some(p), Some(s)),
+        None => (None, None),
+    };
+
+    Ok(Json(serde_json::json!({
+        "version": content_version,
+        "word_count": word_count,
+        "media_count": media_count,
+        "export_dir": export_dir,
+        "apk_path": apk_path,
+        "apk_size_bytes": apk_size,
+    })))
+}
+
+/// Sync img/ and audio/ from the export bundle into the Android content_media
+/// assets, and trash stale files via `gio trash`.
+fn publish_sync_media(
+    written: &morpho_export::WrittenRelease,
+    repo_root: &std::path::Path,
+) -> Result<(), std::io::Error> {
+    let media_dest = repo_root.join("app/content_media/src/main/assets/content_media");
+    std::fs::create_dir_all(&media_dest)?;
+
+    let manifest_paths: std::collections::HashSet<String> = written
+        .manifest
+        .files
+        .iter()
+        .filter(|e| e.path.starts_with("img/") || e.path.starts_with("audio/"))
+        .map(|e| e.path.clone())
+        .collect();
+
+    for rel_path in &manifest_paths {
+        let src = written.out_dir.join(rel_path);
+        let dst = media_dest.join(rel_path);
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        if dst.exists() {
+            if let (Ok(sm), Ok(dm)) = (src.metadata(), dst.metadata()) {
+                if sm.len() == dm.len() {
+                    continue;
+                }
+            }
+        }
+        std::fs::copy(&src, &dst)?;
+    }
+
+    // Trash stale files.
+    for subdir in &["img", "audio"] {
+        let dir = media_dest.join(subdir);
+        if !dir.is_dir() {
+            continue;
+        }
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let rel = format!(
+                "{}/{}",
+                subdir,
+                path.file_name().unwrap_or_default().to_string_lossy()
+            );
+            if !manifest_paths.contains(&rel) {
+                let _ = std::process::Command::new("gio")
+                    .args(["trash", "--"])
+                    .arg(&path)
+                    .status();
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Replace the content_version string in `ReleaseDatabaseTest.kt`.
+fn publish_patch_test(
+    new_version: &str,
+    repo_root: &std::path::Path,
+) -> Result<(), std::io::Error> {
+    let test_file =
+        repo_root.join("app/app/src/test/kotlin/dev/morpho/data/db/ReleaseDatabaseTest.kt");
+    let content = std::fs::read_to_string(&test_file)?;
+
+    // Match `"20YY.MM.DD+HHHHHHHH"` — the quoted content_version literal.
+    // Inner: YYYY.MM.DD+HHHHHHHH = 19 chars; total with quotes = 21 bytes.
+    const INNER_LEN: usize = 19;
+    const TOTAL_LEN: usize = INNER_LEN + 2;
+    let bytes = content.as_bytes();
+    let mut i = 0;
+    while i + TOTAL_LEN <= bytes.len() {
+        if bytes[i] == b'"'
+            && bytes[i + 1] == b'2'
+            && bytes[i + 2] == b'0'
+            && bytes[i + 5] == b'.'
+            && bytes[i + 8] == b'.'
+            && bytes[i + 11] == b'+'
+            && bytes[i + TOTAL_LEN - 1] == b'"'
+            && bytes[i + 3..i + 5].iter().all(|b| b.is_ascii_digit())
+            && bytes[i + 6..i + 8].iter().all(|b| b.is_ascii_digit())
+            && bytes[i + 9..i + 11].iter().all(|b| b.is_ascii_digit())
+            && bytes[i + 12..i + 20].iter().all(|b| b.is_ascii_hexdigit())
+        {
+            let mut result = String::with_capacity(content.len());
+            result.push_str(&content[..i]);
+            result.push('"');
+            result.push_str(new_version);
+            result.push('"');
+            result.push_str(&content[i + TOTAL_LEN..]);
+            std::fs::write(&test_file, result.as_bytes())?;
+            return Ok(());
+        }
+        i += 1;
+    }
+    Ok(())
+}
+
+/// Run the Gradle build and return (apk_path, apk_size_bytes).
+fn publish_gradle_build(repo_root: &std::path::Path) -> Result<(String, u64), String> {
+    let app_dir = repo_root.join("app");
+    let status = std::process::Command::new("./gradlew")
+        .args([
+            ":domain:test",
+            ":app:testFatApkDebugUnitTest",
+            ":app:assembleFatApkDebug",
+        ])
+        .current_dir(&app_dir)
+        .status()
+        .map_err(|e| format!("spawning gradlew: {e}"))?;
+
+    if !status.success() {
+        return Err(format!("gradle build failed: {status}"));
+    }
+
+    let apk_dir = app_dir.join("app/build/outputs/apk/fatApk/debug");
+    if !apk_dir.is_dir() {
+        return Err(format!("APK output dir not found: {}", apk_dir.display()));
+    }
+    for entry in std::fs::read_dir(&apk_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("apk") {
+            let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+            return Ok((path.display().to_string(), size));
+        }
+    }
+    Err(format!("no .apk found in {}", apk_dir.display()))
+}

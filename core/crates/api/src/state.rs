@@ -24,6 +24,9 @@ pub struct AppState {
     pub data_dir: PathBuf,
     /// Where `POST /releases/export` writes bundles.
     pub releases_dir: PathBuf,
+    /// Repository checkout root (parent of `adapters/`), for the publish
+    /// pipeline that syncs assets into the Android project tree.
+    pub repo_root: PathBuf,
     /// Actor name used when no `X-Morpho-User` header is present.
     pub default_user: String,
     /// Voice configuration, needed to resolve TTS content addresses.
@@ -42,6 +45,7 @@ impl AppState {
         Self {
             media: MediaStore::new(&data_dir),
             releases_dir: data_dir.join("releases"),
+            repo_root: PathBuf::from("."),
             tts: export.tts.clone(),
             store,
             jobs,
@@ -54,6 +58,12 @@ impl AppState {
     #[must_use]
     pub fn with_releases_dir(mut self, dir: PathBuf) -> Self {
         self.releases_dir = dir;
+        self
+    }
+
+    #[must_use]
+    pub fn with_repo_root(mut self, dir: PathBuf) -> Self {
+        self.repo_root = dir;
         self
     }
 
