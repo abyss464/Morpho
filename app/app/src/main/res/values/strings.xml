@@ -65,6 +65,10 @@
     <string name="learn_word_learned">Learned</string>
     <string name="learn_group_complete">Group complete</string>
     <string name="learn_exit_confirm">End this session? Your progress is already saved.</string>
+    <string name="learn_goal_reached_title">Today\'s goal reached</string>
+    <string name="learn_goal_reached_body">You have finished today\'s new words. Learn one more group, or stop here and come back tomorrow.</string>
+    <string name="learn_goal_reached_continue">One more group</string>
+    <string name="learn_nothing_left">No new words left to learn.</string>
 
     <!-- Review -->
     <string name="review_title">Review</string>

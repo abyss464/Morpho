@@ -14,12 +14,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -129,7 +132,22 @@ fun LearnScreen(
         Box(Modifier.fillMaxSize()) {
             when {
                 state.loading -> LoadingBox(Modifier.padding(padding))
-                state.empty -> EmptyBox(Modifier.padding(padding))
+                // Nothing was planned, so no session result exists — the summary screen
+                // would show the previous session's numbers. Stay here instead.
+                state.empty -> MessageBox(
+                    message = stringResource(R.string.learn_nothing_left),
+                    onBackHome = {
+                        container.playSfx(SfxEvent.TAP)
+                        viewModel.onExit()
+                        onExit()
+                    },
+                    modifier = Modifier.padding(padding),
+                )
+                // The prompt below sits on top of this.
+                state.goalReached -> MessageBox(
+                    message = stringResource(R.string.learn_goal_reached_body),
+                    modifier = Modifier.padding(padding),
+                )
                 else -> QuestionBody(
                     state = state,
                     modifier = Modifier.padding(padding),
@@ -143,6 +161,22 @@ fun LearnScreen(
                 onCelebrationFinished = viewModel::onCelebrationFinished,
             )
         }
+    }
+
+    // Today's goal is met (backlog #22). One more group is a single 15-20 word unit,
+    // not another daily batch; the session that follows re-prompts on the next start.
+    if (state.goalReached) {
+        GoalReachedDialog(
+            onOneMoreGroup = {
+                container.playSfx(SfxEvent.TAP)
+                viewModel.onLearnOneMoreGroup()
+            },
+            onBackHome = {
+                container.playSfx(SfxEvent.TAP)
+                viewModel.onExit()
+                onExit()
+            },
+        )
     }
 
     state.detail?.let { detail ->
@@ -308,16 +342,58 @@ private fun LoadingBox(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * The screen with no question on it: nothing left to plan, or the goal-reached prompt
+ * waiting for an answer. [onBackHome] adds the way out when the message is terminal.
+ */
 @Composable
-private fun EmptyBox(modifier: Modifier = Modifier) {
+private fun MessageBox(
+    message: String,
+    modifier: Modifier = Modifier,
+    onBackHome: (() -> Unit)? = null,
+) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = stringResource(R.string.home_today_all_done),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(MorphoTheme.spacing.lg),
+            modifier = Modifier.padding(MorphoTheme.spacing.lg),
+        ) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            if (onBackHome != null) {
+                Button(onClick = onBackHome) {
+                    Text(stringResource(R.string.summary_back_home))
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun GoalReachedDialog(
+    onOneMoreGroup: () -> Unit,
+    onBackHome: () -> Unit,
+) {
+    AlertDialog(
+        // Dismissing without choosing means the same thing as stopping.
+        onDismissRequest = onBackHome,
+        title = { Text(stringResource(R.string.learn_goal_reached_title)) },
+        text = { Text(stringResource(R.string.learn_goal_reached_body)) },
+        confirmButton = {
+            TextButton(onClick = onOneMoreGroup) {
+                Text(stringResource(R.string.learn_goal_reached_continue))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onBackHome) {
+                Text(stringResource(R.string.summary_back_home))
+            }
+        },
+    )
 }
 
 // ------------------------------------------------------------------ previews

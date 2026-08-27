@@ -58,6 +58,8 @@ data class LearnUiState(
     val loading: Boolean = true,
     val finished: Boolean = false,
     val empty: Boolean = false,
+    /** Today's goal is already met and the user has not yet said whether to continue. */
+    val goalReached: Boolean = false,
     val question: QuestionUi? = null,
     val selectedIndex: Int? = null,
     val revealed: Boolean = false,
@@ -96,14 +98,20 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    private suspend fun startSession() {
+    /**
+     * @param extraGroup the user met today's goal and asked for one more group. Builds a
+     * single unit instead of a fresh daily batch, and skips the prompt that offered it.
+     */
+    private suspend fun startSession(extraGroup: Boolean = false) {
         val settings = container.settingsRepository.settings.value
         val content = container.contentRepository
         val progressRepo = container.progressRepository
 
         val today = LocalDate.now()
         val doneToday = progressRepo.statsFor(today)?.newLearned ?: 0
-        val quota = (settings.dailyGoal - doneToday).coerceAtLeast(0)
+        // Null once the day's goal is met — today's stats row is keyed on the local
+        // date, so this reverts to a full quota by itself at local midnight.
+        val quota = LearnSessionPlanner.quotaFor(settings.dailyGoal, doneToday)
 
         config = SessionConfig(
             dailyGoal = settings.dailyGoal,
@@ -112,22 +120,36 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
             sessionSeed = today.toEpochDay(),
         )
 
+        if (quota == null && !extraGroup) {
+            // Goal met: ask rather than silently handing out another full batch.
+            _state.value = LearnSessionPlanner.goalReachedState()
+            return
+        }
+
         val progress = progressRepo.progressMap()
-        val plan = LearningEngine.buildSession(
+        val built = LearningEngine.buildSession(
             plan = content.planWords(),
             progress = progress,
             dueReviewIds = emptyList(),
-            newWordQuota = if (quota == 0) settings.dailyGoal else quota,
+            newWordQuota = quota ?: LearnSessionPlanner.extraGroupQuota(config),
             config = config,
         )
+        val plan = if (quota == null) LearnSessionPlanner.singleUnit(built) else built
 
         if (plan.units.isEmpty()) {
-            _state.value = LearnUiState(loading = false, finished = true, empty = true)
+            // No session ran, so there is nothing to summarise: stay here and say so.
+            _state.value = LearnSessionPlanner.emptyState()
             return
         }
 
         session = LearningEngine.startSession(plan, progress, config)
         renderCurrent()
+    }
+
+    /** "One more group" on the goal-reached prompt. */
+    fun onLearnOneMoreGroup() {
+        _state.value = LearnUiState(loading = true)
+        viewModelScope.launch { startSession(extraGroup = true) }
     }
 
     // ------------------------------------------------------------- rendering
