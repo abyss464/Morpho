@@ -595,6 +595,47 @@ pub fn distractor_edges(conn: &Connection) -> Result<Vec<(i64, i64, i64)>> {
     Ok(rows)
 }
 
+/// One bound distractor with both lemmas resolved.
+///
+/// [`distractor_edges`] is enough for the reconciler, which only ever asks
+/// "which ranks are taken"; auditing a binding needs the words themselves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DistractorPair {
+    pub word_id: i64,
+    /// The lemma of the word being quizzed.
+    pub lemma: String,
+    pub rank: i64,
+    pub distractor_word_id: i64,
+    pub distractor_lemma: String,
+}
+
+/// Every distractor row joined to both lemmas, ordered by `(word_id, rank)`.
+///
+/// No role or readiness filter: a binding that violates a selection rule is
+/// worth reporting wherever it sits, including on a word that has since left
+/// the active pool.
+pub fn distractor_pairs(conn: &Connection) -> Result<Vec<DistractorPair>> {
+    let mut stmt = conn.prepare(
+        "SELECT d.word_id, w.lemma, d.rank, d.distractor_word_id, x.lemma
+         FROM distractors d
+         JOIN words w ON w.word_id = d.word_id
+         JOIN words x ON x.word_id = d.distractor_word_id
+         ORDER BY d.word_id, d.rank",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(DistractorPair {
+                word_id: row.get(0)?,
+                lemma: row.get(1)?,
+                rank: row.get(2)?,
+                distractor_word_id: row.get(3)?,
+                distractor_lemma: row.get(4)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 /// Primary POS for each word, from its `is_primary = 1` definition selection.
 ///
 /// Returns `(word_id, pos)` for every word that has a primary selection enabled.

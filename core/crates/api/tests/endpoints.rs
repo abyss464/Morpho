@@ -18,7 +18,10 @@ use morpho_domain::tts::TtsConfig;
 use morpho_domain::types::{CreatedBy, DefinitionSource, ExampleSource, Role, SelectedBy, SlotRef};
 use morpho_export::ExportSettings;
 use morpho_reconcile::JobRegistry;
-use morpho_store::ops::{CreateWord, MintExampleCandidate};
+use morpho_store::ops::{
+    ApplyReadiness, BindDistractors, CreateWord, DistractorBinding, MintExampleCandidate,
+    ReadinessRow,
+};
 use morpho_store::{Store, StoreConfig, WriteOp};
 
 struct Harness {
@@ -1537,4 +1540,209 @@ async fn every_contract_endpoint_is_implemented() {
     assert_eq!(status, StatusCode::OK, "POST {gloss}: {payload}");
     let (status, payload) = delete(&h.router, &gloss, serde_json::Value::Null).await;
     assert_eq!(status, StatusCode::OK, "DELETE {gloss}: {payload}");
+}
+
+// ---------------------------------------------------------------------------
+// Distractor repair
+// ---------------------------------------------------------------------------
+
+const REBIND: &str = "/api/distractors/rebind-violations";
+
+/// Mark words shippable, the way a reconciler pass would.
+async fn set_core_ready(store: &Store, word_ids: &[i64]) {
+    let rows = word_ids
+        .iter()
+        .map(|word_id| ReadinessRow {
+            word_id: *word_id,
+            ready: true,
+            core_ready: true,
+            blockers_json: "[]".to_string(),
+        })
+        .collect();
+    store
+        .write(
+            Actor::Reconciler,
+            WriteOp::ApplyReadiness(ApplyReadiness { rows }),
+        )
+        .await
+        .unwrap();
+}
+
+/// `adapt` bound to its own derivation `adapter` — a binding the current rule
+/// would never have made — with `adopt` and `adept` available to replace it.
+async fn seed_stem_violation(h: &Harness) -> (i64, i64, i64) {
+    let adapt = seed_word(&h.store, "adapt", Role::Target, Some(1520)).await;
+    let adapter = seed_word(&h.store, "adapter", Role::Target, Some(6000)).await;
+    let adopt = seed_word(&h.store, "adopt", Role::Target, Some(1385)).await;
+    seed_word(&h.store, "adept", Role::Target, Some(4890)).await;
+    set_core_ready(&h.store, &[adapt, adapter, adopt]).await;
+    h.store
+        .write(
+            Actor::Reconciler,
+            WriteOp::BindDistractors(BindDistractors {
+                bindings: vec![DistractorBinding {
+                    word_id: adapt,
+                    ranks: vec![(1, adapter)],
+                }],
+                algo_ver: "distractor/2".into(),
+            }),
+        )
+        .await
+        .unwrap();
+    (adapt, adapter, adopt)
+}
+
+async fn bound_at_rank(store: &Store, word_id: i64, rank: i64) -> i64 {
+    store
+        .read(move |conn| {
+            Ok(conn.query_row(
+                "SELECT distractor_word_id FROM distractors WHERE word_id = ?1 AND rank = ?2",
+                rusqlite::params![word_id, rank],
+                |row| row.get(0),
+            )?)
+        })
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_dry_run_reports_the_plan_and_changes_nothing() {
+    let h = harness();
+    let (adapt, adapter, adopt) = seed_stem_violation(&h).await;
+
+    let (status, body) = post(&h.router, REBIND, serde_json::json!({"dry_run": true})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["scanned"], 1);
+    assert_eq!(body["violations"], 1);
+    assert_eq!(body["applied"], false);
+    assert_eq!(body["truncated"], false);
+    assert_eq!(body["skipped"], 0);
+    assert_eq!(body["unresolvable_total"], 0);
+    assert_eq!(body["planned_or_applied_total"], 1);
+
+    let item = &body["planned_or_applied"][0];
+    assert_eq!(item["word_id"], adapt);
+    assert_eq!(item["lemma"], "adapt");
+    assert_eq!(item["rank"], 1);
+    assert_eq!(item["old"]["word_id"], adapter);
+    assert_eq!(item["old"]["lemma"], "adapter");
+    assert_eq!(item["new"]["word_id"], adopt);
+    assert_eq!(item["new"]["lemma"], "adopt");
+    assert_eq!(item["core_ready_new"], true);
+
+    assert_eq!(
+        bound_at_rank(&h.store, adapt, 1).await,
+        adapter,
+        "a dry run must not touch the table"
+    );
+}
+
+#[tokio::test]
+async fn a_bodyless_call_is_a_dry_run() {
+    let h = harness();
+    let (adapt, adapter, _) = seed_stem_violation(&h).await;
+
+    let (status, body) = post(&h.router, REBIND, serde_json::Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["applied"], false);
+    assert_eq!(bound_at_rank(&h.store, adapt, 1).await, adapter);
+}
+
+#[tokio::test]
+async fn applying_moves_the_binding_and_audits_it() {
+    let h = harness();
+    let (adapt, adapter, adopt) = seed_stem_violation(&h).await;
+
+    let (status, body) = post(&h.router, REBIND, serde_json::json!({"dry_run": false})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["applied"], true);
+    assert_eq!(body["violations"], 1);
+    assert_eq!(body["skipped"], 0);
+    assert_eq!(body["planned_or_applied"][0]["new"]["word_id"], adopt);
+
+    assert_eq!(bound_at_rank(&h.store, adapt, 1).await, adopt);
+
+    let detail = h
+        .store
+        .read(move |conn| {
+            Ok(conn.query_row(
+                "SELECT detail FROM events
+                 WHERE entity_type = 'distractor' AND action = 'distractor_bound'
+                 ORDER BY event_id DESC LIMIT 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )?)
+        })
+        .await
+        .unwrap();
+    let detail: serde_json::Value = serde_json::from_str(&detail).unwrap();
+    assert_eq!(detail["reason"], "stem_violation_rebind");
+    assert_eq!(detail["old_distractor_word_id"], adapter);
+    assert_eq!(detail["new_distractor_word_id"], adopt);
+
+    // The repair is complete: a second run finds nothing left to do.
+    let (status, body) = post(&h.router, REBIND, serde_json::json!({"dry_run": false})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["violations"], 0);
+    assert_eq!(body["planned_or_applied"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn a_violation_with_no_shippable_replacement_keeps_its_row() {
+    let h = harness();
+    let adapt = seed_word(&h.store, "adapt", Role::Target, Some(1520)).await;
+    let adapter = seed_word(&h.store, "adapter", Role::Target, Some(6000)).await;
+    // `adopt` is one edit away but has never been made shippable.
+    seed_word(&h.store, "adopt", Role::Target, Some(1385)).await;
+    set_core_ready(&h.store, &[adapt, adapter]).await;
+    h.store
+        .write(
+            Actor::Reconciler,
+            WriteOp::BindDistractors(BindDistractors {
+                bindings: vec![DistractorBinding {
+                    word_id: adapt,
+                    ranks: vec![(1, adapter)],
+                }],
+                algo_ver: "distractor/2".into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = post(&h.router, REBIND, serde_json::json!({"dry_run": false})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["violations"], 1);
+    assert_eq!(body["planned_or_applied_total"], 0);
+    assert_eq!(body["unresolvable_total"], 1);
+    assert_eq!(body["unresolvable"][0]["old"]["word_id"], adapter);
+    assert_eq!(body["unresolvable"][0]["new"], serde_json::Value::Null);
+    assert_eq!(body["unresolvable"][0]["core_ready_new"], false);
+    assert_eq!(bound_at_rank(&h.store, adapt, 1).await, adapter);
+}
+
+#[tokio::test]
+async fn a_clean_table_reports_no_violations() {
+    let h = harness();
+    let adapt = seed_word(&h.store, "adapt", Role::Target, Some(1520)).await;
+    let adopt = seed_word(&h.store, "adopt", Role::Target, Some(1385)).await;
+    set_core_ready(&h.store, &[adapt, adopt]).await;
+    h.store
+        .write(
+            Actor::Reconciler,
+            WriteOp::BindDistractors(BindDistractors {
+                bindings: vec![DistractorBinding {
+                    word_id: adapt,
+                    ranks: vec![(1, adopt)],
+                }],
+                algo_ver: "distractor/2".into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = post(&h.router, REBIND, serde_json::json!({"dry_run": false})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["scanned"], 1);
+    assert_eq!(body["violations"], 0);
+    assert_eq!(bound_at_rank(&h.store, adapt, 1).await, adopt);
 }

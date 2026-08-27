@@ -13,10 +13,11 @@ use morpho_domain::types::{
     ImageSource, Role, SelectedBy, SlotRef, WordImport,
 };
 use morpho_store::ops::{
-    CreateWord, IngestImages, MintDefinitionCandidate, OovResolution, PrimaryMove,
-    ReconcilePrimaries, RecordDefExtraction, SetApproval, SetSelection, UpsertJobState,
+    BindDistractors, CreateWord, DistractorBinding, DistractorRebind, IngestImages,
+    MintDefinitionCandidate, OovResolution, PrimaryMove, RebindDistractors, ReconcilePrimaries,
+    RecordDefExtraction, SetApproval, SetSelection, UpsertJobState,
 };
-use morpho_store::{Store, StoreConfig, StoreError, WriteOp};
+use morpho_store::{Store, StoreConfig, StoreError, WriteOp, WriteResult};
 
 fn fixture() -> (tempfile::TempDir, Store) {
     let dir = tempfile::tempdir().unwrap();
@@ -1534,4 +1535,212 @@ async fn selecting_another_words_candidate_is_a_conflict() {
         .await
         .unwrap_err();
     assert!(matches!(err, StoreError::Conflict(_)));
+}
+
+// ---------------------------------------------------------------------------
+// Distractor repair (README Part 3: replacing a binding is a human action)
+// ---------------------------------------------------------------------------
+
+/// Seed one word's bindings the way the reconciler would.
+async fn bind(store: &Store, word_id: i64, ranks: Vec<(i64, i64)>) {
+    store
+        .write(
+            Actor::Reconciler,
+            WriteOp::BindDistractors(BindDistractors {
+                bindings: vec![DistractorBinding { word_id, ranks }],
+                algo_ver: "distractor/2".into(),
+            }),
+        )
+        .await
+        .unwrap();
+}
+
+async fn rank_holder(store: &Store, word_id: i64, rank: i64) -> i64 {
+    store
+        .read(move |conn| {
+            Ok(conn.query_row(
+                "SELECT distractor_word_id FROM distractors WHERE word_id = ?1 AND rank = ?2",
+                rusqlite::params![word_id, rank],
+                |row| row.get(0),
+            )?)
+        })
+        .await
+        .unwrap()
+}
+
+fn rebind(word_id: i64, rank: i64, old: i64, new: i64) -> WriteOp {
+    WriteOp::RebindDistractors(RebindDistractors {
+        rebinds: vec![DistractorRebind {
+            word_id,
+            rank,
+            old_distractor_word_id: old,
+            new_distractor_word_id: new,
+        }],
+        algo_ver: "distractor/2".into(),
+        reason: "stem_violation_rebind".into(),
+    })
+}
+
+#[tokio::test]
+async fn a_rebind_moves_the_row_and_records_the_reason() {
+    let (_dir, store) = fixture();
+    let adapt = seed_word(&store, "adapt", Role::Target).await;
+    let adapter = seed_word(&store, "adapter", Role::Target).await;
+    let adopt = seed_word(&store, "adopt", Role::Target).await;
+    bind(&store, adapt, vec![(1, adapter)]).await;
+
+    let outcome = store
+        .write(Actor::admin("abyss"), rebind(adapt, 1, adapter, adopt))
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(
+            outcome.result,
+            WriteResult::Rebound {
+                rebound: 1,
+                skipped: 0
+            }
+        ),
+        "{:?}",
+        outcome.result
+    );
+    assert_eq!(outcome.events_written, 1);
+    assert_eq!(rank_holder(&store, adapt, 1).await, adopt);
+
+    let (actor, bound_by, detail) = store
+        .read(move |conn| {
+            let bound_by: String = conn.query_row(
+                "SELECT bound_by FROM distractors WHERE word_id = ?1 AND rank = 1",
+                rusqlite::params![adapt],
+                |row| row.get(0),
+            )?;
+            let (actor, detail): (String, String) = conn.query_row(
+                "SELECT actor, detail FROM events
+                 WHERE entity_type = 'distractor' AND action = 'distractor_bound'
+                 ORDER BY event_id DESC LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
+            Ok((actor, bound_by, detail))
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(actor, "admin:abyss");
+    assert_eq!(bound_by, "admin:abyss", "the row remembers who moved it");
+    let detail: serde_json::Value = serde_json::from_str(&detail).unwrap();
+    assert_eq!(detail["reason"], "stem_violation_rebind");
+    assert_eq!(detail["rank"], 1);
+    assert_eq!(detail["old_distractor_word_id"], adapter);
+    assert_eq!(detail["new_distractor_word_id"], adopt);
+}
+
+#[tokio::test]
+async fn a_rebind_whose_row_drifted_is_skipped() {
+    let (_dir, store) = fixture();
+    let adapt = seed_word(&store, "adapt", Role::Target).await;
+    let adapter = seed_word(&store, "adapter", Role::Target).await;
+    let adopt = seed_word(&store, "adopt", Role::Target).await;
+    let adept = seed_word(&store, "adept", Role::Target).await;
+    bind(&store, adapt, vec![(1, adopt)]).await;
+
+    // The plan was computed while rank 1 still held `adapter`.
+    let outcome = store
+        .write(Actor::admin("abyss"), rebind(adapt, 1, adapter, adept))
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(
+            outcome.result,
+            WriteResult::Rebound {
+                rebound: 0,
+                skipped: 1
+            }
+        ),
+        "{:?}",
+        outcome.result
+    );
+    assert_eq!(outcome.events_written, 0);
+    assert_eq!(rank_holder(&store, adapt, 1).await, adopt);
+}
+
+#[tokio::test]
+async fn a_rebind_onto_a_word_already_bound_elsewhere_is_skipped() {
+    let (_dir, store) = fixture();
+    let adapt = seed_word(&store, "adapt", Role::Target).await;
+    let adapter = seed_word(&store, "adapter", Role::Target).await;
+    let adopt = seed_word(&store, "adopt", Role::Target).await;
+    bind(&store, adapt, vec![(1, adapter), (2, adopt)]).await;
+
+    // `UNIQUE (word_id, distractor_word_id)` would abort the transaction and
+    // take every other rank in the batch down with it.
+    let outcome = store
+        .write(Actor::admin("abyss"), rebind(adapt, 1, adapter, adopt))
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(
+            outcome.result,
+            WriteResult::Rebound {
+                rebound: 0,
+                skipped: 1
+            }
+        ),
+        "{:?}",
+        outcome.result
+    );
+    assert_eq!(rank_holder(&store, adapt, 1).await, adapter);
+    assert_eq!(rank_holder(&store, adapt, 2).await, adopt);
+}
+
+#[tokio::test]
+async fn a_rebind_never_makes_a_word_distract_itself() {
+    let (_dir, store) = fixture();
+    let adapt = seed_word(&store, "adapt", Role::Target).await;
+    let adapter = seed_word(&store, "adapter", Role::Target).await;
+    bind(&store, adapt, vec![(1, adapter)]).await;
+
+    let err = store
+        .write(Actor::admin("abyss"), rebind(adapt, 1, adapter, adapt))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Invalid(_)), "{err:?}");
+    assert_eq!(rank_holder(&store, adapt, 1).await, adapter);
+}
+
+#[tokio::test]
+async fn a_rebind_outside_the_three_ranks_is_rejected() {
+    let (_dir, store) = fixture();
+    let adapt = seed_word(&store, "adapt", Role::Target).await;
+    let adapter = seed_word(&store, "adapter", Role::Target).await;
+    let adopt = seed_word(&store, "adopt", Role::Target).await;
+    bind(&store, adapt, vec![(1, adapter)]).await;
+
+    let err = store
+        .write(Actor::admin("abyss"), rebind(adapt, 4, adapter, adopt))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Invalid(_)), "{err:?}");
+}
+
+#[tokio::test]
+async fn distractor_pairs_reads_both_lemmas() {
+    let (_dir, store) = fixture();
+    let adapt = seed_word(&store, "adapt", Role::Target).await;
+    let adapter = seed_word(&store, "adapter", Role::Target).await;
+    bind(&store, adapt, vec![(1, adapter)]).await;
+
+    let pairs = store
+        .read(morpho_store::queries::distractor_pairs)
+        .await
+        .unwrap();
+    assert_eq!(pairs.len(), 1);
+    assert_eq!(pairs[0].lemma, "adapt");
+    assert_eq!(pairs[0].distractor_lemma, "adapter");
+    assert_eq!(pairs[0].rank, 1);
+    assert_eq!(pairs[0].word_id, adapt);
+    assert_eq!(pairs[0].distractor_word_id, adapter);
 }
