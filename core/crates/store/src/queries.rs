@@ -595,6 +595,37 @@ pub fn distractor_edges(conn: &Connection) -> Result<Vec<(i64, i64, i64)>> {
     Ok(rows)
 }
 
+/// Primary POS for each word, from its `is_primary = 1` definition selection.
+///
+/// Returns `(word_id, pos)` for every word that has a primary selection enabled.
+pub fn primary_pos_map(conn: &Connection) -> Result<Vec<(i64, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT word_id, pos FROM definition_selections
+         WHERE is_primary = 1 AND enabled = 1
+         ORDER BY word_id",
+    )?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// All enabled definition-selection POS values for each word.
+///
+/// Returns `(word_id, pos)` pairs — a word with noun and verb senses appears
+/// twice. Used by distractor selection to detect POS overlap.
+pub fn word_pos_set(conn: &Connection) -> Result<Vec<(i64, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT word_id, pos FROM definition_selections
+         WHERE enabled = 1
+         ORDER BY word_id, pos",
+    )?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 /// Lemmas currently visible in `oos_occurrences`, folded and deduplicated.
 pub fn oos_lemmas(conn: &Connection) -> Result<Vec<String>> {
     let mut stmt =

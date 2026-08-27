@@ -35,7 +35,11 @@ pub const PLAN_INPUT_ALGO_VER: &str = "plan-input/1";
 
 /// Version of the distractor binder. Written to `distractors.algo_ver`; the
 /// table is deliberately exempt from staleness, so this is provenance only.
-pub const DISTRACTOR_ALGO_VER: &str = "distractor/1";
+///
+/// * `distractor/1` — nearest-by-DL distance, no stem or POS filtering.
+/// * `distractor/2` — excludes morphological relatives (`shares_stem`) and
+///   prefers same-POS candidates via the `(pos_mismatch, distance, …)` key.
+pub const DISTRACTOR_ALGO_VER: &str = "distractor/2";
 
 /// Version of the readiness/blocker evaluator.
 pub const READINESS_ALGO_VER: &str = "readiness/1";
