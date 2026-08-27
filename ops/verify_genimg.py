@@ -12,8 +12,9 @@ Three phases, run sequentially from __main__:
      candidate's image and the incumbent's image (read straight off the media
      bind mount, no need to re-download), score cosine similarity against the
      query.
-  3. select  — where generated > incumbent, POST /api/selections/image then
-     /api/selections/image/approve (mint→select→approve, see
+  3. select  — where generated > incumbent, POST /api/selections/image (with
+     `pin: false`, so a later, better-scoring candidate can still take the
+     slot back) then /api/selections/image/approve (mint→select→approve, see
      docs/OPERATIONS.md). Where incumbent wins, leave it untouched.
 
 All mutations go through the admin API; the only direct DB access is a
@@ -366,7 +367,10 @@ def main(argv=None):
         wid = entry["word_id"]
         cand_id = uploaded[wid]["img_cand_id"]
         ok1, _ = with_retry(
-            api_post_json, "/selections/image", {"word_id": wid, "cand_id": cand_id}, label=f"select {wid}"
+            api_post_json,
+            "/selections/image",
+            {"word_id": wid, "cand_id": cand_id, "pin": False},
+            label=f"select {wid}",
         )
         ok2 = False
         if ok1:

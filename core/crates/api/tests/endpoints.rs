@@ -563,6 +563,29 @@ async fn selection_override_pins_and_returns_detail() {
     assert_eq!(selection["selection_rev"], 2);
 }
 
+/// An automated caller (e.g. ops/verify_genimg.py) can select a candidate
+/// without pinning it, so a later, better-scoring candidate can still take the
+/// slot back — the whole point of not locking an automated pick in place.
+#[tokio::test]
+async fn selection_override_can_opt_out_of_pinning() {
+    let h = harness();
+    let word = seed_word(&h.store, "serene", Role::Target, Some(4602)).await;
+    let first = seed_definition(&h.store, word, "adj", "calm and peaceful").await;
+    let second = seed_definition(&h.store, word, "adj", "free from disturbance").await;
+    select_definition(&h.store, word, "adj", first).await;
+
+    let (status, body) = post(
+        &h.router,
+        "/api/selections/definition",
+        serde_json::json!({"word_id": word, "pos": "adj", "cand_id": second, "pin": false}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let selection = &body["definitions"][0]["selection"];
+    assert_eq!(selection["def_cand_id"], second);
+    assert_eq!(selection["pinned"], false);
+}
+
 #[tokio::test]
 async fn approval_round_trips_and_records_the_actor() {
     let h = harness();

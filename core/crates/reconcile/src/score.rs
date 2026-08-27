@@ -33,10 +33,11 @@ pub const WIDENED_QUERY: &str = "widened-query";
 /// A scene candidate is an SDXL candidate whose prompt described the word's own
 /// slot-1 sentence rather than the bare concept. It is *not* a strategy in the
 /// [`ImageStrategy`] sense — it changes nothing about how the candidate scores,
-/// because a generated picture ranks below a real photograph whatever it was
-/// prompted with. The note exists so the deriving rule can tell whether a word
-/// already holds a scene image made under the current template, and so the
-/// duplicate-image pressure can leave those candidates alone.
+/// because [`score_image`] only ever looks at resolution, primary-sense match
+/// and the strategy penalty, none of which the scene note touches. The note
+/// exists so the deriving rule can tell whether a word already holds a scene
+/// image made under the current template, and so the duplicate-image pressure
+/// can leave those candidates alone.
 pub const SCENE_NOTE: &str = "scene";
 
 /// How much a second-pass candidate gives up against a first-pass one.
@@ -235,20 +236,6 @@ const fn example_prior(source: ExampleSource) -> f64 {
         ExampleSource::Freedict => 0.72,
         ExampleSource::Tatoeba => 0.64,
         ExampleSource::Llm => 0.55,
-    }
-}
-
-const fn image_prior(source: ImageSource) -> f64 {
-    // Ruling #18: manual > keyed stock > wikimedia/openverse > sdxl.
-    //
-    // The stock libraries are curated and shot to illustrate a concept; the
-    // open collections are indexed, not curated, so a hit is more often merely
-    // topical. Both beat a picture that depicts nothing that ever existed.
-    match source {
-        ImageSource::Manual => 1.0,
-        ImageSource::Unsplash | ImageSource::Pexels | ImageSource::Pixabay => 0.8,
-        ImageSource::Wikimedia | ImageSource::Openverse => 0.7,
-        ImageSource::Sdxl => 0.5,
     }
 }
 
@@ -592,9 +579,26 @@ pub struct ImageFacts {
 pub const TARGET_WIDTH: i64 = 768;
 pub const TARGET_HEIGHT: i64 = 576;
 
+/// Weight of the resolution component in an image's score.
+///
+/// `scorer/4` drops the source prior: a stock photo, a Commons hit and an SDXL
+/// generation are judged purely on the quality evidence available for *this*
+/// candidate — how well it fills the target box and whether it matches the
+/// word's primary sense — never on which provider produced it. The two
+/// remaining components are scaled up from their old 0.35/0.20 split
+/// (`0.35 + 0.20 = 0.55`) so they still sum to 1.0, in the same proportion they
+/// already carried.
+pub const IMAGE_RESOLUTION_WEIGHT: f64 = 0.35 / 0.55;
+/// Weight of the primary-sense-match component. See [`IMAGE_RESOLUTION_WEIGHT`].
+pub const IMAGE_POS_MATCH_WEIGHT: f64 = 0.20 / 0.55;
+
 /// Score one image candidate.
+///
+/// Origin is deliberately not an input: a manual upload, a keyed-stock hit, a
+/// keyless-provider hit and an SDXL generation are scored identically once
+/// their resolution and primary-sense match are equal. Quality speaks for
+/// itself; where a picture came from does not.
 pub fn score_image(facts: &ImageFacts) -> Scored {
-    let prior = image_prior(facts.source);
     let resolution = match (facts.width, facts.height) {
         (Some(w), Some(h)) if w > 0 && h > 0 => {
             // Full marks at or above the target box; a downscale is free, an
@@ -609,12 +613,11 @@ pub fn score_image(facts: &ImageFacts) -> Scored {
     let pos_match = if facts.pos_matches_primary { 1.0 } else { 0.7 };
     let penalty = facts.strategy.penalty();
 
-    let total = 0.45 * prior + 0.35 * resolution + 0.20 * pos_match - penalty;
+    let total = IMAGE_RESOLUTION_WEIGHT * resolution + IMAGE_POS_MATCH_WEIGHT * pos_match - penalty;
     Scored {
         score: clamp(total),
         detail: ScoreDetail {
             total: clamp(total),
-            source_prior: Some(prior),
             resolution: Some(resolution),
             pos_match: Some(pos_match),
             strategy_penalty: (penalty > 0.0).then_some(penalty),
@@ -1080,9 +1083,11 @@ mod tests {
         );
     }
 
-    /// Ruling #18's image ordering, end to end.
+    /// `scorer/4`: origin carries no weight at all. Every source ties once
+    /// resolution and primary-sense match are equal — manual, keyed stock,
+    /// keyless providers and SDXL alike.
     #[test]
-    fn image_source_priors_follow_the_ruling() {
+    fn image_sources_no_longer_bias_the_score() {
         let facts = |source| ImageFacts {
             source,
             width: Some(1600),
@@ -1090,45 +1095,34 @@ mod tests {
             pos_matches_primary: true,
             strategy: ImageStrategy::Strict,
         };
-        let ranked: Vec<f64> = [
+        let scores: Vec<f64> = [
             ImageSource::Manual,
             ImageSource::Unsplash,
+            ImageSource::Pexels,
+            ImageSource::Pixabay,
             ImageSource::Wikimedia,
+            ImageSource::Openverse,
             ImageSource::Sdxl,
         ]
         .into_iter()
         .map(|source| score_image(&facts(source)).score)
         .collect();
         assert!(
-            ranked.windows(2).all(|pair| pair[0] > pair[1]),
-            "manual > stock > keyless > sdxl, got {ranked:?}"
+            scores
+                .windows(2)
+                .all(|pair| (pair[0] - pair[1]).abs() < 1e-12),
+            "no source should outrank another on origin alone, got {scores:?}"
         );
-        // The three stock libraries tie with each other, as do the two open
-        // collections: the source is evidence about curation, not about which
-        // brand it came from.
-        for pair in [
-            [ImageSource::Unsplash, ImageSource::Pexels],
-            [ImageSource::Pexels, ImageSource::Pixabay],
-            [ImageSource::Wikimedia, ImageSource::Openverse],
-        ] {
-            assert_eq!(
-                score_image(&facts(pair[0])).score,
-                score_image(&facts(pair[1])).score,
-                "{} and {} should tie",
-                pair[0],
-                pair[1]
-            );
-        }
     }
 
-    /// A keyless picture that is actually there beats a generated one, and a
-    /// readable sentence beats a prior — the prior is a tiebreak, not a veto.
+    /// A generated picture at the same resolution and primary-sense match as a
+    /// real photograph now ties it: quality, not provenance, drives the score.
     #[test]
-    fn a_real_photo_outranks_a_generated_one_even_at_lower_resolution() {
+    fn a_generated_image_ties_a_real_photo_at_equal_quality() {
         let commons = score_image(&ImageFacts {
             source: ImageSource::Wikimedia,
-            width: Some(960),
-            height: Some(720),
+            width: Some(768),
+            height: Some(576),
             pos_matches_primary: true,
             strategy: ImageStrategy::Strict,
         });
@@ -1139,7 +1133,25 @@ mod tests {
             pos_matches_primary: true,
             strategy: ImageStrategy::Strict,
         });
-        assert!(commons.score > generated.score);
+        assert!((commons.score - generated.score).abs() < 1e-12);
+
+        // But a sharper photo still outranks a lower-resolution generation —
+        // resolution is real evidence, source is not.
+        let sharper_commons = score_image(&ImageFacts {
+            source: ImageSource::Wikimedia,
+            width: Some(1600),
+            height: Some(1200),
+            pos_matches_primary: true,
+            strategy: ImageStrategy::Strict,
+        });
+        let soft_generated = score_image(&ImageFacts {
+            source: ImageSource::Sdxl,
+            width: Some(384),
+            height: Some(288),
+            pos_matches_primary: true,
+            strategy: ImageStrategy::Strict,
+        });
+        assert!(sharper_commons.score > soft_generated.score);
     }
 
     #[test]
@@ -1234,15 +1246,14 @@ mod tests {
         assert!(should_switch(Some(incumbent), challenger));
     }
 
-    /// Every candidate in the library predates the second passes, so a strict
-    /// score has to come out exactly as it did before — no rescore, no
-    /// `scorer_ver` bump, no churn on a live database.
+    /// A strict-pass hit at full resolution and a primary-sense match takes
+    /// full marks: `scorer/4` has nothing left to dock once the source prior is
+    /// gone and neither of the remaining components is imperfect.
     #[test]
-    fn a_strict_candidate_scores_exactly_what_it_always_did() {
+    fn a_strict_candidate_at_full_quality_scores_full_marks() {
         let facts = keyless(ImageStrategy::Strict);
-        // 0.45 * 0.7 + 0.35 * 1.0 + 0.20 * 1.0
         let scored = score_image(&facts);
-        assert!((scored.score - 0.865).abs() < 1e-9, "{scored:?}");
+        assert!((scored.score - 1.0).abs() < 1e-9, "{scored:?}");
         assert_eq!(scored.detail.strategy_penalty, None);
         let json: serde_json::Value = serde_json::from_str(&scored.detail_json()).unwrap();
         assert!(json.get("strategy_penalty").is_none());
@@ -1347,24 +1358,22 @@ mod tests {
     }
 
     /// The note is bookkeeping, not merit. Scene mode changes what a generated
-    /// picture *depicts*; it does not change where a generated picture ranks,
-    /// which is below every library and unchanged since ruling #18.
+    /// picture *depicts*; it does not change where a generated picture ranks.
     #[test]
     fn a_scene_candidate_scores_exactly_like_any_other_generated_one() {
         let scene = score_image(&generated("sdxl:1234 (scene scene/1)"));
         let bare = score_image(&generated(r#"{"prompt":"...","seed":1234}"#));
         assert_eq!(scene.score, bare.score);
         assert_eq!(scene.detail.strategy_penalty, None);
-        // 0.45 * 0.5 + 0.35 * 1.0 + 0.20 * 1.0
-        assert!((scene.score - 0.775).abs() < 1e-9, "{scene:?}");
+        // 7/11 * 1.0 + 4/11 * 1.0 — full resolution, primary-sense match, no
+        // strategy penalty, and (`scorer/4`) no source prior to dock it either.
+        assert!((scene.score - 1.0).abs() < 1e-9, "{scene:?}");
     }
 
-    /// The ordering the whole tier rests on: a real photograph of something
-    /// that exists beats a picture of something that does not, however well the
-    /// latter was prompted — and by more than the switching margin, so a
-    /// library hit arriving later actually takes the slot back.
+    /// `scorer/4`: a generated picture ties a library photograph of identical
+    /// quality — origin no longer separates them.
     #[test]
-    fn a_scene_candidate_never_outranks_a_library_photograph() {
+    fn a_scene_candidate_ties_a_library_photograph_of_equal_quality() {
         let scene = score_image(&generated("sdxl:1234 (scene scene/1)")).score;
         for source in [
             ImageSource::Manual,
@@ -1374,7 +1383,7 @@ mod tests {
             ImageSource::Wikimedia,
             ImageSource::Openverse,
         ] {
-            let library = score_image(&ImageFacts {
+            let library_same_quality = score_image(&ImageFacts {
                 source,
                 width: Some(768),
                 height: Some(576),
@@ -1382,10 +1391,45 @@ mod tests {
                 strategy: ImageStrategy::Strict,
             })
             .score;
-            assert!(library > scene, "{source} scored {library} vs {scene}");
             assert!(
-                should_switch(Some(scene), library),
-                "{source} could not take the slot back"
+                (library_same_quality - scene).abs() < 1e-9,
+                "{source} scored {library_same_quality} vs {scene}"
+            );
+        }
+    }
+
+    /// Quality is still real evidence, only origin stopped being one: a
+    /// full-resolution library photograph still outranks a soft, half-size
+    /// generation, and by enough to take the slot back.
+    #[test]
+    fn a_sharper_library_photograph_still_outranks_a_soft_generation() {
+        let soft_scene = score_image(&ImageFacts {
+            source: ImageSource::Sdxl,
+            width: Some(384),
+            height: Some(288),
+            pos_matches_primary: true,
+            strategy: ImageStrategy::from_source_ref(Some("sdxl:1234 (scene scene/1)")),
+        })
+        .score;
+        for source in [
+            ImageSource::Manual,
+            ImageSource::Unsplash,
+            ImageSource::Pexels,
+            ImageSource::Pixabay,
+            ImageSource::Wikimedia,
+            ImageSource::Openverse,
+        ] {
+            let sharp_library = score_image(&ImageFacts {
+                source,
+                width: Some(1600),
+                height: Some(1200),
+                pos_matches_primary: true,
+                strategy: ImageStrategy::Strict,
+            })
+            .score;
+            assert!(
+                should_switch(Some(soft_scene), sharp_library),
+                "{source} at full resolution could not take the slot off a half-size generation"
             );
         }
     }
@@ -1439,8 +1483,10 @@ mod tests {
 
     #[test]
     fn a_duplicate_still_loses_to_a_far_better_picture_of_its_own_kind() {
-        // Merit is not overruled: a strict stock hit that happens to be shared
-        // still beats a widened keyless one that is not.
+        // Merit is not overruled: a strict, full-resolution, primary-sense-
+        // matching hit that happens to be shared still beats a widened keyless
+        // one that is neither full resolution nor a primary-sense match, even
+        // after the duplicate penalty lands.
         let stock = image_selection_score(
             score_image(&ImageFacts {
                 source: ImageSource::Unsplash,
@@ -1453,7 +1499,14 @@ mod tests {
             true,
         );
         let widened = image_selection_score(
-            score_image(&keyless(ImageStrategy::WidenedQuery)).score,
+            score_image(&ImageFacts {
+                source: ImageSource::Openverse,
+                width: Some(1600),
+                height: Some(1200),
+                pos_matches_primary: false,
+                strategy: ImageStrategy::WidenedQuery,
+            })
+            .score,
             false,
         );
         assert!(stock > widened);

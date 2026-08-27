@@ -25,7 +25,12 @@ pub const TTS_ALGO_VER: &str = "tts-input/1";
 ///   instead of only shading its readability component, so a definition the
 ///   learner cannot read can win a slot no clean candidate can fill and no
 ///   other.
-pub const SCORER_ALGO_VER: &str = "scorer/3";
+/// * `scorer/4` — an image no longer carries a source prior: manual, stock,
+///   keyless-provider and SDXL candidates are judged purely on resolution and
+///   primary-sense match, never on which provider produced them. The two
+///   remaining components are rescaled from their old 0.35/0.20 split so they
+///   still sum to 1.0.
+pub const SCORER_ALGO_VER: &str = "scorer/4";
 
 /// Version of the plan builder (Tarjan → condensation → grouping).
 pub const PLAN_ALGO_VER: &str = "plan/1";

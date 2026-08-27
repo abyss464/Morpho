@@ -531,6 +531,17 @@ pub struct SelectionBody {
     #[serde(default)]
     pub slot: Option<i64>,
     pub cand_id: i64,
+    /// Whether the new selection is protected from automatic selection.
+    /// Defaults to `true` for backward compatibility with the console, which
+    /// always means a deliberate human override; an automated pipeline that
+    /// wants its pick to stay open to a better-scoring candidate later passes
+    /// `false`.
+    #[serde(default = "default_pin")]
+    pub pin: bool,
+}
+
+const fn default_pin() -> bool {
+    true
 }
 
 /// `SelectionKeyBody`

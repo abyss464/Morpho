@@ -364,9 +364,13 @@ pub async fn set_selection(
             WriteOp::SetSelection(SetSelection {
                 slot,
                 cand_id: body.cand_id,
-                // A human override always pins (README Part 3 §"人工覆盖").
+                // A human override pins by default (README Part 3 §"人工覆盖");
+                // an automated caller that does not want to lock the slot
+                // passes `pin: false` (e.g. ops/verify_genimg.py, which selects
+                // a CLIP-verified upload but leaves it open to a later,
+                // better-scoring candidate).
                 selected_by: SelectedBy::Human,
-                pinned: true,
+                pinned: body.pin,
             }),
         )
         .await?;
