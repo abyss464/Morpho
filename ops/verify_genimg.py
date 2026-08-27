@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upload 48 AI-generated vocabulary images, CLIP-verify each against the
+"""Upload AI-generated vocabulary images, CLIP-verify each against the
 currently selected (incumbent) image, and select the generated image when it
 scores higher.
 
@@ -20,6 +20,7 @@ read-only connection to fetch each word's slot-1 sentence, primary
 definition, and current selection (mirrors ops/clip_rematch.py).
 """
 
+import argparse
 import json
 import os
 import sqlite3
@@ -36,15 +37,51 @@ ROOT = "/home/abysser/Code/learning/Morpho"
 DB = f"{ROOT}/data/working.db"
 MEDIA = f"{ROOT}/data/media"
 API = os.environ.get("MORPHO_API", "http://127.0.0.1:30012/api")
-ACTOR = "operator-genimg"
 
 SCRATCH = (
     "/tmp/claude-1000/-home-abysser-Code-learning-Morpho/"
     "d3d89616-3276-4389-b525-1b3f57774b29/scratchpad"
 )
-GENIMG_DIR = f"{SCRATCH}/genimg"
-CANDIDATES_JSON = f"{SCRATCH}/image_gen_candidates.json"
-RESULTS_PATH = f"{SCRATCH}/genimg_results.json"
+
+# Wave-1 defaults; every one is overridable from the command line (or the
+# matching MORPHO_GENIMG_* environment variable) so later waves reuse the
+# script unchanged.
+DEFAULT_GENIMG_DIR = f"{SCRATCH}/genimg"
+DEFAULT_CANDIDATES_JSON = f"{SCRATCH}/image_gen_candidates.json"
+DEFAULT_RESULTS_PATH = f"{SCRATCH}/genimg_results.json"
+DEFAULT_ACTOR = "operator-genimg"
+
+# Populated by main() from parsed arguments.
+GENIMG_DIR = DEFAULT_GENIMG_DIR
+CANDIDATES_JSON = DEFAULT_CANDIDATES_JSON
+RESULTS_PATH = DEFAULT_RESULTS_PATH
+ACTOR = DEFAULT_ACTOR
+
+
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument(
+        "--input-dir",
+        default=os.environ.get("MORPHO_GENIMG_DIR", DEFAULT_GENIMG_DIR),
+        help="directory holding {word_id}.png files (default: wave-1 scratchpad)",
+    )
+    p.add_argument(
+        "--words-json",
+        default=os.environ.get("MORPHO_GENIMG_WORDS", DEFAULT_CANDIDATES_JSON),
+        help="JSON array of objects with at least word_id and lemma",
+    )
+    p.add_argument(
+        "--results",
+        default=os.environ.get("MORPHO_GENIMG_RESULTS", ""),
+        help="where to write the per-word result JSON "
+        "(default: <input-dir>/verify_results.json)",
+    )
+    p.add_argument(
+        "--actor",
+        default=os.environ.get("MORPHO_GENIMG_ACTOR", DEFAULT_ACTOR),
+        help="value sent as the X-Morpho-User header",
+    )
+    return p.parse_args(argv)
 
 
 def api_post_json(path, body):
@@ -143,9 +180,36 @@ def upload_all(candidates):
     return uploaded, failures
 
 
-def main():
-    candidates = json.load(open(CANDIDATES_JSON))
-    print(f"Loaded {len(candidates)} candidates.")
+def main(argv=None):
+    global GENIMG_DIR, CANDIDATES_JSON, RESULTS_PATH, ACTOR
+
+    args = parse_args(argv)
+    GENIMG_DIR = os.path.abspath(args.input_dir)
+    CANDIDATES_JSON = args.words_json
+    RESULTS_PATH = args.results or f"{GENIMG_DIR}/verify_results.json"
+    ACTOR = args.actor
+
+    all_words = json.load(open(CANDIDATES_JSON))
+    # Only touch words that actually have a generated PNG waiting; a wave's
+    # word list is normally far longer than the batch that has been rendered.
+    candidates = [w for w in all_words if os.path.exists(f"{GENIMG_DIR}/{w['word_id']}.png")]
+    print(f"Loaded {len(all_words)} words from {CANDIDATES_JSON}; "
+          f"{len(candidates)} have a PNG in {GENIMG_DIR}.")
+    if not candidates:
+        print("Nothing to do.")
+        return
+
+    print("\n=== Phase 0: snapshot incumbents ===")
+    conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    incumbent_hash = {
+        wid: h
+        for wid, h in conn.execute(
+            """SELECT i.word_id, c.file_hash FROM image_selections i
+            JOIN image_candidates c ON c.img_cand_id=i.img_cand_id"""
+        )
+    }
+    incumbent_cid = {wid: cid for wid, cid in conn.execute("SELECT word_id, img_cand_id FROM image_selections")}
+    print(f"  snapshotted {len(incumbent_hash)} incumbents BEFORE upload")
 
     print("\n=== Phase 1: upload ===")
     uploaded, upload_failures = upload_all(candidates)
@@ -157,8 +221,6 @@ def main():
     )
     tok = open_clip.get_tokenizer("ViT-B-32")
     model = model.cuda().eval()
-
-    conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
 
     def sentence(wid):
         r = conn.execute(
@@ -190,15 +252,6 @@ def main():
             f = model.encode_text(tok([text]).cuda())
             f = f / f.norm(dim=-1, keepdim=True)
         return f[0]
-
-    incumbent_hash = {
-        wid: h
-        for wid, h in conn.execute(
-            """SELECT i.word_id, c.file_hash FROM image_selections i
-            JOIN image_candidates c ON c.img_cand_id=i.img_cand_id"""
-        )
-    }
-    incumbent_cid = {wid: cid for wid, cid in conn.execute("SELECT word_id, img_cand_id FROM image_selections")}
 
     results = []
     for row in candidates:
