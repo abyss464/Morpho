@@ -229,25 +229,18 @@ read it). `word_id` is stable across releases, so user progress survives updates
 
 ## 8. Current state & backlog
 
-- **UNBLOCKED (2026-08-27) — the cut is green, nothing exported yet.** `scorer/2`
-  (self-reference factor + sense-commonality prior) had moved ~1420 definition
-  selections; 102 of those traded an out-of-scope-clean definition for a
-  more-common sense that references vocabulary outside the lexicon. The OOV
-  queue reopened with 330 lemmas, 127 words went `oos_pending`, and the
-  dependency closure held back the other 4104 — `exportable_count` 0.
-  `scorer/3` (§7.8) turns out-of-scope into a multiplicative gate; the rescore +
-  `unapprove_auto.py` + reselect moved 124 definition slots back onto clean
-  candidates and dropped the open queue 330 → 224. The rest was resolved by
-  hand: 224 queued lemmas + 182 silently-referenced ones (§7.10) anchored with
-  Chinese glosses, 6 stuck promoted auxiliaries anchored the same way (§7.11),
-  and three `question_images_distinct` collisions (integrate, justify,
-  restrictive) fixed by re-selecting one side's image. State now: 4231
-  shippable = 4231 exportable, 0 excluded, empty `gate_failures`, `oos_open` 0,
-  0 blocked words, 0 dead letters, 665 gloss anchors. **Next step is the export
-  itself** (§5) plus the app refresh (§6).
-- Everything from the 2026-08-26 pass is good and approved: primary-POS
-  corrections, CLIP rematch, the 48 generated images (all selected + approved),
-  TTS fully synthesised, 0 dead letters.
+- **Shipped: release 1.5 (`2026.08.27+d034466d`): 4231 words.** The content-quality
+  wave: scorer v2→v3 definitions (inflection-aware self-reference gate: 565→~104
+  self-referencing selections, remainder last-resort; sense-commonality prior),
+  482 primary-POS corrections (attorney/add/charm/quality etc. now carry their
+  common senses), CLIP rematch over the full lexicon with persisted scores
+  (`ops/clip_rematch.py` writes clip_scores.json), 48 codex-generated images for
+  the worst CLIP scorers (all beat their incumbents, selected + approved via
+  `ops/verify_genimg.py`), 665 Chinese gloss anchors (up from 229). APK built
+  and verified (978 MB fatApkDebug, 4231 words, media synced 25904 = manifest).
+  word_id stability preserved — user progress carries over from 1.4.
+- The scorer/2 → scorer/3 incident and its resolution are §7.8; the diagnosis
+  SQL for "does this slot need human judgment" is in §5.1.
 - **Shipped:** release 1.4 (`2026.08.26+b5ce3f0e`): 4253 words, real dictionary
   definitions, OpenSubtitles example sentences (flagged 62%→0.4%), CLIP-matched
   images, 229 Chinese gloss anchors, per-question image distinctness, bottom-
