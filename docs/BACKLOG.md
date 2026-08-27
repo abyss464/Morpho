@@ -23,7 +23,7 @@ content change exactly once.
 
 | # | Title | Est | Pri | Phase | Status |
 |---|-------|-----|-----|-------|--------|
-| 19+8 | CLIP 语义评分内化到引擎 + codex 生成源（图文不匹配根因修复；worktree 内开发，不动线上） | L | P1 | 1 | dispatched |
+| 19+8 | CLIP 内化+codex 生成源 — **代码完成**于分支 `worktree-agent-af41b483305ed8ad6`（4 commits: d09ee24/f8b633d/751fcb9/7fb355e，66 文件 +5454）。架构：adapters/clip 为宿主侧 HTTP sidecar（30013，内容哈希寻址）；clip_scores 表内容寻址如 tts_assets；CLIP 权重 0.60 于 rank 时应用不入缓存；schema v6→7 加法迁移；SCORER_ALGO_VER 4→5；codex 子进程适配器、例句条件生成、无句推迟。agent 报测试全绿（core 781/adapters/admin-ui）。**conductor 合并+复验+部署=下会话第一步**（与 #12 合并预计有加法性冲突：routes/dto/ops/mod）；ship 步骤在 751fcb9 的运维文档 + agent 报告。近重复去重(≥0.92)未做已声明（§7.6 仍开） | L | P1 | 1 | code on branch, merge pending |
 | B3 | 首页 0/50 不更新 — 结论：HEAD 上不复现。历史真因是 wave-3a 的 daily_stats schema 变更未写迁移，旧 user.db 上所有统计写入失败；2a8e2ed 的预发布库丢弃守卫已修。已补 5 个钉死测试（03e7bf5，42 test 全绿）。真机复验留在装机后 | S | P2 | 1 | ✅ code-verified |
 | 9+B5 | NSFW/不当图片清理（CLIP 语义筛查全库 + 嫌疑词人工目检）+ 129 张 codex 图（126 在选）用 blank/floor gate 复检 reject。**Owner 追加（2026-08-27 已确认）**：全库在选图清除 ①纯色/近纯色图 ②以文字为主体的图（尤其把目标词写在图里的——泄答案且骗 CLIP 分）；文字类每张人工目检后才 reject | M | P1 | 2 | dispatched, scope extended |
 | 6 | 自指释义改写 | M | P1 | 2 | ✅ done, conductor-verified |
