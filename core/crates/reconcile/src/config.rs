@@ -786,7 +786,7 @@ pub const DEFAULT_ADAPTER_COMMAND: &[&str] = &[
 /// Directory under `adapters_root` that holds the per-adapter projects.
 pub const ADAPTERS_DIR: &str = "adapters";
 
-/// The three subprocess adapters, and the jobs that dead-letter without each.
+/// The subprocess adapters, and the jobs that dead-letter without each.
 ///
 /// Ruling #17 wants a startup warning that names the damage rather than a vague
 /// "adapter unavailable", so the consequence is spelled out next to the name.
@@ -806,6 +806,10 @@ pub const ADAPTERS: &[(&str, &str)] = &[
     (
         "codex",
         "gen_image_codex jobs — the last image source, for words nothing pictures aptly",
+    ),
+    (
+        "clip",
+        "score_image_clip jobs — no semantic scoring, image selection ranks on quality alone",
     ),
 ];
 

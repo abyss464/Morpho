@@ -34,6 +34,10 @@ pub const SDXL_TIMEOUT: Duration = Duration::from_secs(600);
 /// Codex generation goes out to a hosted model over somebody else's queue, so
 /// it is given the same budget as a local render plus the round trip.
 pub const CODEX_TIMEOUT: Duration = Duration::from_secs(900);
+/// CLIP scores a handful of images against one sentence in milliseconds once
+/// the model is loaded, but the model load itself — which happens once per
+/// subprocess invocation — can take seconds on CPU and a few on GPU.
+pub const CLIP_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// stderr kept for `last_error`. Enough for a traceback, bounded so one broken
 /// adapter cannot bloat the database.
@@ -348,6 +352,28 @@ pub async fn codex_generate(
     request: CodexRequest<'_>,
 ) -> Result<CodexResult, TaskError> {
     call(config, "codex", "codex.generate", request, CODEX_TIMEOUT).await
+}
+
+/// `clip.score` request — a word's pictures scored against its text.
+///
+/// Unlike the HTTP sidecar, the subprocess adapter receives the media root from
+/// the engine rather than configuring it itself, so both sides agree about where
+/// the files are without a separate `MORPHO_CLIP_MEDIA_ROOT` variable.
+#[derive(Debug, Serialize)]
+pub struct ClipRequest<'a> {
+    pub text: &'a str,
+    pub images: &'a [String],
+    pub media_root: String,
+}
+
+/// `clip.score` result — reuses [`super::clip::ScoreResponse`] for the
+/// deserialization target since the subprocess adapter returns the same shape as
+/// the HTTP sidecar.
+pub async fn clip_score(
+    config: &AdapterConfig,
+    request: ClipRequest<'_>,
+) -> Result<super::clip::ScoreResponse, TaskError> {
+    call(config, "clip", "clip.score", request, CLIP_TIMEOUT).await
 }
 
 /// Is this executable reachable — on `PATH`, or at the absolute path given?

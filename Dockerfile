@@ -54,6 +54,12 @@ RUN cd morfessor && uv sync --frozen
 COPY adapters/codex/ ./codex/
 RUN cd codex && uv sync --frozen
 
+# CLIP adapter. CPU-only torch is resolved from PyTorch's dedicated index
+# so the image stays small and accelerator-free. GPU auto-detection kicks
+# in when running natively under a venv that holds a CUDA/ROCm build.
+COPY adapters/clip/ ./clip/
+RUN cd clip && UV_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu uv sync --frozen
+
 # -- 4. Runtime image -------------------------------------------------------
 FROM python:3.12-slim-bookworm AS runtime
 
@@ -74,6 +80,7 @@ COPY --from=py-builder /build/adapters/common/ /app/adapters/common/
 COPY --from=py-builder /build/adapters/tts/    /app/adapters/tts/
 COPY --from=py-builder /build/adapters/morfessor/ /app/adapters/morfessor/
 COPY --from=py-builder /build/adapters/codex/    /app/adapters/codex/
+COPY --from=py-builder /build/adapters/clip/     /app/adapters/clip/
 
 # uv binary (morphod spawns adapters via `uv run`)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv

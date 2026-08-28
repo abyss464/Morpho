@@ -24,7 +24,7 @@ use crate::engine::EngineContext;
 use crate::exec::{store_error, wrong_payload, Executor};
 use crate::rule::{JobPayload, JobSpec};
 use crate::score::ImageStrategy;
-use crate::sources::{clip, images, proc};
+use crate::sources::{images, proc};
 
 /// Negative prompt for SDXL. Text in a picture ruins a four-image quiz grid.
 const SDXL_NEGATIVE: &str = "text, watermark, logo, caption, letters, signature";
@@ -550,39 +550,43 @@ impl Executor for ScoreImageClipExecutor {
         else {
             return Err(wrong_payload(JobKind::ScoreImageClip));
         };
-        let Some(base_url) = self.context.sources.config.clip_url() else {
-            // The rule checks this too; reaching here means the sidecar was
-            // unconfigured between derivation and execution.
-            return Err(TaskError::permanent("clip sidecar is not configured"));
-        };
         if file_hashes.is_empty() {
             // The rule never derives an empty ask; a job that carries one has
             // nothing to do and nothing to report.
             return Ok(());
         }
 
-        let response = clip::score(&self.context.sources.http, base_url, text, file_hashes).await?;
+        let media_root = self.context.media.root();
+        let response = proc::clip_score(
+            &self.context.sources.adapters,
+            proc::ClipRequest {
+                text,
+                images: file_hashes,
+                media_root: media_root.to_string_lossy().into_owned(),
+            },
+        )
+        .await?;
 
-        // A sidecar quietly serving a different checkpoint would file two
+        // An adapter quietly serving a different checkpoint would file two
         // models' cosines under one identity, and nothing downstream could tell
         // them apart — the exact failure `model_ver` exists to prevent. So the
         // mismatch is loud and permanent rather than a warning.
         let expected = self.context.images.clip_model_ver();
         if response.model_ver() != expected {
             return Err(TaskError::permanent(format!(
-                "clip sidecar serves {}, but this engine stores scores as {expected}",
+                "clip adapter serves {}, but this engine stores scores as {expected}",
                 response.model_ver()
             )));
         }
         if !response.missing.is_empty() {
-            // Bytes the library registered and the sidecar cannot see: a media
+            // Bytes the library registered but the adapter cannot see: a media
             // root pointed somewhere else, or a file lost to a restore. Worth
             // saying out loud, not worth failing the other candidates over.
             tracing::warn!(
                 word_id,
                 missing = response.missing.len(),
                 first = response.missing.first(),
-                "clip sidecar could not read some of this word's pictures"
+                "clip adapter could not read some of this word's pictures"
             );
         }
 
@@ -605,11 +609,11 @@ impl Executor for ScoreImageClipExecutor {
             // Permanent is the honest classification: the same files will be
             // just as unreadable next time. The job backs off, dead-letters, and
             // shows up in the dead-letter box naming a word whose media the
-            // sidecar cannot see — which is a real thing an operator should fix
+            // adapter cannot see — which is a real thing an operator should fix
             // (usually a media root pointed somewhere else).
             return Err(TaskError::permanent(format!(
-                "clip sidecar could not read any of this word's {} picture(s); \
-                 check MORPHO_CLIP_MEDIA_ROOT",
+                "clip adapter could not read any of this word's {} picture(s); \
+                 check the media root configuration",
                 file_hashes.len()
             )));
         }

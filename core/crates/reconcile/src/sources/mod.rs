@@ -5,10 +5,8 @@
 //! * **in-process** — HTTP via reqwest (Free Dictionary, Wiktionary, Wikimedia
 //!   Commons, Openverse, Tatoeba, three stock-photo APIs), WordNet parsed from
 //!   WNdb files, the exam corpus read from JSONL;
-//! * **subprocess** — the Python adapters (`tts`, `morfessor`, `sdxl`, `codex`)
-//!   speaking the envelope in `docs/contracts/adapter-protocol.md`;
-//! * **sidecar** — the CLIP scorer, an HTTP service of our own that runs outside
-//!   the engine because it needs a GPU (see [`clip`]).
+//! * **subprocess** — the Python adapters (`tts`, `morfessor`, `sdxl`, `codex`,
+//!   `clip`) speaking the envelope in `docs/contracts/adapter-protocol.md`.
 //!
 //! Every one of them is a pure function from typed input to typed output plus
 //! the `Permanent | Transient | RateLimited` taxonomy. None of them sees the
@@ -48,6 +46,8 @@ pub struct SourceSet {
     /// The codex adapter's project is on disk and its launcher is runnable.
     /// Resolved once, at load: see [`SourceSet::has_codex`].
     codex_available: bool,
+    /// Resolved once, at load: see [`SourceSet::has_clip`].
+    clip_available: bool,
 }
 
 impl SourceSet {
@@ -89,10 +89,14 @@ impl SourceSet {
         // means the source is absent rather than broken, so the chain stops at
         // SDXL and the word honestly reports `missing_image` — the same answer
         // a stock library with no API key gives.
-        let codex_available = proc::probe_adapters(&adapters)
-            .into_iter()
+        let probes = proc::probe_adapters(&adapters);
+        let codex_available = probes
+            .iter()
             .any(|probe| probe.adapter == "codex" && probe.available())
             && proc::binary_available(config.codex_bin());
+        let clip_available = probes
+            .iter()
+            .any(|probe| probe.adapter == "clip" && probe.available());
 
         Ok(Self {
             config: Arc::new(config),
@@ -101,6 +105,7 @@ impl SourceSet {
             wordnet,
             corpus,
             codex_available,
+            clip_available,
         })
     }
 
@@ -116,12 +121,12 @@ impl SourceSet {
         self.config.comfyui_url().is_some()
     }
 
-    /// Is there a CLIP sidecar to score against?
+    /// Is the CLIP adapter available to score against?
     ///
     /// `false` is an ordinary configuration, not a fault: image selection then
     /// ranks on the quality prior alone and every word keeps the picture it has.
     pub fn has_clip(&self) -> bool {
-        self.config.clip_url().is_some()
+        self.clip_available
     }
 
     /// Is the codex adapter actually on disk?
