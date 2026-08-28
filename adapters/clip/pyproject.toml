@@ -1,22 +1,28 @@
 [project]
-name = "morpho-clip-sidecar"
+name = "morpho-clip-adapter"
 version = "0.1.0"
-description = "Morpho CLIP sidecar: image-text aptness scoring over HTTP"
+description = "Morpho CLIP adapter: image-text aptness scoring via subprocess or HTTP sidecar"
 readme = "README.md"
 requires-python = ">=3.12"
-# Deliberately empty, and it stays that way. The service is stdlib-only apart
-# from the model backend, and the model backend is deliberately not installed
-# here: it comes from the venv that already holds a working accelerator build of
-# torch (on this machine, ~/Code/vendor/ComfyUI/.venv, which is also what
-# `ops/clip_rematch.py` ran under). Declaring `torch` here would invite uv to
-# resolve a second, CPU-only copy of it into a venv that is never the one this
-# service runs under — a gigabyte of download to answer a question nobody asked.
+# The subprocess adapter (clip-adapter) runs in its own uv-managed venv and
+# needs the model backend installed.  The sidecar (clip-sidecar) can still be
+# run under an external venv that already holds a GPU-enabled torch — setting
+# PYTHONPATH and pointing at the source tree, as documented in
+# docs/contracts/clip-service.md.
 #
-# What the backend needs is stated in the README and checked at import time:
-# `open_clip`, `torch`, `pillow`.
-dependencies = []
+# In Docker the Dockerfile resolves torch from the CPU-only index
+# (https://download.pytorch.org/whl/cpu) via UV_EXTRA_INDEX_URL so the image
+# stays small and accelerator-free.  Natively, torch auto-detects CUDA/ROCm
+# and uses whatever the host has.
+dependencies = [
+    "morpho-adapter-common",
+    "torch>=2.0",
+    "open-clip-torch>=2.20",
+    "pillow>=10.4,<12",
+]
 
 [project.scripts]
+clip-adapter = "morpho_clip.adapter:main"
 clip-sidecar = "morpho_clip.cli:main"
 
 [build-system]
@@ -25,6 +31,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/morpho_clip"]
+
+[tool.uv.sources]
+morpho-adapter-common = { path = "../common", editable = true }
 
 [dependency-groups]
 dev = ["pytest>=8.3", "ruff>=0.6"]

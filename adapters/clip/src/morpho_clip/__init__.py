@@ -1,13 +1,17 @@
-"""Morpho CLIP sidecar: image-text aptness scoring over HTTP.
+"""Morpho CLIP adapter: image-text aptness scoring.
 
-Runs outside the engine because it needs a GPU the engine's container does not
-have, and is reached as a client — the same shape `adapters/sdxl` uses to reach
-ComfyUI. See `docs/contracts/clip-service.md`.
+Two modes:
+
+* **subprocess adapter** (primary) — ``clip-adapter``, spawned by morphod per
+  job via the envelope in ``docs/contracts/adapter-protocol.md``.
+* **HTTP sidecar** (secondary) — ``clip-sidecar``, a long-running server for
+  the GPU path documented in ``docs/contracts/clip-service.md``.
 """
 
 from __future__ import annotations
 
 from .media import MediaLibrary, default_root, is_content_hash
+from .ops import OPS
 from .scorer import ALGO_VER, OpenClipScorer, Scorer
 from .service import BadRequestError, ScoreService, build_handler, serve
 
@@ -15,6 +19,7 @@ __all__ = [
     "ALGO_VER",
     "BadRequestError",
     "MediaLibrary",
+    "OPS",
     "OpenClipScorer",
     "ScoreService",
     "Scorer",
