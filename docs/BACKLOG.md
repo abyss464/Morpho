@@ -6,19 +6,15 @@
 |---|---|---|---|---|
 | #37 | 支持覆盖安装升级 | app/ops | P0 | 定位 `adb install -r` 后应用损坏的原因；若无法稳定修复，提供自动备份并恢复 `user.db` 的升级流程。完成标准：覆盖升级后应用可用、学习进度保留、内容版本校验正确。 |
 | #38 | 建立崩溃诊断通道 | app | P0 | 确定本地导出或远程上报方案并实现。完成标准：外部设备崩溃后可取得完整堆栈、机型、系统版本、应用版本和内容版本。 |
-| #53 | 天然配对图文数据集替换图库图 | ops/core | P1 | 1601 词仅有图库来源（openverse/pixabay/wikimedia/sdxl），无天然配对图文。逐批引入 caption-image 数据集（Visual Genome、Flickr30k、Conceptual Captions 等），按 lemma 匹配词汇，导入天然配对的图片与描述句替换图库图。完成标准：仅图库来源词从 1601 降至 200 以下；入库流程可重复执行。 |
 | #24 | 支持多词书体系 | domain/core/app | P2 | 实施词书标签、依赖边、个人基底与目标配置、运行时学习集推导和跨配置进度保留。导入高中及以上词表前确认来源。 |
 | #25 | 记录逐词学习与复习事件 | app | P2 | 新增加法迁移及事件表，记录 `word_id`、事件类型、时间和结果，并提交对应 `.sqm`。完成标准：每次学习和复习均形成可查询事件。 |
 | #26 | 实现可插拔专用复习模式 | app | P2 | 保留 FSRS v5 调度，实现“单词与发音 + 四个图片释义组合”的循环答题模块；错题重复至全部答对，并接入 #25。 |
-
-## Inbox
-
-A5: #53 — Docker 重建（含 CLIP 子进程适配器）并启动引擎。执行 ops/vg_ingest.py 导入 VG 首批 1422 对。调研 Flickr30k、Conceptual Captions、SBU Captions 等数据集对剩余 stock-only 词的覆盖率，构建各数据源的 prepare + ingest 脚本（复用 vg_prepare.py / vg_ingest.py 模式），导入全部匹配的天然配对图文。导入完成后统计 stock-only 剩余数。Docker 重建、gate 通过、git 提交。完成标准：stock-only 词从 1601 降至 200 以下。
 
 ## 已完成
 
 | 编号 | 交付项 | 结果 | 参考 |
 |---|---|---|---|
+| #53 | 天然配对图文数据集替换图库图 | VG+CC3M+WIT+Commons 导入，stock-only 1601→0，release 1.9 | `690b5fe`, `a3c456d` |
 | #52 | CLIP 评分改为子进程适配器 | sidecar 退役，subprocess adapter，gate 通过 | `7d8d591` |
 | #51 | 启用 CLIP 与 Codex 运行服务 | 被 #52 取代，CLIP 随引擎自动启动 | — |
 | #19+#8 | 集成 CLIP 评分与 Codex 图片生成源 | CLIP sidecar、Codex 适配器、schema v7 合并 | `23452f0` |
