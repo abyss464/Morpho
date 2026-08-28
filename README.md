@@ -60,7 +60,7 @@
 Morpho/
 ├── core/        # Rust：morphod 单二进制（对账引擎 + 管理 API + 导出器）
 ├── admin-ui/    # TypeScript：React + Vite 管理前端，构建产物由 morphod 静态托管
-├── adapters/    # Python 适配器：tts / morfessor / sdxl / codex（子进程）+ clip（HTTP 边车）
+├── adapters/    # Python 适配器：tts / morfessor / sdxl / codex / clip（子进程）
 ├── app/         # Android：Kotlin + Jetpack Compose
 └── data/        # working.db（SQLite WAL）+ 内容寻址媒体库
 ```
@@ -92,7 +92,7 @@ Morpho/
 | 释义候选 | Free Dictionary API（按词性分条） | WordNet 释义；LLM 改写（大纲外词规避）；人工 |
 | 例句候选 | 考研大纲语料 | LLM；人工 |
 | 图片候选 | Unsplash / Pexels / Pixabay API | Wikimedia / Openverse；SDXL 生成（本地 ComfyUI）；codex 生成；人工上传 |
-| 图文语义匹配 | CLIP 边车（open_clip，进程外 GPU） | 无 —— 缺席即退化为纯画质排序 |
+| 图文语义匹配 | CLIP 子进程适配器（open_clip） | 无 —— 缺席即退化为纯画质排序 |
 | 词源 | Wiktionary | Morfessor 形态学切分 |
 | 发音音频 | edge-tts（单词、释义、例句各自独立合成） | — |
 
@@ -404,7 +404,7 @@ enum AdapterError { Permanent(String), Transient(String), RateLimited { until: I
 | LLM 改写 | HTTP（OpenAI 兼容端点）；prompt 以版本哈希钉住；产出重分词复检，仍含大纲外 token 则拒绝（= Permanent，浮给人） |
 | Unsplash / Pexels / Pixabay | HTTP；元数据 + 下载字节 → 内容寻址库 |
 | SDXL | HTTP 到本地 ComfyUI（POST /prompt，轮询 /history）；泳道并发 1，超时 10 min |
-| CLIP | HTTP 到**进程外边车**（`adapters/clip`，POST /score）。GPU 不在引擎容器里，且每任务重载模型的代价远超打分本身，所以它是常驻服务而非子进程适配器。请求只传内容哈希，边车自己解析媒体库路径。契约见 `docs/contracts/clip-service.md` |
+| CLIP | 子进程（`adapters/clip`），stdin/stdout JSON 信封。引擎传 `media_root`，适配器自行解析 `{root}/{hash[:2]}/{hash}.webp`。每任务一个进程，模型加载 ~2-4 s（CPU），打分毫秒级。Docker 内 CPU 推理；原生运行时自动使用 GPU。契约见 `docs/contracts/clip-subprocess.md` |
 | codex | 子进程（`adapters/codex`），把词的 slot-1 例句交给外部图像生成器；超时 15 min。适配器项目不在盘上、或 `MORPHO_CODEX_BIN` 找不到二进制 → 源**禁用**（同"没有 API key"），绝不死信刷屏 |
 | edge-tts | 子进程（adapters/tts），60 s 超时，stderr 进 last_error |
 | Morfessor | 子进程，stdin/stdout 批处理行协议，一次进程摊薄一批词 |

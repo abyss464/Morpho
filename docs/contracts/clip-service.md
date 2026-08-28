@@ -1,4 +1,13 @@
-# CLIP Service Contract (morphod ⇄ adapters/clip)
+# CLIP Service Contract (morphod ⇄ adapters/clip) — SUPERSEDED
+
+> **Superseded by the subprocess adapter (contract #52, `clip-subprocess.md`).**
+> The CLIP scorer is now a subprocess adapter following `adapter-protocol.md`,
+> spawned on demand like TTS/Morfessor/SDXL. The HTTP sidecar described below
+> is no longer the primary interface. This file is kept for reference.
+
+---
+
+# Original CLIP Service Contract
 
 The CLIP sidecar answers one question: **how well does this picture answer this
 sentence?** morphod folds the answer into image selection, where it is the

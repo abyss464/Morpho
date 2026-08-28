@@ -5,7 +5,7 @@ design whitepaper) + `docs/contracts/` (the interface contracts) to pick the
 project up cold. This file holds what the code cannot tell you: current state,
 how to run things, and the traps.
 
-Last updated: 2026-08-27, wave-9 CLIP-in-engine + codex source (last cut: release 1.5, 2026.08.27+d034466d).
+Last updated: 2026-08-28 (last cut: release 1.8, 2026.08.28+78d30f9d).
 
 ---
 
@@ -15,7 +15,7 @@ Last updated: 2026-08-27, wave-9 CLIP-in-engine + codex source (last cut: releas
 |---|---|
 | `core/` | Rust `morphod` — reconciler + admin API + exporter (one binary) |
 | `admin-ui/` | React/AntD admin console (dev: MSW-mocked; real: proxies `/api`) |
-| `adapters/` | Python: tts (edge-tts→Opus), morfessor, sdxl (ComfyUI client), codex (image generator) as subprocess CLIs; **clip** as a host-side HTTP sidecar |
+| `adapters/` | Python subprocess CLIs: tts (edge-tts→Opus), morfessor, sdxl (ComfyUI client), codex (image generator), clip (CLIP image-text scorer) |
 | `app/` | Android app (Kotlin/Compose); `app/content_media/` holds the media pack (git-ignored) |
 | `data/working.db` | THE production content database (SQLite WAL) — never in `core/data/`, see trap #1 |
 | `data/media/{hash[:2]}/{hash}.{webp,ogg}` | content-addressed media store |
@@ -69,39 +69,13 @@ that variable existed. The wave-9 additions are the last six.
 | `UNSPLASH_ACCESS_KEY` / `PEXELS_API_KEY` / `PIXABAY_API_KEY` | unset | Stock providers. Unset = that provider is disabled, never queried. |
 | `COMFYUI_URL` | unset | SDXL generation. Unset = no local generation; words honestly report `missing_image`. |
 | `MORPHO_SCENE_MODE` | `0` | Prompt SDXL with the word's own slot-1 sentence rather than the bare concept. |
-| **`MORPHO_CLIP_URL`** | unset | The CLIP sidecar. Unset means image selection has no semantic term and ranks on the quality prior alone. Set it to `http://host.docker.internal:30013` from the container, `http://127.0.0.1:30013` natively. This switch turns semantic image selection on. |
-| **`MORPHO_CLIP_MODEL`** | `ViT-B-32/laion2b_s34b_b79k` | The model the sidecar is expected to be serving. It is stored in `clip_scores.model_ver`, and the executor refuses a sidecar reporting anything else — a silent model swap would file two models' cosines in one column. Changing it does not invalidate the old rows; it stops reading them. |
+| **`MORPHO_CLIP_MODEL`** | `ViT-B-32/laion2b_s34b_b79k` | The model the CLIP adapter is expected to use. It is stored in `clip_scores.model_ver`, and the executor refuses a result reporting anything else — a silent model swap would file two models' cosines in one column. Changing it does not invalidate the old rows; it stops reading them. |
 | **`MORPHO_CODEX_ENABLED`** | `0` | The codex generation source. Doubly gated: it also needs `adapters/codex` on disk and `MORPHO_CODEX_BIN` to resolve. |
 | **`MORPHO_CODEX_BIN`** | `codex` | The generator binary. The adapter reads the same variable, so a machine where it does not exist has the source disabled rather than dead-lettering every word. |
 | **`MORPHO_CODEX_THRESHOLD`** | `0.22` | Raw CLIP cosine below which a word's best picture is worth replacing. A good match lands near 0.28; the bottom decile falls under 0.20. |
 | **`MORPHO_CODEX_BATCH`** | `8` | Most codex jobs one derivation may ask for. The queue is derived, so the rest come back next pass. |
 | `MORPHO_CODEX_PROMPT_VER` | `codex/1` | Prompt template version. Bumping it moves the job subject, which is how to request the whole pass again without clearing a mark. |
 | `MORPHO_CODEX_ARGS` / `MORPHO_CODEX_TIMEOUT_S` / `MORPHO_CODEX_BLANK_STDDEV` / `MORPHO_CODEX_WEBP_QUALITY` / `MORPHO_CODEX_MODEL` | see `adapters/codex/README.md` | Adapter-side only; morphod does not read them. |
-| `MORPHO_CLIP_MEDIA_ROOT` | `data/media` | Sidecar-side only: where *it* sees the media library, which is not where the container sees it. |
-
-### 2.2 Starting the CLIP sidecar
-
-It is a separate process because it needs the GPU, and it is *not* started by
-`docker compose` — it runs on the host, under the venv that holds the ROCm build
-of torch:
-
-```bash
-PYTHONPATH=/home/abysser/Code/learning/Morpho/adapters/clip/src \
-/home/abysser/Code/vendor/ComfyUI/.venv/bin/python -m morpho_clip \
-  --media-root /home/abysser/Code/learning/Morpho/data/media \
-  --host 0.0.0.0 --port 30013
-```
-
-`--host 0.0.0.0` because morphod is containerized and reaches the host from
-outside its network namespace; `docker-compose.yml` maps
-`host.docker.internal` onto the host gateway so the URL in `MORPHO_CLIP_URL`
-resolves. Health check: `curl -sm3 http://127.0.0.1:30013/health` — it must
-report `"algo_ver":"clip/1"` and the model named in `MORPHO_CLIP_MODEL`, or the
-engine will refuse every score it produces.
-
-First request loads the model (a few seconds, plus a weight download on the very
-first run). It is idle otherwise: the whole lexicon is a few minutes of work,
-then nothing until a candidate arrives.
 
 ## 3. The reconciler model (how content gets made)
 
@@ -145,13 +119,13 @@ CLIP need the ComfyUI venv: `~/Code/vendor/ComfyUI/.venv/bin/python`.
   **Deploying it (the wave-9 ship sequence).** This re-selects over the whole
   library, so budget a convergence wait and a re-approval:
 
-  1. Start the sidecar (§2.2) and verify `/health` reports the model named in
-     `MORPHO_CLIP_MODEL`. A mismatch fails every job permanently — loudly, on
-     purpose.
-  2. Set `MORPHO_CLIP_URL` and restart the engine. Nothing moves yet: the first
-     sweeps only *derive* `score_image_clip` jobs, and a word is ranked on
-     quality alone until its whole pool is scored. Watch
-     `SELECT COUNT(*) FROM clip_scores` climb; the full lexicon is a few minutes.
+  1. Ensure the CLIP adapter is available: `adapters/clip/` must be on disk and
+     its entry point must resolve (`uv run --project adapters/clip clip-adapter`).
+     The engine probes it at startup like TTS/Morfessor/SDXL.
+  2. Start the engine. Nothing moves yet: the first sweeps only *derive*
+     `score_image_clip` jobs, and a word is ranked on quality alone until its
+     whole pool is scored. Watch `SELECT COUNT(*) FROM clip_scores` climb; the
+     full lexicon is a few minutes.
   3. **Nothing will re-select until the pins come off.** Every settled slot is
      approved, and approval pins. `python3 ops/unapprove_auto.py image` releases
      the pin approval put on `auto` slots (a human override keeps its own).
@@ -163,9 +137,10 @@ CLIP need the ComfyUI venv: `~/Code/vendor/ComfyUI/.venv/bin/python`.
      shows.
   6. Only then, if wanted: `MORPHO_CODEX_ENABLED=1`. It is P3 and batched.
 
-  Expected convergence: step 2 is bounded by the sidecar (minutes); step 4 by the
-  60 s sweep plus TTS re-synthesis for nothing (images have no TTS), so it is
-  fast; step 5 is the expensive one, exactly as trap §7.9 describes.
+  Expected convergence: step 2 is bounded by the adapter subprocess (minutes);
+  step 4 by the 60 s sweep plus TTS re-synthesis for nothing (images have no
+  TTS), so it is fast; step 5 is the expensive one, exactly as trap §7.9
+  describes.
 - **Resolve OOV (out-of-scope words in definitions):** three modes via
   `POST /api/oov/{lemma}/resolve` — `{"mode":"promote"}` (make it a learnable
   auxiliary word), `{"mode":"rewrite","def_cand_id","text"}`, or
@@ -334,41 +309,14 @@ read it). `word_id` is stable across releases, so user progress survives updates
 
 ## 8. Current state & backlog
 
-- **Shipped: release 1.5 (`2026.08.27+d034466d`): 4231 words.** Contents:
-  scorer v2→v3 definitions (inflection-aware self-reference gate, 565→~104
-  self-referencing selections with the remainder last-resort; sense-commonality
-  prior), 482 primary-POS corrections (attorney/add/charm/quality and others now
-  carry their common senses), CLIP rematch over the full lexicon with persisted
-  scores (`ops/clip_rematch.py` writes clip_scores.json), 129 codex-generated
-  images for the worst CLIP scorers (48 wave-1 + 81 wave-2, each above its
-  incumbent, selected + approved via `ops/verify_genimg.py`), 464 Chinese gloss
-  anchors (up from 229). APK verified: 983 MB fatApkDebug, 4231 words, media
-  synced 25904 = manifest. word_id stability preserved — user progress carries
-  over from 1.4.
-- `morpho-genimg.timer` is disabled and will not be re-enabled. `adapters/codex`
-  is the sole generation path, driven by the engine's `gen_image_codex` rule;
-  the `ops/` scripts around it (`genimg_cron.sh`, `verify_genimg.py`) remain as
-  reference for the prompt and the gates.
-- The scorer/2 → scorer/3 incident and its resolution are §7.8; the diagnosis
-  SQL for "does this slot need human judgment" is in §5.1.
-- **Shipped:** release 1.4 (`2026.08.26+b5ce3f0e`): 4253 words, real dictionary
-  definitions, OpenSubtitles example sentences (flagged 62%→0.4%), CLIP-matched
-  images, 229 Chinese gloss anchors, per-question image distinctness, bottom-
-  anchored quiz layout, prompt auto-play, adaptive mode-2 caption band.
-- **Built in wave 9, not yet deployed:** CLIP scoring inside the engine
-  (`MORPHO_CLIP_URL`, default off) and the codex image source
-  (`MORPHO_CODEX_ENABLED`, default off). Code and docs only — the deploy is §4's
-  ship sequence and has not been run against the live database.
-- **Open backlog** (see memory `morpho-image-aptness-backlog`):
-  - SDXL scene-image generation for words with no apt image in the pool — built
-    (`MORPHO_SCENE_MODE=1`, core wave 9, default off), run in an off-peak GPU
-    window. Turbo checkpoint at `~/Code/vendor/ComfyUI/models/checkpoints/`.
-  - Distractor semantic near-duplication (§7.6).
-  - ~30 words have no example (film dialogue lacks the vocabulary); a few
-    proper-noun lemmas stay flagged.
-  - App release-signing config (release APK is unsigned).
-- **Two engine fixes** are filed to separate sessions: reconciler stealing
-  pinned slot-1 selections, and `sentence::locate` e-stem over-matching.
+- **Shipped:** release 1.8 (`2026.08.28+78d30f9d`): 4225 words.
+- **Shipped:** release 1.7 (`2026.08.27+0847bb29`): 4225 words.
+- **Shipped:** release 1.5 (`2026.08.27+d034466d`): 4231 words.
+- **Shipped:** release 1.4 (`2026.08.26+b5ce3f0e`): 4253 words.
+- **Deployed:** CLIP scoring (`MORPHO_CLIP_URL`), codex source (`MORPHO_CODEX_ENABLED`).
+- **Unfixed:** reconciler stealing pinned slot-1 selections, `sentence::locate`
+  e-stem over-matching.
+- **Open backlog:** see `docs/BACKLOG.md`.
 
 ## 9. The subsystems' own test/build commands
 

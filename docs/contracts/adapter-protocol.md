@@ -80,13 +80,27 @@ Unconfigured backend (`MORPHO_CODEX_BIN` resolves to nothing) → `{"ok": false,
 
 ## Timeouts (enforced by morphod)
 
-tts 60 s · morfessor 120 s/batch · sdxl 600 s · codex 900 s
+tts 60 s · morfessor 120 s/batch · clip 120 s · sdxl 600 s · codex 900 s
 
 The codex adapter's own budget (`MORPHO_CODEX_TIMEOUT_S`, default 840 s) sits below morphod's, so a slow hosted queue is reported as a classifiable timeout rather than being killed mid-write.
 
-## Not an adapter: the CLIP sidecar
+### `clip.score` (adapters/clip, image-text similarity)
 
-`adapters/clip` speaks HTTP, not this envelope. It needs a GPU the engine's container does not have, and a process per job would spend all its time loading a model it uses once. See `docs/contracts/clip-service.md`.
+```json
+{"op": "clip.score", "params": {
+  "text": "She had to abandon the car in the flood.",
+  "images": ["aa11bb22...", "cc33dd44..."],
+  "media_root": "/app/data/media"
+}}
+→ {"ok": true, "result": {
+  "model": "ViT-B-32/laion2b_s34b_b79k",
+  "algo_ver": "clip/1",
+  "scores": [{"file_hash": "aa11bb22...", "similarity": 0.2731}],
+  "missing": ["cc33dd44..."]
+}}
+```
+
+`media_root` is passed by the engine so the adapter resolves `{root}/{hash[:2]}/{hash}.webp` itself. `text` is the word's selected slot-1 sentence, scored verbatim — the adapter must not trim or case-fold it, because morphod files the answer under a hash of the text it sent. `images` is at most 64 content hashes; order is preserved in `scores`. `similarity` is the cosine of two L2-normalized embeddings, in `[-1, 1]` (ViT-B-32 image-text cosines land between about 0.08 and 0.32). `missing` reports hashes the media library could not resolve — reported, never fatal: one file lost must not cost a word the scores of its other candidates. Model loads on first invocation within the process; one process per job, so the ~2-4 s load cost is paid each time — acceptable for steady-state image ingestion. CPU inference in Docker, GPU when running natively (auto-detected).
 
 ## Wave-2 normative rulings (conductor, 2026-08-26)
 
