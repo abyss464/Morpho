@@ -25,7 +25,7 @@ Priority doctrine: make the App usable first, bug fixes second.
 
 ## Dispatch
 
-Merge small changes into one agent; parallelize only large items that are independent and touch disjoint files. Code agents always run in worktree isolation, commit on their own branch in logical units with explicit paths (never `git add -A`), and neither merge nor push. Operations agents (DB/API/engine work) skip isolation and must not touch code directories.
+Merge small changes into one agent; parallelize only large items that are independent and touch disjoint files. Resuming an agent drags its whole prior transcript into every round — resume only when that prior context IS the mission (a follow-up fix on the same code); a self-contained new mission always gets a fresh agent. Code agents always run in worktree isolation, commit on their own branch in logical units with explicit paths (never `git add -A`), and neither merge nor push. Operations agents (DB/API/engine work) skip isolation and must not touch code directories.
 
 An owner checkpoint exists only with a concrete review surface: an existing UI filter, a URL, or a paste-once loader that brings up exactly the set under review. Work the owner cannot inspect through such a surface is not given an owner gate — it either ships on machine verification or gets a surface built first. A gate also needs a reason specific to the set: it exists only when the batch is meaningfully riskier than the library at large. Recently-machine-touched is not such a reason; machine screens plus the owner's own browsing cadence cover the uniform residual risk.
 
