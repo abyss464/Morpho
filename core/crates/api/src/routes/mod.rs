@@ -5,7 +5,7 @@
 pub mod read;
 pub mod write;
 
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::Router;
 
 use crate::state::AppState;
@@ -30,6 +30,12 @@ pub fn api_router(state: AppState) -> Router {
         .route("/candidates/definition", post(write::mint_definition))
         .route("/candidates/example", post(write::mint_example))
         .route("/candidates/image", post(write::upload_image))
+        // Before the `{kind}` wildcard for the same reason the two definition
+        // sub-routes are: a literal segment must be declared first.
+        .route(
+            "/candidates/example/{cand_id}",
+            delete(write::purge_example),
+        )
         .route(
             "/candidates/{kind}/{cand_id}/reject",
             post(write::reject_candidate),

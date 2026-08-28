@@ -223,6 +223,66 @@ pub(super) fn mint_example_candidate(
     })
 }
 
+/// Delete one example candidate outright.
+///
+/// Rejection is the engine's answer to bad content: it is reversible, it keeps
+/// the audit trail attached to a row that still exists, and it is what every
+/// automatic path uses. Erasure is the administrator's, and README Part 3 says
+/// so plainly — candidate rows are never garbage collected, only an explicit
+/// admin purge deletes one.
+///
+/// A candidate a slot points at is refused rather than deleted. The reference
+/// is a foreign key, so the delete would fail anyway; refusing says which slot
+/// to move first instead of surfacing a constraint violation. Nothing else has
+/// to be cleaned up: TTS rows and CLIP scores are content-addressed and
+/// tolerate orphans by design, and the media library is reference-counted from
+/// the live tables.
+pub(super) fn purge_example_candidate(
+    ex_cand_id: i64,
+    ctx: &mut OpCtx<'_, '_>,
+) -> Result<WriteResult> {
+    let found: Option<(i64, String)> = ctx
+        .tx
+        .query_row(
+            "SELECT word_id, text_hash FROM example_candidates WHERE ex_cand_id = ?1",
+            rusqlite::params![ex_cand_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let (word_id, text_hash) =
+        found.ok_or_else(|| StoreError::not_found(format!("example candidate {ex_cand_id}")))?;
+
+    let holder: Option<i64> = ctx
+        .tx
+        .query_row(
+            "SELECT slot FROM example_selections WHERE ex_cand_id = ?1",
+            rusqlite::params![ex_cand_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if let Some(slot) = holder {
+        return Err(StoreError::conflict(format!(
+            "example candidate {ex_cand_id} fills slot {slot} of word {word_id}"
+        )));
+    }
+
+    ctx.tx.execute(
+        "DELETE FROM example_candidates WHERE ex_cand_id = ?1",
+        rusqlite::params![ex_cand_id],
+    )?;
+    ctx.event(
+        EventDraft::new(
+            EntityType::ExampleCandidate,
+            ex_cand_id.to_string(),
+            Action::CandidatePurged,
+        )
+        .detail(serde_json::json!({ "word_id": word_id, "text_hash": text_hash })),
+    )?;
+    ctx.touch(EntityType::ExampleCandidate, ex_cand_id.to_string());
+    ctx.touch(EntityType::Word, word_id.to_string());
+    Ok(WriteResult::Unit)
+}
+
 /// The highlight must be a byte range inside `text` that starts and ends on a
 /// character boundary and is non-empty.
 fn validate_highlight(text: &str, start: i64, end: i64) -> Result<()> {

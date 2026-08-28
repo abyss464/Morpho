@@ -52,6 +52,10 @@ pub enum Action {
     WordCreated,
     CandidateAdded,
     CandidateRejected,
+    /// A candidate row deleted outright. Rejection is the reversible answer and
+    /// the one the engine uses; this is the administrator's explicit erasure
+    /// (README Part 3 §"媒体 GC"), and the audit row is all that survives it.
+    CandidatePurged,
     SelectionChanged,
     Approved,
     Unapproved,
@@ -84,6 +88,7 @@ impl Action {
             Self::WordCreated => "word_created",
             Self::CandidateAdded => "candidate_added",
             Self::CandidateRejected => "candidate_rejected",
+            Self::CandidatePurged => "candidate_purged",
             Self::SelectionChanged => "selection_changed",
             Self::Approved => "approved",
             Self::Unapproved => "unapproved",

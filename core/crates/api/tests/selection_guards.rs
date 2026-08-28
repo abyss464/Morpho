@@ -363,6 +363,118 @@ async fn a_sentence_the_word_already_shows_is_refused_not_ignored() {
     assert_eq!(slot_candidate(&h.store, word_id, 2).await, Some(second));
 }
 
+// ---------------------------------------------------------------------------
+// Purge
+// ---------------------------------------------------------------------------
+
+async fn delete(router: &axum::Router, uri: &str) -> (StatusCode, serde_json::Value) {
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(uri)
+                .header("x-morpho-user", "abyss")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), 4 * 1024 * 1024)
+        .await
+        .unwrap();
+    let json = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    (status, json)
+}
+
+async fn candidate_exists(store: &Store, cand_id: i64) -> bool {
+    store
+        .read(move |conn| {
+            Ok(conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM example_candidates WHERE ex_cand_id = ?1)",
+                rusqlite::params![cand_id],
+                |row| row.get::<_, i64>(0),
+            )? != 0)
+        })
+        .await
+        .unwrap()
+}
+
+/// Erasure is the administrator's, and it is the only thing that removes a
+/// candidate row: nothing else in the engine ever deletes one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn purging_an_unselected_sentence_removes_the_row_and_records_it() {
+    let h = harness();
+    let word_id = seed_word(&h.store, "serene").await;
+    let (first, second) = two_sentences(&h.store, word_id).await;
+
+    let (status, body) = post(
+        &h.router,
+        "/api/selections/example",
+        serde_json::json!({ "word_id": word_id, "slot": 1, "cand_id": first }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (status, body) = delete(&h.router, &format!("/api/candidates/example/{second}")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(!candidate_exists(&h.store, second).await);
+    assert!(candidate_exists(&h.store, first).await);
+
+    // The row is gone; the audit says what it was.
+    let purged = h
+        .store
+        .read(move |conn| {
+            Ok(conn.query_row(
+                "SELECT detail FROM events
+                  WHERE entity_type = 'example_candidate' AND entity_id = ?1
+                    AND action = 'candidate_purged'",
+                rusqlite::params![second.to_string()],
+                |row| row.get::<_, String>(0),
+            )?)
+        })
+        .await
+        .unwrap();
+    let detail: serde_json::Value = serde_json::from_str(&purged).unwrap();
+    assert_eq!(detail["word_id"], serde_json::json!(word_id));
+    assert!(detail["text_hash"].as_str().is_some_and(|h| !h.is_empty()));
+
+    // And it is gone for good.
+    let (status, _) = delete(&h.router, &format!("/api/candidates/example/{second}")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// A sentence a slot still shows is refused rather than deleted, and the
+/// message says which slot to move first.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn purging_a_selected_sentence_is_a_conflict() {
+    let h = harness();
+    let word_id = seed_word(&h.store, "serene").await;
+    let (first, _) = two_sentences(&h.store, word_id).await;
+    h.store
+        .write(
+            Actor::admin("abyss"),
+            WriteOp::select(
+                SlotRef::Example { word_id, slot: 2 },
+                first,
+                SelectedBy::Human,
+            ),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = delete(&h.router, &format!("/api/candidates/example/{first}")).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"]["code"], "conflict");
+    assert!(body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("slot 2"));
+    assert!(candidate_exists(&h.store, first).await);
+    assert_eq!(slot_candidate(&h.store, word_id, 2).await, Some(first));
+}
+
 /// Re-posting the sentence a slot already holds is a flag update, and the
 /// approval on that same content survives it — the triple (slot, candidate,
 /// content) has not changed.

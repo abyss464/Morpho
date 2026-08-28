@@ -91,6 +91,8 @@ pub enum WriteOp {
     },
     /// Mark a candidate rejected (and release the slot's pin if it was selected).
     RejectCandidate { kind: CandidateKind, cand_id: i64 },
+    /// Delete one example candidate row. Refused while a slot points at it.
+    PurgeExampleCandidate { ex_cand_id: i64 },
     /// Reconcile `oos_queue` against the `oos_occurrences` view.
     SyncOosQueue(SyncOosQueue),
     /// Resolve one out-of-scope lemma by promotion or rewrite.
@@ -326,6 +328,9 @@ pub(crate) fn apply_op(op: WriteOp, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResu
         } => selections::set_slot_enabled(word_id, &pos, enabled, ctx),
         WriteOp::RejectCandidate { kind, cand_id } => {
             selections::reject_candidate(kind, cand_id, ctx)
+        }
+        WriteOp::PurgeExampleCandidate { ex_cand_id } => {
+            candidates::purge_example_candidate(ex_cand_id, ctx)
         }
         WriteOp::SyncOosQueue(req) => oov::sync_oos_queue(req, ctx),
         WriteOp::ResolveOov { lemma, resolution } => oov::resolve_oov(&lemma, resolution, ctx),
