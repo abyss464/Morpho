@@ -53,11 +53,12 @@ Kind ∈ `definition | example | image`.
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/candidates/definition` | Mint manual candidate `{word_id, pos, text, parent_cand_id?}` |
-| POST | `/candidates/example` | `{word_id, text, hl_start, hl_end}` |
+| POST | `/candidates/example` | `{word_id, text, hl_start, hl_end}` — offsets advisory: the store canonicalizes the text and recomputes the highlight via `locate`; a sentence the word cannot be located in is refused with 422 `unprocessable` |
 | POST | `/candidates/image` | multipart upload `{word_id, file}` → stored content-addressed |
 | POST | `/candidates/{kind}/{cand_id}/reject` | Sets status=rejected (triggers pin-fallback if selected) |
-| POST | `/selections/{kind}` | Override selection: `{word_id, pos?/slot?, cand_id}` → selected_by=human, pinned=1 |
-| POST | `/selections/{kind}/approve` | `{word_id, pos?/slot?}` → approved=1, records approved_hash |
+| DELETE | `/candidates/example/{cand_id}` | Purge: hard-deletes the candidate row (admin erasure, distinct from reject). 409 while any slot points at it; writes `candidate_purged` event |
+| POST | `/selections/{kind}` | Override selection: `{word_id, pos?/slot?, cand_id}` → selected_by=human, pinned=1. 409 when the target candidate is not `available` |
+| POST | `/selections/{kind}/approve` | `{word_id, pos?/slot?}` → approved=1, records approved_hash. 409 when the slot's current candidate is not `available` |
 | DELETE | `/selections/{kind}/approve` | Un-approve |
 | POST | `/selections/definition/primary` | Move is_primary: `{word_id, pos}` |
 | POST | `/selections/definition/enabled` | `{word_id, pos, enabled}` |
