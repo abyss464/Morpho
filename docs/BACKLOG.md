@@ -48,6 +48,7 @@ content change exactly once.
 | 43 | COCO 复原 + 重导入 + 发布链 | content/ops | 依赖 #42 合并部署。现状：/tmp/coco 源图随重启失效，media store 内图片与候选完好；例句侧含错偏移候选及其选择。目标：按 accepted 清单复原例句选择 → purge 全部 COCO 例句候选 → 修复版 coco_ingest.py 重铸（跳过图片重上传）→ 收敛 → 64 词回退图 nsfw_screen regate + owner 画廊过目 → bulk_approve → 悬挂复扫=0 → 导出 → publish → 断言更新 → gradle 绿 → fatApkDebug。验收：working.db 与 release.db 坏偏移=0、悬挂=0、APK 构建绿。交付：APK 路径 + adb 装机指令（含进度保留流程），装机由 owner 手动执行（owner 裁决 2026-08-28） |
 
 部署约束：
+- data/releases 历史导出目录全量保留（owner 裁决 2026-08-28），清理不再提案。
 - publish 管线第 2-5 步触碰 app/ 与 gradle，而镜像 .dockerignore 排除了 app/ —— #17 必须以宿主原生 morphod 独占 DB 运行（先停容器，SQLite 单写者纪律）。
 - publish 只自动补 content_version，不补 ReleaseDatabaseTest 的行数断言（§6.3 的 pin 设计）——行数变化时 gradle 步骤会红，需手动更新断言后重跑。
 - conventions.md：subagent 不跑 git，版本控制归 conductor；docs/contracts 由 conductor 修改。
