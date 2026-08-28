@@ -53,7 +53,7 @@ Kind ∈ `definition | example | image`.
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/candidates/definition` | Mint manual candidate `{word_id, pos, text, parent_cand_id?}` |
-| POST | `/candidates/example` | `{word_id, text, hl_start, hl_end}` — offsets advisory: the store canonicalizes the text and recomputes the highlight via `locate`; a sentence the word cannot be located in is refused with 422 `unprocessable` |
+| POST | `/candidates/example` | `{word_id, text, hl_start, hl_end}` — offsets advisory: the store canonicalizes the text and recomputes the highlight via `locate`; a sentence the word cannot be located in is refused with 422 `unprocessable`. Colliding with an existing row (`UNIQUE(word_id, text_hash)`) returns that row; a manual mint additionally revives it if rejected, and any mint repairs stored offsets that disagree with `locate` (event `candidate_revived`, flags `revived`/`hl_repaired`) |
 | POST | `/candidates/image` | multipart upload `{word_id, file}` → stored content-addressed |
 | POST | `/candidates/{kind}/{cand_id}/reject` | Sets status=rejected (triggers pin-fallback if selected) |
 | DELETE | `/candidates/example/{cand_id}` | Purge: hard-deletes the candidate row (admin erasure, distinct from reject). 409 while any slot points at it; writes `candidate_purged` event |
