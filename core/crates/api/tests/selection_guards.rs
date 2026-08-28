@@ -364,6 +364,241 @@ async fn a_sentence_the_word_already_shows_is_refused_not_ignored() {
 }
 
 // ---------------------------------------------------------------------------
+// Minting content a row already holds
+// ---------------------------------------------------------------------------
+
+/// `(status, hl_start, hl_end, text)` of one example candidate.
+async fn candidate_row(store: &Store, cand_id: i64) -> (String, i64, i64, String) {
+    store
+        .read(move |conn| {
+            Ok(conn.query_row(
+                "SELECT status, hl_start, hl_end, text FROM example_candidates
+                  WHERE ex_cand_id = ?1",
+                rusqlite::params![cand_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )?)
+        })
+        .await
+        .unwrap()
+}
+
+/// The `detail` of every audit row of one action against one candidate.
+async fn candidate_events(store: &Store, cand_id: i64, action: &str) -> Vec<serde_json::Value> {
+    let (entity_id, action) = (cand_id.to_string(), action.to_string());
+    store
+        .read(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT detail FROM events
+                  WHERE entity_type = 'example_candidate' AND entity_id = ?1 AND action = ?2
+                  ORDER BY event_id",
+            )?;
+            let rows = stmt
+                .query_map(rusqlite::params![entity_id, action], |row| {
+                    row.get::<_, Option<String>>(0)
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows
+                .into_iter()
+                .map(|detail| {
+                    detail
+                        .and_then(|raw| serde_json::from_str(&raw).ok())
+                        .unwrap_or(serde_json::Value::Null)
+                })
+                .collect())
+        })
+        .await
+        .unwrap()
+}
+
+/// How many example candidates a word has at all.
+async fn candidate_count(store: &Store, word_id: i64) -> i64 {
+    store
+        .read(move |conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM example_candidates WHERE word_id = ?1",
+                rusqlite::params![word_id],
+                |row| row.get::<_, i64>(0),
+            )?)
+        })
+        .await
+        .unwrap()
+}
+
+async fn mint(router: &axum::Router, word_id: i64, text: &str) -> (StatusCode, serde_json::Value) {
+    post(
+        router,
+        "/api/candidates/example",
+        // Offsets nobody computed: the op works them out from the text.
+        serde_json::json!({ "word_id": word_id, "text": text, "hl_start": 0, "hl_end": 1 }),
+    )
+    .await
+}
+
+/// Re-minting a sentence somebody rejected puts the row back in service.
+///
+/// `UNIQUE (word_id, text_hash)` means a candidate is its content, so a rejected
+/// row was blocking the re-entry of its own text for ever: the slot pointing at
+/// it could not be refilled, purging it was refused because the slot still
+/// referenced it, and minting the sentence again handed back the same dead row.
+/// Status is lifecycle, not identity.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn re_minting_a_rejected_sentence_revives_the_row() {
+    let h = harness();
+    let word_id = seed_word(&h.store, "serene").await;
+    let cand = seed_example(&h.store, word_id, "  A  serene lake lay below.", (0, 1)).await;
+
+    h.store
+        .write(
+            Actor::admin("abyss"),
+            WriteOp::RejectCandidate {
+                kind: CandidateKind::Example,
+                cand_id: cand,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(candidate_row(&h.store, cand).await.0, "rejected");
+
+    let (status, body) = mint(&h.router, word_id, "A serene lake lay below.").await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(
+        candidate_count(&h.store, word_id).await,
+        1,
+        "identical content is one row, revived rather than duplicated"
+    );
+
+    let (status, start, end, text) = candidate_row(&h.store, cand).await;
+    assert_eq!(status, "available");
+    assert_eq!(&text[start as usize..end as usize], "serene");
+
+    let events = candidate_events(&h.store, cand, "candidate_revived").await;
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!(events[0]["word_id"], serde_json::json!(word_id));
+    assert_eq!(events[0]["revived"], serde_json::json!(true));
+    assert!(events[0]["text_hash"]
+        .as_str()
+        .is_some_and(|h| !h.is_empty()));
+}
+
+/// The offsets are derived from the word and the canonical text, so a stored
+/// pair that disagrees with them is data contradicting its own column. Rows
+/// minted before the offsets were computed server-side carry exactly that, and
+/// re-minting the sentence is what corrects one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn re_minting_repairs_offsets_that_no_longer_fit_the_text() {
+    let h = harness();
+    let word_id = seed_word(&h.store, "serene").await;
+    let cand = seed_example(&h.store, word_id, "A serene lake lay below.", (0, 1)).await;
+    let correct = candidate_row(&h.store, cand).await;
+
+    // The off-by-one a hand-measured offset leaves behind.
+    h.force_sql(&format!(
+        "UPDATE example_candidates SET hl_start = {}, hl_end = {}
+          WHERE ex_cand_id = {cand}",
+        correct.1 + 1,
+        correct.2 + 1
+    ));
+
+    let (status, body) = mint(&h.router, word_id, "A serene lake lay below.").await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let (status, start, end, text) = candidate_row(&h.store, cand).await;
+    assert_eq!(status, "available");
+    assert_eq!((start, end), (correct.1, correct.2));
+    assert_eq!(&text[start as usize..end as usize], "serene");
+
+    let events = candidate_events(&h.store, cand, "candidate_revived").await;
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!(events[0]["revived"], serde_json::json!(false));
+    assert_eq!(events[0]["hl_repaired"], serde_json::json!(true));
+}
+
+/// Re-minting an unchanged sentence stays the silent dedup it always was. A
+/// re-import touching thousands of rows must not write an audit row per row it
+/// found nothing wrong with.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn re_minting_an_unchanged_sentence_says_nothing() {
+    let h = harness();
+    let word_id = seed_word(&h.store, "serene").await;
+    let cand = seed_example(&h.store, word_id, "A serene lake lay below.", (0, 1)).await;
+    let before = candidate_row(&h.store, cand).await;
+
+    let (status, _) = mint(&h.router, word_id, "  A serene   lake lay below.  ").await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    assert_eq!(candidate_count(&h.store, word_id).await, 1);
+    assert_eq!(candidate_row(&h.store, cand).await, before);
+    assert!(candidate_events(&h.store, cand, "candidate_revived")
+        .await
+        .is_empty());
+}
+
+/// The deadlock, end to end.
+///
+/// A word whose only sentence was rejected keeps pointing at it — the
+/// reconciler never empties a slot and there is nothing available to move to —
+/// so the row cannot be purged either. Re-minting the corrected sentence is the
+/// way out, and what comes back has to be a candidate the guards accept:
+/// selectable, and approvable.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_revived_sentence_is_selectable_and_approvable_again() {
+    let h = harness();
+    let word_id = seed_word(&h.store, "serene").await;
+    let cand = seed_example(&h.store, word_id, "A serene lake lay below.", (0, 1)).await;
+    let slot = SlotRef::Example { word_id, slot: 1 };
+    h.store
+        .write(
+            Actor::admin("abyss"),
+            WriteOp::select(slot.clone(), cand, SelectedBy::Human),
+        )
+        .await
+        .unwrap();
+    h.store
+        .write(
+            Actor::admin("abyss"),
+            WriteOp::RejectCandidate {
+                kind: CandidateKind::Example,
+                cand_id: cand,
+            },
+        )
+        .await
+        .unwrap();
+
+    // Deadlocked: the slot still points at it, so it cannot be purged, and
+    // approving it is refused because of what it points at.
+    let (status, _) = delete(&h.router, &format!("/api/candidates/example/{cand}")).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) = post(
+        &h.router,
+        "/api/selections/example/approve",
+        serde_json::json!({ "word_id": word_id, "slot": 1 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    let (status, body) = mint(&h.router, word_id, "A serene lake lay below.").await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    // Out of the deadlock: the slot's candidate is live again, and both guards
+    // now let it through.
+    let (status, body) = post(
+        &h.router,
+        "/api/selections/example",
+        serde_json::json!({ "word_id": word_id, "slot": 1, "cand_id": cand }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = post(
+        &h.router,
+        "/api/selections/example/approve",
+        serde_json::json!({ "word_id": word_id, "slot": 1 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(approved(&h.store, word_id, 1).await);
+}
+
+// ---------------------------------------------------------------------------
 // Purge
 // ---------------------------------------------------------------------------
 

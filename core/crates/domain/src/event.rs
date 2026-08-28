@@ -56,6 +56,10 @@ pub enum Action {
     /// the one the engine uses; this is the administrator's explicit erasure
     /// (README Part 3 §"媒体 GC"), and the audit row is all that survives it.
     CandidatePurged,
+    /// Minting content a candidate row already holds put that row back in
+    /// service: a rejected one returned to `available`, or derived data on it
+    /// that no longer agreed with its text was recomputed.
+    CandidateRevived,
     SelectionChanged,
     Approved,
     Unapproved,
@@ -89,6 +93,7 @@ impl Action {
             Self::CandidateAdded => "candidate_added",
             Self::CandidateRejected => "candidate_rejected",
             Self::CandidatePurged => "candidate_purged",
+            Self::CandidateRevived => "candidate_revived",
             Self::SelectionChanged => "selection_changed",
             Self::Approved => "approved",
             Self::Unapproved => "unapproved",
