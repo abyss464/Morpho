@@ -22,6 +22,8 @@ Owner 方针（2026-08-27）：**先把 App 做到可用，bug 修复靠后**—
 | 25 | 逐词学习/复习事件时间戳（owner 提出 2026-08-27） | app | user.db 新增学习事件表：每个词每次学完/复习完记录时间戳（word_id, event_type, ts, 结果）。用途：后续统计页 + 复习策略调优的数据地基。现状只有 fsrs_cards.last_review（单值）和 daily_stats（按天聚合），无逐词逐次事件流。加表属加法迁移，需带 .sqm |
 | 26 | 专用复习模式（owner 已定稿 2026-08-27） | app | 复习统一排在每日新词之前（与现状一致）。**调度保留 FSRS v5 不动**（owner 确认——FSRS 即精细化遗忘曲线，逐词动态间隔），只重做呈现层：复习不用学习三模式，专用模式题型 = 显示词汇（+发音），四选项各为"图片+释义"组合，选出正确配对，每词只答一遍；答错的词进入下一轮重答，循环到全部答对为止。**架构要求：复习模式做成可插拔模组**，预留后续新增复习题型（现有释义选词/听力拼写可作为未来备选模组保留）。与 #25 联动：每次复习结果写事件表 |
 | 23 | 无词可学时导航到旧总结页 | app | ⚠️ agent 提出，owner 未审核。现状：学习计划为空时置 finished 但未生成会话结果，总结页显示上一次的数据。目标：空计划不进入总结页。暂不排期 |
+| 40 | 图片审核两步流（标记待处理 + 候选池换图） | admin | ✅ 已合并（226baea）。Review mode Flag 按钮 + Flagged 视图候选条 + Needs regen 视图，四门绿 |
+| 41 | COCO Captions 天然配对图+例句全量覆盖 | content/ops | 现状：首轮 ingest 已入库 2925/2927 对（owner 已全量验收，清单 ops/logs/coco-accepted.json），偏移缺陷候选待 #43 清理重铸；2075 未覆盖词（抽象词为主，ops/logs/coco-uncovered.json）待第二来源。目标：全库图句原生配对。验收：命中词配对入库且偏移合法，未覆盖词有清单与后续来源方案 |
 
 ## In Progress — wave-2 (dispatched 2026-08-27)
 
@@ -41,7 +43,9 @@ content change exactly once.
 | 12 | 存量干扰项 stem 坏配对修正 — 代码已合并（49d0f30）：`POST /distractors/rebind-violations`，共享 ranked_candidates 选择逻辑，core_ready 池，乐观守卫，698 测试绿。待办：phase-3 部署新引擎后、导出前，dry-run → apply → 复扫为零；admin-ui types.ts 镜像另记 | M→L | P1 | 2 | code merged, live run pending deploy |
 | 29 | morphod publish 的两个 bug | core | ①repo_root 解析：resolve_adapters_root 存仓库根而 repo_root() 取其 parent，语义冲突致 app/ 路径错一级（绕过：显式 MORPHOD_ADAPTERS_ROOT）；②stale 清理只扫 img/、audio/ 子目录，扫不到旧平铺布局的根级遗留（25904 个文件 492MB，人工 gio trash 清除后 APK 983→532MB）。另：publish 不补测试体内的计数断言（plan size/checked/gloss index），§6.3 需记录 |
 | 30 | CLIP 重选后不当图回流（重选后需复扫） | content/engine | 现状：文字图清扫跑在 CLIP 重选之前，池中未在选的问题图被重选抬进槽位。两例：author 的"AUTHOR & SPEAKER"文字卡（owner 裁决：可留）；section 选中剖腹产疤痕特写（wikimedia 产科手术图 932/930/931/728 已全数 reject，改选牛油果剖面 933 并批准）。目标：重选后新在选集重跑 NSFW+text 双筛 + 人审；引擎端对该类图降权。CLIP 分位统计（2026-08-27）：4127 在选已评分中 <0.08 仅 8 词、0.08-0.15 弱匹配 725 词 |
-| 31 | reject 后 human 选择行卡死不回退 | core | 现状（样本 section/4983）：reject 在选候选后，选择行为 selected_by=human, pinned=0 且仍指向 rejected 候选，自动重选规则只处理 auto 行，槽位永久悬挂，只能人工改选。与 §7.5 的 pin-fallback 设计不符 |
+| 31 | reject 后选择行卡死不回退 | core | **并入 #42**。审计（2026-08-28）：工作库 5 例句 + 64 图片槽位 pinned=1, approved=1 指向 rejected 候选；成因 = sweep 视非 available 在职者为合法占位 + SetApproval 对此类槽位照批（批准即 pin 二次冻结） |
+| 42 | 引擎选择完整性修复包 | core | **已派发（worktree, opus）**。目标：①sweep 级 reject 例外（README 选择语义规则 4：非 available 在职者即无效占位——清 pin、重选、废批准、写事件，自愈存量悬挂）；②SetSelection/SetApproval 拒绝非 available 目标（409）；③出口门新增「在选候选必须 available」断言；④mint_example 服务端 canonicalize 后重算偏移，定位失败 422；⑤PurgeExampleCandidate op + DELETE 路由（README 已设计未实现的显式清除）；⑥根 .gitignore。验收：cargo fmt/clippy/test 全绿含各项回归测试 |
+| 43 | COCO 复原 + 重导入 + 发布链 | content/ops | 依赖 #42 合并部署。现状：/tmp/coco 源图随重启失效，media store 内图片与候选完好；例句侧含错偏移候选及其选择。目标：按 accepted 清单复原例句选择 → purge 全部 COCO 例句候选 → 修复版 coco_ingest.py 重铸（跳过图片重上传）→ 收敛 → 64 词回退图 nsfw_screen regate + owner 画廊过目 → bulk_approve → 悬挂复扫=0 → 导出 → publish → 断言更新 → gradle 绿 → fatApkDebug。验收：working.db 与 release.db 坏偏移=0、悬挂=0、APK 构建绿 |
 
 部署约束：
 - publish 管线第 2-5 步触碰 app/ 与 gradle，而镜像 .dockerignore 排除了 app/ —— #17 必须以宿主原生 morphod 独占 DB 运行（先停容器，SQLite 单写者纪律）。

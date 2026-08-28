@@ -13,7 +13,7 @@ Read-only data operations (`sqlite3 "file:data/working.db?mode=ro"`, dashboard/p
 
 ## Requirement and implementation flow
 
-When the owner reports a requirement: restate the understanding (expected vs current), record it in the Inbox in detail only after the owner confirms, reply with the item number, and do not start work. Ambiguity must be asked about. Multiple requirements in one message are confirmed one by one. Recording is instant and never blocked by ongoing work.
+When the owner reports a requirement: restate understanding, record in Inbox after confirmation, reply with the item number, do not start work.
 
 Issues an agent discovers in passing enter the Inbox marked "agent-proposed, owner unreviewed"; they are scheduled only after owner review.
 
@@ -27,7 +27,7 @@ Priority doctrine: make the App usable first, bug fixes second.
 
 Merge small changes into one agent; parallelize only large items that are independent and touch disjoint files. Code agents always run in worktree isolation, commit on their own branch in logical units with explicit paths (never `git add -A`), and neither merge nor push. Operations agents (DB/API/engine work) skip isolation and must not touch code directories.
 
-A contract is the minimal complete form of mission + hard boundaries + acceptance criteria. Point at documents (OPERATIONS.md, docs/contracts/) instead of restating them. Declare the tight token budget; the final report is conclusions and numbers only. Every contract carries four clauses: scope lock (only the confirmed behavior; adjacent improvements are reported, not implemented); a permission-system block means stop and report, never reshape a call to evade; owner files are deleted only via `gio trash --`; long waits use a single long-interval (≥15 min) or fire-on-condition wake with zero progress pings — spelled out explicitly when dispatching weaker models.
+A contract is: mission + boundaries + acceptance criteria. Point at docs instead of restating them. Scope lock: only the confirmed behavior; adjacent improvements are reported, not implemented. **No polling**: if the agent starts a background process, it must NOT poll/tail/monitor the output — start the process and report back immediately. The orchestrator checks progress when asked.
 
 Required reading for content-work agents: OPERATIONS.md §7.5, §7.8, §7.9, §7.10, §7.11a.
 
@@ -39,7 +39,7 @@ Every state change (completion, dispatch, discovery, owner ruling) is written to
 
 ## Failure handling
 
-A subagent dying on a 403 is service-side flakiness: locate the true resume point from its durable output (DB events, commits, logs), then revive via SendMessage or re-dispatch with a state note — no self-checks, no asking. After any revival or re-dispatch, verify the live agent count with ListAgents and stop surplus instances immediately. An agent the owner stopped manually is cancelled; restart only on the owner's explicit word.
+A 403 is a service flake. SendMessage "continue" to resume — nothing else. If SendMessage fails, re-dispatch. An agent the owner stopped is cancelled; restart only on the owner's word.
 
 ## Project operational facts
 
