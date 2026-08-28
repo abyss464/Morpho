@@ -45,7 +45,7 @@ class ReleaseDatabaseTest {
         assertTrue(RELEASE_DB.isFile, "no bundled release at ${RELEASE_DB.absolutePath}")
         assertEquals(4_225L, db.wordsQueries.countAll().executeAsOne(), "words")
         assertEquals(5_067L, db.sensesQueries.countAll().executeAsOne(), "senses")
-        assertEquals(12_602L, db.examplesQueries.countAll().executeAsOne(), "examples")
+        assertEquals(12_667L, db.examplesQueries.countAll().executeAsOne(), "examples")
         assertEquals(12_675L, db.distractorsQueries.countAll().executeAsOne(), "distractors")
         assertEquals(451L, db.glossAnchorsQueries.countAll().executeAsOne(), "gloss anchors")
         assertEquals(234L, db.groupsQueries.countAll().executeAsOne(), "groups")
@@ -54,7 +54,7 @@ class ReleaseDatabaseTest {
     @Test
     fun `meta identifies the release the app was built against`() {
         assertEquals(
-            "2026.08.28+78d30f9d",
+            "2026.08.28+b4214f9f",
             db.metaQueries.selectValue(ContentMetaKeys.CONTENT_VERSION).executeAsOneOrNull(),
         )
         assertNotNull(db.metaQueries.selectValue(ContentMetaKeys.PLAN_ID).executeAsOneOrNull())
@@ -149,7 +149,7 @@ class ReleaseDatabaseTest {
             if (!covered.equals(word, ignoreCase = true)) inflected++
             checked++
         }
-        assertEquals(12_602, checked)
+        assertEquals(12_667, checked)
         assertTrue(inflected > 0, "no inflected highlight at all looks like a fixture, not a release")
     }
 
