@@ -36,6 +36,10 @@ pub struct ExportWord {
     /// The cached extraction of every selected definition matches the current
     /// tokenizer/lemmatizer pair.
     pub extraction_fresh: bool,
+    /// Every slot this word ships from — its enabled senses, its example slots
+    /// and its picture — points at a candidate that is still
+    /// `status = 'available'`.
+    pub selections_available: bool,
 }
 
 impl ExportWord {
@@ -47,7 +51,10 @@ impl ExportWord {
     /// checked here — the dependency closure covers it, and attributing a
     /// removal to the closure is what makes the holdback report useful.
     pub fn shippable(&self) -> bool {
-        self.core_ready && self.distractor_count >= 3 && self.extraction_fresh
+        self.core_ready
+            && self.distractor_count >= 3
+            && self.extraction_fresh
+            && self.selections_available
     }
 
     /// The blocker list a holdback report should quote, in canonical order.
@@ -61,6 +68,9 @@ impl ExportWord {
         if !self.extraction_fresh {
             out.push(STALE_EXTRACTION.to_string());
         }
+        if !self.selections_available {
+            out.push(REJECTED_SELECTION.to_string());
+        }
         // Distractor readiness is the closure's business, not a per-word gate.
         out.retain(|code| !code.starts_with("distractor_"));
         out
@@ -71,6 +81,16 @@ impl ExportWord {
 /// current tool versions. Not in the `BlockerCode` union — it is an
 /// export-time condition, and `HoldbackEntry.root_cause` accepts any string.
 pub const STALE_EXTRACTION: &str = "stale_extraction";
+
+/// Root cause used when a slot the release would ship from points at a
+/// candidate that has left `status = 'available'`.
+///
+/// The reconciler releases such a slot and re-selects, and both write paths now
+/// refuse to create one, so this is the same kind of check as
+/// `definition_token_resolves`: a last look before the bytes go out, because a
+/// shipped word built on rejected content is a broken product and the whole
+/// point of the gate is that it does not depend on the layer above being right.
+pub const REJECTED_SELECTION: &str = "rejected_selection";
 
 /// One selected sense.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,6 +176,7 @@ pub fn load(
     };
 
     let stale = stale_extraction_words(conn, tokenizer_ver, lemmatizer_ver)?;
+    let unavailable = words_selecting_unavailable_candidates(conn)?;
     let distractor_counts = distractor_counts(conn)?;
     let images = selected_images(conn)?;
 
@@ -171,6 +192,7 @@ pub fn load(
             blockers: word.blockers.clone(),
             distractor_count: distractor_counts.get(&word.word_id).copied().unwrap_or(0),
             extraction_fresh: !stale.contains(&word.word_id),
+            selections_available: !unavailable.contains(&word.word_id),
             word_id: word.word_id,
             lemma: word.lemma,
             phonetic: word.phonetic,
@@ -321,6 +343,33 @@ fn stale_extraction_words(
     Ok(stale)
 }
 
+/// Words with a slot pointing at a candidate that is no longer available.
+///
+/// All three kinds, because all three reach the release: the enabled senses,
+/// every filled example slot (slot 1 is the mode-1 card and the other two are
+/// the app's review mode), and the one picture.
+fn words_selecting_unavailable_candidates(
+    conn: &Connection,
+) -> Result<std::collections::HashSet<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT ds.word_id FROM definition_selections ds
+           JOIN definition_candidates dc ON dc.def_cand_id = ds.def_cand_id
+          WHERE ds.enabled = 1 AND dc.status <> 'available'
+         UNION
+         SELECT es.word_id FROM example_selections es
+           JOIN example_candidates ec ON ec.ex_cand_id = es.ex_cand_id
+          WHERE ec.status <> 'available'
+         UNION
+         SELECT isel.word_id FROM image_selections isel
+           JOIN image_candidates ic ON ic.img_cand_id = isel.img_cand_id
+          WHERE ic.status <> 'available'",
+    )?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, i64>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows.into_iter().collect())
+}
+
 fn media_registry(conn: &Connection) -> Result<HashMap<String, MediaEntry>> {
     let mut stmt = conn.prepare("SELECT file_hash, kind, rel_path, bytes FROM media_files")?;
     let rows = stmt
@@ -343,6 +392,15 @@ mod tests {
     use super::*;
 
     fn word(core_ready: bool, distractors: usize, fresh: bool) -> ExportWord {
+        available(core_ready, distractors, fresh, true)
+    }
+
+    fn available(
+        core_ready: bool,
+        distractors: usize,
+        fresh: bool,
+        selections_available: bool,
+    ) -> ExportWord {
         ExportWord {
             word_id: 1,
             lemma: "serene".into(),
@@ -358,6 +416,7 @@ mod tests {
             blockers: Vec::new(),
             distractor_count: distractors,
             extraction_fresh: fresh,
+            selections_available,
         }
     }
 
@@ -371,6 +430,17 @@ mod tests {
         assert!(!word(false, 3, true).shippable());
         assert!(!word(true, 2, true).shippable());
         assert!(!word(true, 3, false).shippable());
+        assert!(!available(true, 3, true, false).shippable());
+    }
+
+    /// A word whose slot points at a rejected candidate is held back under its
+    /// own name, even when everything the reconciler cached about it still says
+    /// the word is ready — which is the state that made this necessary.
+    #[test]
+    fn a_rejected_selection_blocks_under_its_own_cause() {
+        let subject = available(true, 3, true, false);
+        assert!(!subject.shippable());
+        assert_eq!(subject.gate_blockers(), vec![REJECTED_SELECTION]);
     }
 
     #[test]

@@ -413,6 +413,18 @@ impl Fixture {
         }
     }
 
+    /// Write straight to the file, around the store.
+    ///
+    /// The exporter's gates are a last look before the bytes go out, so testing
+    /// one means putting the database into a state the layer above is supposed
+    /// to prevent. That state cannot be reached through a write op, by design.
+    fn force_sql(&self, sql: &str) {
+        let conn = rusqlite::Connection::open(self.dir.path().join("working.db")).unwrap();
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        conn.execute_batch(sql).unwrap();
+    }
+
     async fn preview(&self) -> HoldbackReport {
         morpho_export::preview(&self.store, &self.settings())
             .await
@@ -860,6 +872,84 @@ async fn a_broken_word_pulls_its_dependents_out_and_the_report_says_why() {
 
     // Sorted by impact: the word to fix first is on top.
     assert_eq!(report.excluded[0].word_id, ids[0]);
+}
+
+/// A word whose picture was rejected under it never reaches the release, and
+/// the report names the reason rather than shrugging.
+///
+/// Everything the reconciler cached about this word still says it is ready —
+/// `core_ready` is set, the approval is there, the blocker list is empty — and
+/// the picture it would ship is content somebody threw out. The gate is the
+/// last place that can notice, which is why it looks at the candidate's status
+/// itself instead of trusting the readiness cache.
+#[tokio::test]
+async fn a_word_shipping_from_a_rejected_candidate_is_held_back() {
+    let f = fixture();
+    let ids = four_complete_words(&f).await;
+    assert_eq!(f.preview().await.shippable_count, 4);
+
+    f.force_sql(&format!(
+        "UPDATE image_candidates SET status = 'rejected'
+          WHERE img_cand_id = (SELECT img_cand_id FROM image_selections WHERE word_id = {})",
+        ids[0]
+    ));
+
+    let report = f.preview().await;
+    assert_eq!(report.shippable_count, 3);
+    let broken = report
+        .excluded
+        .iter()
+        .find(|entry| entry.word_id == ids[0])
+        .unwrap();
+    assert_eq!(broken.root_cause, morpho_export::REJECTED_SELECTION);
+    assert_eq!(
+        report.exportable_count, 0,
+        "the three that distract towards it follow it out"
+    );
+
+    // The same for a sentence and for a sense, one kind at a time.
+    for sql in [
+        "UPDATE image_candidates SET status = 'available'",
+        &format!(
+            "UPDATE example_candidates SET status = 'rejected'
+              WHERE ex_cand_id = (SELECT ex_cand_id FROM example_selections
+                                   WHERE word_id = {} AND slot = 1)",
+            ids[0]
+        ),
+    ] {
+        f.force_sql(sql);
+    }
+    assert_eq!(
+        f.preview()
+            .await
+            .excluded
+            .iter()
+            .find(|entry| entry.word_id == ids[0])
+            .unwrap()
+            .root_cause,
+        morpho_export::REJECTED_SELECTION
+    );
+
+    f.force_sql("UPDATE example_candidates SET status = 'available'");
+    f.force_sql(&format!(
+        "UPDATE definition_candidates SET status = 'rejected'
+          WHERE def_cand_id = (SELECT def_cand_id FROM definition_selections
+                                WHERE word_id = {} AND enabled = 1)",
+        ids[0]
+    ));
+    assert_eq!(
+        f.preview()
+            .await
+            .excluded
+            .iter()
+            .find(|entry| entry.word_id == ids[0])
+            .unwrap()
+            .root_cause,
+        morpho_export::REJECTED_SELECTION
+    );
+
+    f.force_sql("UPDATE definition_candidates SET status = 'available'");
+    assert_eq!(f.preview().await.shippable_count, 4);
 }
 
 #[tokio::test]
