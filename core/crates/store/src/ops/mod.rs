@@ -45,7 +45,7 @@ pub use readiness::{ApplyReadiness, ReadinessRow};
 pub use release::RecordRelease;
 pub use selections::{
     ApplyAutoSelections, ApplyScores, AutoSelection, MintDefinitionCandidate, PrimaryMove,
-    ReconcilePrimaries, ScoreUpdate, SetApproval, SetSelection,
+    ReconcilePrimaries, ReleaseInvalidSelection, ScoreUpdate, SetApproval, SetSelection,
 };
 pub use tts::RecordTtsAsset;
 pub use words::{CreateWord, ImportStats, ImportWords, SetAuxStatus, SetEtymology, SetGloss};
