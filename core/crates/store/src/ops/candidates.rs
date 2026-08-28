@@ -217,7 +217,14 @@ pub(super) fn mint_example_candidate(
         ctx.touch(EntityType::ExampleCandidate, ex_cand_id.to_string());
         ctx.touch(EntityType::Word, req.word_id.to_string());
     } else {
-        revive_example_candidate(ctx, ex_cand_id, req.word_id, &hash, hl_start, hl_end)?;
+        revive_example_candidate(
+            ctx,
+            ex_cand_id,
+            req.word_id,
+            &hash,
+            (hl_start, hl_end),
+            req.source == ExampleSource::Manual,
+        )?;
     }
     Ok(WriteResult::Candidate {
         cand_id: ex_cand_id,
@@ -230,20 +237,28 @@ pub(super) fn mint_example_candidate(
 ///
 /// `UNIQUE (word_id, text_hash)` identifies a candidate by its content, and the
 /// insert that loses to it silently returns the existing row. Two things about
-/// that row can be wrong, and both left the library with no way out:
+/// that row can be wrong, and they answer to different authorities:
 ///
 /// * **it is rejected.** Status is lifecycle, not identity, so a rejected row
 ///   was permanently blocking the re-entry of its own text: the slot pointing
 ///   at it could not be refilled (no free available candidate), purging it was
 ///   refused (still referenced), and minting the corrected sentence handed back
 ///   the same stale row. Two hundred and ninety-eight words sat in that
-///   deadlock. Minting content is an assertion that the content is wanted, so
-///   it puts the row back in service.
+///   deadlock.
+///
+///   Only a **manual** mint lifts it. Typing the sentence again is an editorial
+///   assertion that this content is wanted; a harvester returning the same
+///   sentence from the same corpus asserts nothing at all, and letting a
+///   re-fetch resurrect what an editor threw out is the "editorial work quietly
+///   undone" failure the rest of this module exists to close. A rejected row a
+///   worker re-ingests stays rejected.
 /// * **its offsets disagree with the text.** `hl_start`/`hl_end` are derived
 ///   from (word, canonical text) — working-db.sql says so — and a row whose
 ///   stored pair is not what [`locate`] computes is holding data that
 ///   contradicts its own column. Rows minted before the offsets were computed
-///   server-side carry exactly that.
+///   server-side carry exactly that. There is no editorial judgement in
+///   recomputing derived data, so every caller repairs it, on a rejected row as
+///   readily as on a live one.
 ///
 /// A row that is available and already agrees is the ordinary dedup, and stays
 /// silent: re-minting an unchanged sentence must not fill the audit log.
@@ -252,8 +267,8 @@ fn revive_example_candidate(
     ex_cand_id: i64,
     word_id: i64,
     text_hash: &str,
-    hl_start: i64,
-    hl_end: i64,
+    (hl_start, hl_end): (i64, i64),
+    manual: bool,
 ) -> Result<()> {
     let (status, stored_start, stored_end): (String, i64, i64) = ctx.tx.query_row(
         "SELECT status, hl_start, hl_end FROM example_candidates WHERE ex_cand_id = ?1",
@@ -261,17 +276,26 @@ fn revive_example_candidate(
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?;
 
-    let revived = status != CandidateStatus::Available.as_str();
+    let rejected = status != CandidateStatus::Available.as_str();
+    let revived = rejected && manual;
     let hl_repaired = (stored_start, stored_end) != (hl_start, hl_end);
     if !revived && !hl_repaired {
         return Ok(());
     }
 
-    ctx.tx.execute(
-        "UPDATE example_candidates SET status = 'available', hl_start = ?2, hl_end = ?3
-         WHERE ex_cand_id = ?1",
-        rusqlite::params![ex_cand_id, hl_start, hl_end],
-    )?;
+    if revived {
+        ctx.tx.execute(
+            "UPDATE example_candidates SET status = 'available', hl_start = ?2, hl_end = ?3
+             WHERE ex_cand_id = ?1",
+            rusqlite::params![ex_cand_id, hl_start, hl_end],
+        )?;
+    } else {
+        // Derived data only. A rejected row this reaches keeps its status.
+        ctx.tx.execute(
+            "UPDATE example_candidates SET hl_start = ?2, hl_end = ?3 WHERE ex_cand_id = ?1",
+            rusqlite::params![ex_cand_id, hl_start, hl_end],
+        )?;
+    }
     ctx.event(
         EventDraft::new(
             EntityType::ExampleCandidate,

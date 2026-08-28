@@ -480,6 +480,67 @@ async fn re_minting_a_rejected_sentence_revives_the_row() {
         .is_some_and(|h| !h.is_empty()));
 }
 
+/// A harvester returning a sentence an editor threw out asserts nothing.
+///
+/// Reviving on re-mint is an *editorial* act: somebody typed the sentence again
+/// on purpose. The same corpus handing back the same row on the next crawl is
+/// not that, and letting it resurrect rejected content would quietly undo the
+/// review this whole module exists to protect. So the status half is manual
+/// only — while the offsets half, which is derived data with no judgement in
+/// it, is repaired for every caller, rejected row included.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_harvester_re_ingesting_a_rejected_sentence_leaves_it_rejected() {
+    let h = harness();
+    let word_id = seed_word(&h.store, "serene").await;
+    let text = "A serene lake lay below.";
+    let cand = seed_example(&h.store, word_id, text, (0, 1)).await;
+    let correct = candidate_row(&h.store, cand).await;
+
+    h.store
+        .write(
+            Actor::admin("abyss"),
+            WriteOp::RejectCandidate {
+                kind: CandidateKind::Example,
+                cand_id: cand,
+            },
+        )
+        .await
+        .unwrap();
+
+    // `seed_example` mints as Tatoeba — the fetch path, not an editor.
+    seed_example(&h.store, word_id, text, (0, 1)).await;
+    assert_eq!(candidate_count(&h.store, word_id).await, 1);
+    assert_eq!(
+        candidate_row(&h.store, cand).await.0,
+        "rejected",
+        "a re-fetch must never put back what an editor threw out"
+    );
+    assert!(candidate_events(&h.store, cand, "candidate_revived")
+        .await
+        .is_empty());
+
+    // The offsets half is not editorial, so a worker repairs those — and the
+    // row is still rejected afterwards.
+    h.force_sql(&format!(
+        "UPDATE example_candidates SET hl_start = {}, hl_end = {} WHERE ex_cand_id = {cand}",
+        correct.1 + 1,
+        correct.2 + 1
+    ));
+    seed_example(&h.store, word_id, text, (0, 1)).await;
+    let (status, start, end, _) = candidate_row(&h.store, cand).await;
+    assert_eq!((start, end), (correct.1, correct.2));
+    assert_eq!(status, "rejected");
+    let events = candidate_events(&h.store, cand, "candidate_revived").await;
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!(events[0]["revived"], serde_json::json!(false));
+    assert_eq!(events[0]["hl_repaired"], serde_json::json!(true));
+
+    // An editor typing it again is the assertion that does lift it.
+    let (code, body) = mint(&h.router, word_id, text).await;
+    assert_eq!(code, StatusCode::CREATED, "{body}");
+    assert_eq!(candidate_row(&h.store, cand).await.0, "available");
+}
+
 /// The offsets are derived from the word and the canonical text, so a stored
 /// pair that disagrees with them is data contradicting its own column. Rows
 /// minted before the offsets were computed server-side carry exactly that, and
