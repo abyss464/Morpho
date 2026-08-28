@@ -27,7 +27,7 @@ Priority doctrine: make the App usable first, bug fixes second.
 
 Merge small changes into one agent; parallelize only large items that are independent and touch disjoint files. Code agents always run in worktree isolation, commit on their own branch in logical units with explicit paths (never `git add -A`), and neither merge nor push. Operations agents (DB/API/engine work) skip isolation and must not touch code directories.
 
-An owner checkpoint exists only with a concrete review surface: an existing UI filter, a URL, or a paste-once loader that brings up exactly the set under review. Work the owner cannot inspect through such a surface is not given an owner gate — it either ships on machine verification or gets a surface built first.
+An owner checkpoint exists only with a concrete review surface: an existing UI filter, a URL, or a paste-once loader that brings up exactly the set under review. Work the owner cannot inspect through such a surface is not given an owner gate — it either ships on machine verification or gets a surface built first. A gate also needs a reason specific to the set: it exists only when the batch is meaningfully riskier than the library at large. Recently-machine-touched is not such a reason; machine screens plus the owner's own browsing cadence cover the uniform residual risk.
 
 A contract is: mission + boundaries + acceptance criteria. Point at docs instead of restating them. Scope lock: only the confirmed behavior; adjacent improvements are reported, not implemented. **No polling**: if the agent starts a background process, it must NOT poll/tail/monitor the output — start the process and report back immediately. The orchestrator checks progress when asked.
 
