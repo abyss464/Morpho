@@ -692,11 +692,33 @@ fn selected_content_hash(ctx: &OpCtx<'_, '_>, slot: &SlotRef) -> Result<String> 
     hash.ok_or_else(|| StoreError::not_found(format!("selection for {slot}")))
 }
 
+/// Refuse when the slot points at a candidate that is not available.
+fn require_available_selection(ctx: &OpCtx<'_, '_>, slot: &SlotRef) -> Result<()> {
+    let current = current_selection(ctx, slot)?
+        .ok_or_else(|| StoreError::not_found(format!("selection for {slot}")))?;
+    let kind = slot.candidate_kind();
+    let status = candidate_status(ctx, kind, current.cand_id)?;
+    if status.as_deref() != Some(CandidateStatus::Available.as_str()) {
+        return Err(StoreError::conflict(format!(
+            "{slot} points at {kind} candidate {} which is {}",
+            current.cand_id,
+            status.as_deref().unwrap_or("gone")
+        )));
+    }
+    Ok(())
+}
+
 pub(super) fn set_approval(req: SetApproval, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResult> {
     let entity = selection_entity(req.slot.candidate_kind());
     let entity_id = req.slot.entity_id();
 
     if req.approved {
+        // Approval implies a pin, so approving a slot whose candidate is no
+        // longer available would re-freeze exactly the state rule 4's exception
+        // exists to release — which is how a bulk approval pass turned rejected
+        // candidates back into pinned, approved selections. Refuse instead; the
+        // slot has to be pointed somewhere shippable first.
+        require_available_selection(ctx, &req.slot)?;
         let hash = selected_content_hash(ctx, &req.slot)?;
         let approved_by = ctx.actor.to_string();
         // Approval implies a pin (README Part 3): auto-selection must never
