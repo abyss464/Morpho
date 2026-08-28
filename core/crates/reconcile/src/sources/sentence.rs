@@ -18,18 +18,17 @@
 use morpho_domain::canon::{canonicalize, fold_lemma};
 use morpho_domain::types::FetchedExample;
 
+/// The matching rule itself lives in `morpho_domain`, because the store writes
+/// example rows too and cannot depend on this crate. Re-exported here so every
+/// caller keeps the one import it always had.
+pub use morpho_domain::sentence::locate;
+
 /// Shortest sentence worth storing, in bytes. Below this it is a fragment, not
 /// a sentence that shows the word doing anything.
 const MIN_BYTES: usize = 12;
 /// Longest sentence worth storing. The scorer's length window already tails off
 /// well before here; this only keeps a runaway paragraph out of the library.
 const MAX_BYTES: usize = 320;
-
-/// Regular English inflections, longest first so `-ies` wins over `-s`.
-///
-/// This is the "simple inflection" set: `s`/`es`/`ed`/`d`/`ing` and the
-/// spelling variants that go with them.
-const SUFFIXES: &[&str] = &["ies", "ing", "ied", "ees", "es", "ed", "en", "er", "s", "d"];
 
 /// Build one example candidate from a raw sentence, or `None` if it is
 /// unusable.
@@ -47,65 +46,9 @@ pub fn candidate(raw: &str, lemma: &str, source_ref: Option<String>) -> Option<F
     })
 }
 
-/// Byte range of `lemma` inside the already-canonicalized `text`.
-///
-/// Prefers the exact form before falling back to an inflection: a sentence
-/// containing both "adapted" and "adapt" highlights the bare form.
-pub fn locate(text: &str, lemma: &str) -> Option<(usize, usize)> {
-    let lower = text.to_lowercase();
-    let needle = lemma.to_lowercase();
-    if needle.is_empty() {
-        return None;
-    }
-
-    if let Some(range) = find_word(&lower, &needle) {
-        return Some(range);
-    }
-    for suffix in SUFFIXES {
-        let candidate = format!("{needle}{suffix}");
-        if let Some(range) = find_word(&lower, &candidate) {
-            return Some(range);
-        }
-        // Stem changes: "adapt" → "adapting", "serene" → "serener".
-        if let Some(stem) = needle.strip_suffix('e') {
-            if let Some(range) = find_word(&lower, &format!("{stem}{suffix}")) {
-                return Some(range);
-            }
-        }
-    }
-    None
-}
-
 /// Does `text` contain `lemma` or a simple inflection of it?
 pub fn mentions(text: &str, lemma: &str) -> bool {
     locate(&canonicalize(text), &fold_lemma(lemma)).is_some()
-}
-
-/// Find `needle` in `haystack` on word boundaries. Both must be lowercase.
-///
-/// Offsets are byte offsets, and because `to_lowercase` can change byte length
-/// for some scripts, a mismatch between the folded and original lengths makes
-/// this bail out rather than return a range that would slice mid-character.
-fn find_word(haystack: &str, needle: &str) -> Option<(usize, usize)> {
-    let is_word = |c: char| c.is_alphanumeric() || c == '\'' || c == '\u{2019}';
-    let mut from = 0usize;
-    while let Some(found) = haystack[from..].find(needle) {
-        let start = from + found;
-        let end = start + needle.len();
-        let before_ok = haystack[..start]
-            .chars()
-            .next_back()
-            .is_none_or(|c| !is_word(c));
-        let after_ok = haystack[end..].chars().next().is_none_or(|c| !is_word(c));
-        if before_ok && after_ok {
-            return Some((start, end));
-        }
-        from = start + needle.chars().next().map_or(1, char::len_utf8);
-        if from >= haystack.len() {
-            break;
-        }
-    }
-    None
 }
 
 #[cfg(test)]
@@ -114,35 +57,6 @@ mod tests {
 
     fn span(example: &FetchedExample) -> &str {
         &example.text[example.hl_start as usize..example.hl_end as usize]
-    }
-
-    #[test]
-    fn matches_only_on_word_boundaries() {
-        // "ample" must not match inside "example".
-        assert_eq!(locate("An example of this.", "ample"), None);
-        assert_eq!(locate("An ample supply.", "ample"), Some((3, 8)));
-    }
-
-    #[test]
-    fn prefers_the_exact_form_over_an_inflection() {
-        let text = "Species adapted, and species adapt.";
-        let (start, end) = locate(text, "adapt").unwrap();
-        assert_eq!(&text[start..end], "adapt");
-    }
-
-    #[test]
-    fn accepts_the_simple_inflections() {
-        for (text, lemma, expected) in [
-            ("She adapts quickly.", "adapt", "adapts"),
-            ("He watches closely.", "watch", "watches"),
-            ("They adapted fast.", "adapt", "adapted"),
-            ("The lake serened over.", "serene", "serened"),
-            ("Species are adapting fast.", "adapt", "adapting"),
-            ("The lake is serener today.", "serene", "serener"),
-        ] {
-            let (start, end) = locate(text, lemma).unwrap_or_else(|| panic!("{text} / {lemma}"));
-            assert_eq!(&text[start..end], expected);
-        }
     }
 
     #[test]
@@ -195,10 +109,5 @@ mod tests {
         )
         .unwrap();
         assert_eq!(example.source_ref.as_deref(), Some("tatoeba:42"));
-    }
-
-    #[test]
-    fn an_empty_lemma_never_matches() {
-        assert_eq!(locate("anything at all here", ""), None);
     }
 }

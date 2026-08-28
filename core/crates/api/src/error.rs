@@ -76,6 +76,12 @@ impl ApiError {
         Self::new(StatusCode::CONFLICT, "conflict", message)
     }
 
+    /// The body parsed and its arguments are the right shape; the content is
+    /// the problem.
+    pub fn unprocessable(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::UNPROCESSABLE_ENTITY, "unprocessable", message)
+    }
+
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", message)
     }
@@ -119,6 +125,7 @@ impl From<StoreError> for ApiError {
             StoreError::NotFound(what) => ApiError::not_found(what),
             StoreError::Conflict(what) => ApiError::conflict(what),
             StoreError::Invalid(what) => ApiError::bad_request(what),
+            StoreError::Unprocessable(what) => ApiError::unprocessable(what),
             StoreError::Closed => ApiError::new(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "unavailable",

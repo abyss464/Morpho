@@ -12,6 +12,7 @@ pub mod error;
 pub mod event;
 pub mod hash;
 pub mod job;
+pub mod sentence;
 pub mod time;
 pub mod tts;
 pub mod types;
@@ -29,6 +30,7 @@ pub use job::{
     JobKey, JobKind, JobStatus, JobView, JobsSnapshot, LaneView, Priority, RateKey, SubjectRef,
     SubjectType,
 };
+pub use sentence::locate;
 pub use time::{format_ts, now_ts, parse_ts};
 pub use tts::{DesiredTts, TtsConfig};
 pub use types::{

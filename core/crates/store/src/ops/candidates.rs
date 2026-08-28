@@ -7,10 +7,13 @@
 //! queries the marker, never "does a candidate exist" (README Part 4
 //! §"完成标记").
 
-use morpho_domain::canon::canonicalize;
+use rusqlite::OptionalExtension;
+
+use morpho_domain::canon::{canonicalize, fold_lemma};
 use morpho_domain::change::EntityType;
 use morpho_domain::event::{Action, EventDraft};
 use morpho_domain::hash::text_hash;
+use morpho_domain::sentence::locate;
 use morpho_domain::types::{
     DefinitionSource, ExampleSource, FetchedDefinition, FetchedExample, FetchedImage, ImageSource,
     MediaKind, Pos,
@@ -24,7 +27,13 @@ use crate::error::{Result, StoreError};
 pub struct MintExampleCandidate {
     pub word_id: i64,
     pub text: String,
-    /// UTF-8 byte offsets into the **canonicalized** text.
+    /// UTF-8 byte offsets into the **canonicalized** text — advisory.
+    ///
+    /// The stored text is canonicalized, which collapses internal whitespace,
+    /// so offsets a caller measured against the string it typed point at the
+    /// wrong bytes of the string this writes. The op locates the word itself
+    /// and keeps its own answer; these are read only when they agree with it,
+    /// which is to say never in a way anybody can observe.
     pub hl_start: i64,
     pub hl_end: i64,
     pub source: ExampleSource,
@@ -104,15 +113,20 @@ pub const FETCH_ETYMOLOGY: &str = "etymology";
 pub const FETCH_IMAGES: &str = "images";
 
 fn require_word(ctx: &OpCtx<'_, '_>, word_id: i64) -> Result<()> {
-    let found: i64 = ctx.tx.query_row(
-        "SELECT EXISTS (SELECT 1 FROM words WHERE word_id = ?1)",
-        rusqlite::params![word_id],
-        |row| row.get(0),
-    )?;
-    if found == 0 {
-        return Err(StoreError::not_found(format!("word {word_id}")));
-    }
-    Ok(())
+    word_lemma(ctx, word_id).map(|_| ())
+}
+
+/// The lemma of a word that must exist.
+fn word_lemma(ctx: &OpCtx<'_, '_>, word_id: i64) -> Result<String> {
+    let found: Option<String> = ctx
+        .tx
+        .query_row(
+            "SELECT lemma FROM words WHERE word_id = ?1",
+            rusqlite::params![word_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    found.ok_or_else(|| StoreError::not_found(format!("word {word_id}")))
 }
 
 pub(super) fn register_media(ctx: &mut OpCtx<'_, '_>, media: &MediaRegistration) -> Result<()> {
@@ -140,14 +154,26 @@ pub(super) fn mint_example_candidate(
     req: MintExampleCandidate,
     ctx: &mut OpCtx<'_, '_>,
 ) -> Result<WriteResult> {
-    require_word(ctx, req.word_id)?;
+    let lemma = word_lemma(ctx, req.word_id)?;
     let text = canonicalize(&req.text);
     if text.is_empty() {
         return Err(StoreError::invalid("example text must not be empty"));
     }
-    // The highlight belongs to this exact byte string; a range that does not
-    // land on it would corrupt the app's rendering, so refuse it here.
-    validate_highlight(&text, req.hl_start, req.hl_end)?;
+    // The highlight is a property of (word, canonical text), so it is computed
+    // from them rather than taken on trust. A caller measuring against the
+    // string it typed is measuring against a different string: canonicalization
+    // collapses internal whitespace, and a leading space alone shifts every
+    // offset by one. A sentence that does not contain the word it claims to
+    // illustrate has no highlight to compute and is refused — a wrong highlight
+    // is worse than a missing example, and it is never guessed.
+    let (hl_start, hl_end) = locate(&text, &fold_lemma(&lemma))
+        .map(|(start, end)| (start as i64, end as i64))
+        .ok_or_else(|| {
+            StoreError::unprocessable(format!(
+                "{text:?} does not contain {lemma:?} or an inflection of it"
+            ))
+        })?;
+    validate_highlight(&text, hl_start, hl_end)?;
 
     let hash = text_hash(&text);
     let created_by = req.created_by.unwrap_or_else(|| ctx.actor.to_string());
@@ -160,8 +186,8 @@ pub(super) fn mint_example_candidate(
             req.word_id,
             text,
             hash,
-            req.hl_start,
-            req.hl_end,
+            hl_start,
+            hl_end,
             req.source.as_str(),
             req.source_ref,
             created_by,
