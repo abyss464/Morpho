@@ -32,7 +32,7 @@ use morpho_store::{Store, WriteOp};
 
 pub use cut::{CutNode, CutResult, Holdback, DEPENDENCY_HOLDBACK};
 pub use error::{ExportError, ExportResult};
-pub use model::{ExportPayload, ExportWord, GlossAnchor, STALE_EXTRACTION};
+pub use model::{ExportPayload, ExportWord, GlossAnchor, REJECTED_SELECTION, STALE_EXTRACTION};
 pub use writer::{Manifest, ManifestEntry, WrittenRelease};
 
 /// One failed hard gate (`ExportGateFailure` in admin-ui/src/api/types.ts).

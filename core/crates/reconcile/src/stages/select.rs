@@ -28,12 +28,14 @@ use rusqlite::Connection;
 use morpho_domain::canon::fold_lemma;
 use morpho_domain::event::Actor;
 use morpho_domain::types::{
-    CandidateKind, DefinitionSource, ExampleSource, ImageSource, Role, SelectedBy, SlotRef,
+    CandidateKind, CandidateStatus, DefinitionSource, ExampleSource, ImageSource, Role, SelectedBy,
+    SlotRef,
 };
 use morpho_domain::version::SCORER_ALGO_VER;
 use morpho_store::error::Result;
 use morpho_store::ops::{
-    ApplyAutoSelections, ApplyScores, AutoSelection, PrimaryMove, ReconcilePrimaries, ScoreUpdate,
+    ApplyAutoSelections, ApplyScores, AutoSelection, PrimaryMove, ReconcilePrimaries,
+    ReleaseInvalidSelection, ScoreUpdate,
 };
 use morpho_store::{Store, WriteOp};
 
@@ -313,9 +315,43 @@ struct SlotState {
     score: Option<f64>,
 }
 
+/// One slot's occupant, and whether it is still content the word may show.
+///
+/// Rule 4's exception: a selection whose candidate has left
+/// `status = 'available'` is not an incumbent to be out-argued, it is an
+/// **invalid occupant**. The ranking sees the slot as empty — no hysteresis
+/// against a candidate nobody may show, and no pin protecting it — and the pin
+/// and the approval that were holding it still are released. What the row
+/// points at only moves when there is something available to move it to; the
+/// reconciler never empties a slot.
+#[derive(Debug, Clone, Copy)]
+struct Occupant {
+    state: SlotState,
+    available: bool,
+    approved: bool,
+}
+
+impl Occupant {
+    /// The slot as the ranking must see it.
+    fn incumbent(&self) -> Option<SlotState> {
+        self.available.then_some(self.state)
+    }
+
+    /// Is there still a pin or an approval to release?
+    ///
+    /// False the second time round, which is what keeps a word with no
+    /// available candidate at all from writing the same two audit rows on every
+    /// single pass.
+    fn needs_release(&self) -> bool {
+        !self.available && (self.state.pinned || self.approved)
+    }
+}
+
 /// Everything one pass decided.
 #[derive(Debug, Default)]
 struct Decisions {
+    /// Rule 4's exception: slots whose occupant is no longer available.
+    releases: Vec<ReleaseInvalidSelection>,
     selections: Vec<AutoSelection>,
     /// Rule 6: words whose primary sense no longer matches the evidence.
     primaries: Vec<PrimaryMove>,
@@ -329,11 +365,12 @@ pub async fn auto_select(store: &Store, context: &EngineContext) -> Result<usize
         .read(move |conn| collect_selections(conn, wordnet.as_deref(), &clip_model_ver))
         .await?;
     let mut applied = 0usize;
-    if !decisions.selections.is_empty() {
+    if !decisions.selections.is_empty() || !decisions.releases.is_empty() {
         let outcome = store
             .write(
                 Actor::Reconciler,
                 WriteOp::ApplyAutoSelections(ApplyAutoSelections {
+                    releases: decisions.releases,
                     selections: decisions.selections,
                 }),
             )
@@ -368,6 +405,11 @@ fn collect_selections(
     clip_model_ver: &str,
 ) -> Result<Decisions> {
     let mut decisions = Vec::new();
+    // Rule 4's exception, gathered from the slot tables rather than from the
+    // pools below: a word whose every candidate was rejected has no pool at
+    // all, and it is exactly the word whose pinned, approved slot is pointing
+    // at content nobody may show.
+    let mut releases = Vec::new();
 
     // -- definitions -------------------------------------------------------
     let mut stmt = conn.prepare(
@@ -449,6 +491,16 @@ fn collect_selections(
     }
 
     let def_slots = definition_slots(conn)?;
+    for ((word_id, pos), slot) in &def_slots {
+        if slot.occupant.needs_release() {
+            releases.push(ReleaseInvalidSelection {
+                slot: SlotRef::Definition {
+                    word_id: *word_id,
+                    pos: pos.clone(),
+                },
+            });
+        }
+    }
     let primaries = current_primaries(conn)?;
     let hand_moved = words_whose_primary_a_human_moved(conn)?;
     let mut moves = Vec::new();
@@ -464,10 +516,12 @@ fn collect_selections(
 
         for pos in ordered {
             let choices = &positions[pos];
-            let state = def_slots
-                .get(&(*word_id, pos.clone()))
-                .map(|slot| slot.state);
-            let Some(choice) = pick(choices, state) else {
+            let slot = def_slots.get(&(*word_id, pos.clone()));
+            // An occupant that is no longer available is not an occupant: the
+            // decision is taken as if the slot were empty, while the guard the
+            // write checks still names the row the rule actually saw.
+            let Some(choice) = pick(choices, slot.and_then(|slot| slot.occupant.incumbent()))
+            else {
                 continue;
             };
             decisions.push(AutoSelection {
@@ -476,7 +530,7 @@ fn collect_selections(
                     pos: pos.clone(),
                 },
                 cand_id: choice,
-                expected_cand_id: state.map(|s| s.cand_id),
+                expected_cand_id: slot.map(|slot| slot.occupant.state.cand_id),
                 make_primary: needs_primary && Some(pos) == evidence_pos.as_ref(),
             });
         }
@@ -531,21 +585,38 @@ fn collect_selections(
         });
     }
     let example_slots = example_slot_states(conn)?;
+    for ((word_id, slot), occupant) in &example_slots {
+        if occupant.needs_release() {
+            releases.push(ReleaseInvalidSelection {
+                slot: SlotRef::Example {
+                    word_id: *word_id,
+                    slot: *slot,
+                },
+            });
+        }
+    }
 
     for (word_id, choices) in &examples {
         let mut ranked = choices.clone();
         ranked.sort_by(rank_choices);
 
-        let states: [Option<SlotState>; 3] =
+        let held: [Option<Occupant>; 3] =
             [1, 2, 3].map(|slot| example_slots.get(&(*word_id, slot)).copied());
-        let wanted = assign_example_slots(&ranked, states);
+        // Two views of the same three rows. The assignment is computed against
+        // the occupants that are still available — an invalid one neither
+        // reserves its sentence nor holds a slot with a pin — while the write
+        // guard and the "already there" test read the rows as they stand.
+        let states: [Option<SlotState>; 3] = held.map(|slot| slot.map(|slot| slot.state));
+        let wanted =
+            assign_example_slots(&ranked, held.map(|slot| slot.and_then(|s| s.incumbent())));
 
         for (index, want) in wanted.iter().enumerate() {
-            let state = states[index];
-            let (Some(cand_id), false) = (*want, state.is_some_and(|s| s.pinned)) else {
+            let holds_a_valid_pin =
+                held[index].is_some_and(|slot| slot.available && slot.state.pinned);
+            let (Some(cand_id), false) = (*want, holds_a_valid_pin) else {
                 continue;
             };
-            if state.map(|s| s.cand_id) == Some(cand_id) {
+            if states[index].map(|s| s.cand_id) == Some(cand_id) {
                 continue;
             }
             decisions.push(AutoSelection {
@@ -554,7 +625,7 @@ fn collect_selections(
                     slot: index as i64 + 1,
                 },
                 cand_id,
-                expected_cand_id: state.map(|s| s.cand_id),
+                expected_cand_id: states[index].map(|s| s.cand_id),
                 make_primary: false,
             });
         }
@@ -620,6 +691,13 @@ fn collect_selections(
         });
     }
     let image_slots = image_slot_states(conn, &taken, &queries, &clip, &mates)?;
+    for (word_id, slot) in &image_slots {
+        if slot.needs_release() {
+            releases.push(ReleaseInvalidSelection {
+                slot: SlotRef::Image { word_id: *word_id },
+            });
+        }
+    }
     for (word_id, pool) in &pools {
         let slot = image_slots.get(word_id);
         // One ruler for the whole word, incumbent included. Deciding that here
@@ -637,7 +715,12 @@ fn collect_selections(
         // through every future pass. A *pinned* slot is still never touched:
         // a human who chose that picture outranks this, and the export gate is
         // the right place for them to hear about it.
+        //
+        // A picture that has left `status = 'available'` is invalid the same
+        // way and more plainly, and it is checked first: rule 4's exception
+        // says a pin protecting a rejected candidate is a pin over nothing.
         let effective = match slot {
+            Some(slot) if !slot.available => None,
             Some(slot) if slot.pinned => state,
             Some(slot) if slot.conflicts => None,
             _ => state,
@@ -654,6 +737,7 @@ fn collect_selections(
     }
 
     Ok(Decisions {
+        releases,
         selections: decisions,
         primaries: moves,
     })
@@ -862,13 +946,14 @@ fn rank_choices(a: &Choice, b: &Choice) -> std::cmp::Ordering {
 /// One sense slot: what fills it, plus whether the word shows it at all.
 #[derive(Debug, Clone, Copy)]
 struct DefSlot {
-    state: SlotState,
+    occupant: Occupant,
     enabled: bool,
 }
 
 fn definition_slots(conn: &Connection) -> Result<HashMap<(i64, String), DefSlot>> {
     let mut stmt = conn.prepare(
-        "SELECT ds.word_id, ds.pos, ds.def_cand_id, ds.pinned, dc.auto_score, ds.enabled
+        "SELECT ds.word_id, ds.pos, ds.def_cand_id, ds.pinned, dc.auto_score, ds.enabled,
+                dc.status, ds.approved
          FROM definition_selections ds
          JOIN definition_candidates dc ON dc.def_cand_id = ds.def_cand_id",
     )?;
@@ -877,10 +962,14 @@ fn definition_slots(conn: &Connection) -> Result<HashMap<(i64, String), DefSlot>
             Ok((
                 (row.get::<_, i64>(0)?, row.get::<_, String>(1)?),
                 DefSlot {
-                    state: SlotState {
-                        cand_id: row.get(2)?,
-                        pinned: row.get::<_, i64>(3)? != 0,
-                        score: row.get(4)?,
+                    occupant: Occupant {
+                        state: SlotState {
+                            cand_id: row.get(2)?,
+                            pinned: row.get::<_, i64>(3)? != 0,
+                            score: row.get(4)?,
+                        },
+                        available: is_available(&row.get::<_, String>(6)?),
+                        approved: row.get::<_, i64>(7)? != 0,
                     },
                     enabled: row.get::<_, i64>(5)? != 0,
                 },
@@ -888,6 +977,11 @@ fn definition_slots(conn: &Connection) -> Result<HashMap<(i64, String), DefSlot>
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows.into_iter().collect())
+}
+
+/// Is this `candidates.status` one a slot may point at?
+fn is_available(status: &str) -> bool {
+    status == CandidateStatus::Available.as_str()
 }
 
 fn word_lemmas(conn: &Connection) -> Result<HashMap<i64, String>> {
@@ -900,9 +994,10 @@ fn word_lemmas(conn: &Connection) -> Result<HashMap<i64, String>> {
     Ok(rows.into_iter().collect())
 }
 
-fn example_slot_states(conn: &Connection) -> Result<HashMap<(i64, i64), SlotState>> {
+fn example_slot_states(conn: &Connection) -> Result<HashMap<(i64, i64), Occupant>> {
     let mut stmt = conn.prepare(
-        "SELECT es.word_id, es.slot, es.ex_cand_id, es.pinned, ec.auto_score
+        "SELECT es.word_id, es.slot, es.ex_cand_id, es.pinned, ec.auto_score,
+                ec.status, es.approved
          FROM example_selections es
          JOIN example_candidates ec ON ec.ex_cand_id = es.ex_cand_id",
     )?;
@@ -910,10 +1005,14 @@ fn example_slot_states(conn: &Connection) -> Result<HashMap<(i64, i64), SlotStat
         .query_map([], |row| {
             Ok((
                 (row.get::<_, i64>(0)?, row.get::<_, i64>(1)?),
-                SlotState {
-                    cand_id: row.get(2)?,
-                    pinned: row.get::<_, i64>(3)? != 0,
-                    score: row.get(4)?,
+                Occupant {
+                    state: SlotState {
+                        cand_id: row.get(2)?,
+                        pinned: row.get::<_, i64>(3)? != 0,
+                        score: row.get(4)?,
+                    },
+                    available: is_available(&row.get::<_, String>(5)?),
+                    approved: row.get::<_, i64>(6)? != 0,
                 },
             ))
         })?
@@ -939,6 +1038,9 @@ struct ImageSlot {
     duplicate: bool,
     /// A word this one shares a question card with shows this picture.
     conflicts: bool,
+    /// The candidate is still `status = 'available'`.
+    available: bool,
+    approved: bool,
 }
 
 impl ImageSlot {
@@ -956,6 +1058,11 @@ impl ImageSlot {
             }),
         }
     }
+
+    /// Rule 4's exception — see [`Occupant::needs_release`].
+    fn needs_release(&self) -> bool {
+        !self.available && (self.pinned || self.approved)
+    }
 }
 
 fn image_slot_states(
@@ -966,7 +1073,8 @@ fn image_slot_states(
     mates: &HashMap<i64, HashSet<String>>,
 ) -> Result<HashMap<i64, ImageSlot>> {
     let mut stmt = conn.prepare(
-        "SELECT s.word_id, s.img_cand_id, s.pinned, c.auto_score, c.file_hash
+        "SELECT s.word_id, s.img_cand_id, s.pinned, c.auto_score, c.file_hash,
+                c.status, s.approved
          FROM image_selections s
          JOIN image_candidates c ON c.img_cand_id = s.img_cand_id",
     )?;
@@ -978,33 +1086,39 @@ fn image_slot_states(
                 row.get::<_, i64>(2)? != 0,
                 row.get::<_, Option<f64>>(3)?,
                 row.get::<_, String>(4)?,
+                is_available(&row.get::<_, String>(5)?),
+                row.get::<_, i64>(6)? != 0,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows
         .into_iter()
-        .map(|(word_id, cand_id, pinned, auto_score, file_hash)| {
-            // Everything the incumbent is judged on, gathered the same way its
-            // challengers' is. What it *scores* is decided by the caller, which
-            // is the only place that knows whether the pool is uniformly scored.
-            let clip_score = queries
-                .get(&word_id)
-                .and_then(|text_hash| clip.get(&(file_hash.clone(), text_hash.clone())))
-                .copied();
-            (
-                word_id,
-                ImageSlot {
-                    cand_id,
-                    pinned,
-                    auto_score,
-                    clip: clip_score,
-                    duplicate: facts::is_duplicate_image(taken, &file_hash, word_id),
-                    conflicts: mates
-                        .get(&word_id)
-                        .is_some_and(|held| held.contains(&file_hash)),
-                },
-            )
-        })
+        .map(
+            |(word_id, cand_id, pinned, auto_score, file_hash, available, approved)| {
+                // Everything the incumbent is judged on, gathered the same way its
+                // challengers' is. What it *scores* is decided by the caller, which
+                // is the only place that knows whether the pool is uniformly scored.
+                let clip_score = queries
+                    .get(&word_id)
+                    .and_then(|text_hash| clip.get(&(file_hash.clone(), text_hash.clone())))
+                    .copied();
+                (
+                    word_id,
+                    ImageSlot {
+                        cand_id,
+                        pinned,
+                        auto_score,
+                        clip: clip_score,
+                        duplicate: facts::is_duplicate_image(taken, &file_hash, word_id),
+                        conflicts: mates
+                            .get(&word_id)
+                            .is_some_and(|held| held.contains(&file_hash)),
+                        available,
+                        approved,
+                    },
+                )
+            },
+        )
         .collect())
 }
 
@@ -1118,7 +1232,49 @@ mod tests {
             clip: choice.clip,
             duplicate: choice.duplicate,
             conflicts: choice.conflicts,
+            available: true,
+            approved: false,
         }
+    }
+
+    fn occupant(cand_id: i64, pinned: bool, approved: bool, available: bool) -> Occupant {
+        Occupant {
+            state: SlotState {
+                cand_id,
+                pinned,
+                score: Some(0.9),
+            },
+            available,
+            approved,
+        }
+    }
+
+    /// Rule 4's exception, at the level the whole heal turns on: an occupant
+    /// nobody may show is not an incumbent, and whatever was protecting it has
+    /// to be released exactly once.
+    #[test]
+    fn an_unavailable_occupant_is_no_incumbent_at_all() {
+        let rejected = occupant(5, true, true, false);
+        assert!(rejected.incumbent().is_none());
+        assert!(rejected.needs_release());
+        // With the slot seen as empty, the best available candidate takes it
+        // outright — no margin against a candidate nobody may show.
+        let choices = vec![choice(1, 0.10)];
+        assert_eq!(pick(&choices, rejected.incumbent()), Some(1));
+        // …and an available one is protected exactly as rule 4 says.
+        let held = occupant(5, true, true, true);
+        assert_eq!(pick(&choices, held.incumbent()), None);
+        assert!(!held.needs_release());
+    }
+
+    /// The second pass over a word whose pool holds nothing available must be
+    /// silent: the row still points where it points, and re-releasing it would
+    /// write `pin_fallback` for ever.
+    #[test]
+    fn a_released_slot_is_not_released_again() {
+        let released = occupant(5, false, false, false);
+        assert!(!released.needs_release());
+        assert_eq!(pick(&[], released.incumbent()), None);
     }
 
     /// A pool nothing has scored ranks exactly on the quality prior, with the

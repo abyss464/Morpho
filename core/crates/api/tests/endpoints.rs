@@ -509,41 +509,65 @@ async fn minting_a_definition_returns_the_whole_word() {
     assert_eq!(candidate["source"], "manual");
 }
 
+/// The highlight is computed from the word and the stored text, not taken from
+/// the caller.
+///
+/// A console measures offsets against the string in its textarea; the row holds
+/// the *canonicalized* string, and a leading space or a double space between
+/// words shifts every offset after it. Trusting the caller is how a highlight
+/// ends up one character off, or two, on exactly the sentences somebody typed
+/// by hand.
 #[tokio::test]
-async fn minting_an_example_validates_the_highlight() {
+async fn minting_an_example_recomputes_the_highlight() {
     let h = harness();
     let word = seed_word(&h.store, "serene", Role::Target, Some(4602)).await;
 
+    // Offsets measured against the raw caption: "serene" starts at byte 4
+    // there, and at byte 2 of the canonical text the row will hold.
     let (status, body) = post(
         &h.router,
         "/api/candidates/example",
         serde_json::json!({
             "word_id": word,
-            "text": "A serene lake lay below.",
-            "hl_start": 2,
-            "hl_end": 8
+            "text": "  A  serene   lake lay below.",
+            "hl_start": 5,
+            "hl_end": 11
         }),
     )
     .await;
-    assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(body["examples"][0]["candidates"][0]["hl_start"], 2);
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let candidate = &body["examples"][0]["candidates"][0];
+    let text = candidate["text"].as_str().unwrap();
+    assert_eq!(text, "A serene lake lay below.");
+    let (start, end) = (
+        candidate["hl_start"].as_u64().unwrap() as usize,
+        candidate["hl_end"].as_u64().unwrap() as usize,
+    );
+    assert_eq!(
+        &text[start..end],
+        "serene",
+        "the stored offsets have to index the stored text"
+    );
 
+    // A sentence that does not contain the word has no highlight to compute,
+    // and one is never guessed.
     let (bad, body) = post(
         &h.router,
         "/api/candidates/example",
         serde_json::json!({
             "word_id": word,
-            "text": "Short.",
+            "text": "Short and quite unrelated.",
             "hl_start": 0,
-            "hl_end": 999
+            "hl_end": 5
         }),
     )
     .await;
-    assert_eq!(bad, StatusCode::BAD_REQUEST);
+    assert_eq!(bad, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "unprocessable");
     assert!(body["error"]["message"]
         .as_str()
         .unwrap()
-        .contains("highlight"));
+        .contains("serene"));
 }
 
 #[tokio::test]

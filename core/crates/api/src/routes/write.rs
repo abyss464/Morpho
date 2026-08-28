@@ -324,6 +324,32 @@ pub async fn reject_candidate(
     word_response(&state, word_id).await
 }
 
+/// `DELETE /api/candidates/example/{cand_id}`
+///
+/// Erasure, as opposed to rejection: the row goes. Rejection is what the engine
+/// and the console use — reversible, auditable, and it leaves the sentence
+/// visible in the candidate strip — so this is for content that should never
+/// have been minted at all. A candidate a slot still points at is refused;
+/// move the slot first.
+pub async fn purge_example(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(cand_id): Path<i64>,
+) -> ApiResult<Json<WordDetail>> {
+    let actor = state.actor(&headers);
+    let word_id = candidate_word_id(&state, CandidateKind::Example, cand_id).await?;
+    state
+        .store
+        .write(
+            actor,
+            WriteOp::PurgeExampleCandidate {
+                ex_cand_id: cand_id,
+            },
+        )
+        .await?;
+    word_response(&state, word_id).await
+}
+
 async fn candidate_word_id(state: &AppState, kind: CandidateKind, cand_id: i64) -> ApiResult<i64> {
     let (table, pk) = match kind {
         CandidateKind::Definition => ("definition_candidates", "def_cand_id"),

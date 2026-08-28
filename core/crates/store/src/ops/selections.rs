@@ -67,9 +67,29 @@ pub struct AutoSelection {
     pub make_primary: bool,
 }
 
-/// Apply a batch of auto-selection decisions.
+/// One slot whose candidate is no longer one the word may show.
+///
+/// README rule 4's exception: a pin — and the approval that implies one — only
+/// protects a slot while what fills it is still selectable. When the candidate
+/// leaves `status = 'available'` the protection is released so rules 2 and 3
+/// can decide the slot again, and the admin inbox is told.
+///
+/// The guard is the candidate's status read inside the same transaction rather
+/// than an `expected_cand_id`: what makes the release correct is *why* the slot
+/// is invalid, and an editor who fixed the slot between the read and the write
+/// leaves it pointing at an available candidate, which is exactly the condition
+/// that makes this a no-op.
 #[derive(Debug, Clone)]
+pub struct ReleaseInvalidSelection {
+    pub slot: SlotRef,
+}
+
+/// Apply a batch of auto-selection decisions.
+#[derive(Debug, Clone, Default)]
 pub struct ApplyAutoSelections {
+    /// Applied first: releasing a slot is what lets the decision that refills
+    /// it past rule 4's pinned guard in the same transaction.
+    pub releases: Vec<ReleaseInvalidSelection>,
     pub selections: Vec<AutoSelection>,
 }
 
@@ -134,6 +154,92 @@ fn candidate_entity(kind: CandidateKind) -> EntityType {
         CandidateKind::Example => EntityType::ExampleCandidate,
         CandidateKind::Image => EntityType::ImageCandidate,
     }
+}
+
+/// `(table, primary key column)` of one candidate kind.
+const fn candidate_table(kind: CandidateKind) -> (&'static str, &'static str) {
+    match kind {
+        CandidateKind::Definition => ("definition_candidates", "def_cand_id"),
+        CandidateKind::Example => ("example_candidates", "ex_cand_id"),
+        CandidateKind::Image => ("image_candidates", "img_cand_id"),
+    }
+}
+
+/// `status` of one candidate, or `None` when there is no such row.
+fn candidate_status(
+    ctx: &OpCtx<'_, '_>,
+    kind: CandidateKind,
+    cand_id: i64,
+) -> Result<Option<String>> {
+    let (table, pk) = candidate_table(kind);
+    Ok(ctx
+        .tx
+        .query_row(
+            &format!("SELECT status FROM {table} WHERE {pk} = ?1"),
+            rusqlite::params![cand_id],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+/// May this candidate fill a slot at all?
+///
+/// A missing row answers `false` for the same reason a rejected one does: what
+/// the slot points at is not content anybody may show.
+fn candidate_is_available(ctx: &OpCtx<'_, '_>, kind: CandidateKind, cand_id: i64) -> Result<bool> {
+    Ok(candidate_status(ctx, kind, cand_id)?.as_deref()
+        == Some(CandidateStatus::Available.as_str()))
+}
+
+/// Drop one slot's pin and approval and record why.
+///
+/// This is rule 4's exception in one place: the fields the pin and the approval
+/// occupy are cleared, a `pin_fallback` row says the protection is gone, and an
+/// `approval_invalidated` row follows when there was an approval to invalidate.
+/// Re-selection is never done here — it belongs to rules 2 and 3.
+fn release_slot(
+    ctx: &mut OpCtx<'_, '_>,
+    slot: &SlotRef,
+    was_approved: bool,
+    detail: serde_json::Value,
+) -> Result<()> {
+    match slot {
+        SlotRef::Definition { word_id, pos } => ctx.tx.execute(
+            "UPDATE definition_selections
+             SET pinned = 0, approved = 0, approved_hash = NULL, approved_by = NULL,
+                 approved_at = NULL, updated_at = ?1
+             WHERE word_id = ?2 AND pos = ?3",
+            rusqlite::params![ctx.now, word_id, pos],
+        )?,
+        SlotRef::Example { word_id, slot } => ctx.tx.execute(
+            "UPDATE example_selections
+             SET pinned = 0, approved = 0, approved_hash = NULL, approved_by = NULL,
+                 approved_at = NULL, updated_at = ?1
+             WHERE word_id = ?2 AND slot = ?3",
+            rusqlite::params![ctx.now, word_id, slot],
+        )?,
+        SlotRef::Image { word_id } => ctx.tx.execute(
+            "UPDATE image_selections
+             SET pinned = 0, approved = 0, approved_hash = NULL, approved_by = NULL,
+                 approved_at = NULL, updated_at = ?1
+             WHERE word_id = ?2",
+            rusqlite::params![ctx.now, word_id],
+        )?,
+    };
+
+    let entity = selection_entity(slot.candidate_kind());
+    let entity_id = slot.entity_id();
+    ctx.event(
+        EventDraft::new(entity, entity_id.clone(), Action::PinFallback).detail(detail.clone()),
+    )?;
+    if was_approved {
+        ctx.event(
+            EventDraft::new(entity, entity_id.clone(), Action::ApprovalInvalidated).detail(detail),
+        )?;
+    }
+    ctx.touch(entity, entity_id);
+    ctx.touch(EntityType::Word, slot.word_id().to_string());
+    Ok(())
 }
 
 fn word_exists(ctx: &OpCtx<'_, '_>, word_id: i64) -> Result<bool> {
@@ -586,11 +692,33 @@ fn selected_content_hash(ctx: &OpCtx<'_, '_>, slot: &SlotRef) -> Result<String> 
     hash.ok_or_else(|| StoreError::not_found(format!("selection for {slot}")))
 }
 
+/// Refuse when the slot points at a candidate that is not available.
+fn require_available_selection(ctx: &OpCtx<'_, '_>, slot: &SlotRef) -> Result<()> {
+    let current = current_selection(ctx, slot)?
+        .ok_or_else(|| StoreError::not_found(format!("selection for {slot}")))?;
+    let kind = slot.candidate_kind();
+    let status = candidate_status(ctx, kind, current.cand_id)?;
+    if status.as_deref() != Some(CandidateStatus::Available.as_str()) {
+        return Err(StoreError::conflict(format!(
+            "{slot} points at {kind} candidate {} which is {}",
+            current.cand_id,
+            status.as_deref().unwrap_or("gone")
+        )));
+    }
+    Ok(())
+}
+
 pub(super) fn set_approval(req: SetApproval, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResult> {
     let entity = selection_entity(req.slot.candidate_kind());
     let entity_id = req.slot.entity_id();
 
     if req.approved {
+        // Approval implies a pin, so approving a slot whose candidate is no
+        // longer available would re-freeze exactly the state rule 4's exception
+        // exists to release — which is how a bulk approval pass turned rejected
+        // candidates back into pinned, approved selections. Refuse instead; the
+        // slot has to be pointed somewhere shippable first.
+        require_available_selection(ctx, &req.slot)?;
         let hash = selected_content_hash(ctx, &req.slot)?;
         let approved_by = ctx.actor.to_string();
         // Approval implies a pin (README Part 3): auto-selection must never
@@ -852,11 +980,7 @@ pub(super) fn set_slot_enabled(
 pub(super) fn apply_scores(req: ApplyScores, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResult> {
     let mut changed = 0usize;
     for update in &req.updates {
-        let (table, pk) = match update.kind {
-            CandidateKind::Definition => ("definition_candidates", "def_cand_id"),
-            CandidateKind::Example => ("example_candidates", "ex_cand_id"),
-            CandidateKind::Image => ("image_candidates", "img_cand_id"),
-        };
+        let (table, pk) = candidate_table(update.kind);
         let sql = format!(
             "UPDATE {table} SET auto_score = ?2, score_detail = ?3, scorer_ver = ?4 WHERE {pk} = ?1"
         );
@@ -895,6 +1019,17 @@ pub(super) fn apply_auto_selections(
     req: ApplyAutoSelections,
     ctx: &mut OpCtx<'_, '_>,
 ) -> Result<WriteResult> {
+    // Releases land before anything is read back, so the snapshot below sees an
+    // unpinned slot and the decision that refills it is not skipped by rule 4's
+    // guard. The candidate the slot points at does not move here, so the
+    // optimistic `expected_cand_id` the rule computed still matches.
+    let mut released = 0usize;
+    for release in &req.releases {
+        if release_invalid_selection(&release.slot, ctx)? {
+            released += 1;
+        }
+    }
+
     let mut before: HashMap<String, Option<CurrentSelection>> = HashMap::new();
     for decision in &req.selections {
         let key = decision.slot.to_string();
@@ -961,7 +1096,45 @@ pub(super) fn apply_auto_selections(
         }
         applied += 1;
     }
-    Ok(WriteResult::Selected { applied, skipped })
+    Ok(WriteResult::Selected {
+        applied: applied + released,
+        skipped,
+    })
+}
+
+/// Release one slot whose candidate is no longer available.
+///
+/// Answers whether anything changed. Three cases are deliberate no-ops, and all
+/// three mean the same thing — there is nothing left to release:
+///
+/// * the slot is empty;
+/// * what it points at is available again, which is what an editor fixing the
+///   slot between the read snapshot and this write looks like;
+/// * the pin and the approval are already gone. A word whose pool holds nothing
+///   available keeps pointing where it points — the reconciler never empties a
+///   slot — so without this check every pass would write the same two audit
+///   rows again, for ever.
+fn release_invalid_selection(slot: &SlotRef, ctx: &mut OpCtx<'_, '_>) -> Result<bool> {
+    let Some(current) = current_selection(ctx, slot)? else {
+        return Ok(false);
+    };
+    if !current.pinned && !current.approved {
+        return Ok(false);
+    }
+    if candidate_is_available(ctx, slot.candidate_kind(), current.cand_id)? {
+        return Ok(false);
+    }
+    release_slot(
+        ctx,
+        slot,
+        current.approved,
+        serde_json::json!({
+            "reason": "selected_candidate_unavailable",
+            "cand_id": current.cand_id,
+            "slot": slot,
+        }),
+    )?;
+    Ok(true)
 }
 
 // ---------------------------------------------------------------------------
@@ -973,11 +1146,7 @@ pub(super) fn reject_candidate(
     cand_id: i64,
     ctx: &mut OpCtx<'_, '_>,
 ) -> Result<WriteResult> {
-    let (table, pk) = match kind {
-        CandidateKind::Definition => ("definition_candidates", "def_cand_id"),
-        CandidateKind::Example => ("example_candidates", "ex_cand_id"),
-        CandidateKind::Image => ("image_candidates", "img_cand_id"),
-    };
+    let (table, pk) = candidate_table(kind);
     let word_id: Option<i64> = ctx
         .tx
         .query_row(
@@ -1054,44 +1223,12 @@ pub(super) fn reject_candidate(
     };
 
     for (slot, was_approved) in affected {
-        match &slot {
-            SlotRef::Definition { word_id, pos } => ctx.tx.execute(
-                "UPDATE definition_selections
-                 SET pinned = 0, approved = 0, approved_hash = NULL, approved_by = NULL,
-                     approved_at = NULL, updated_at = ?1
-                 WHERE word_id = ?2 AND pos = ?3",
-                rusqlite::params![ctx.now, word_id, pos],
-            )?,
-            SlotRef::Example { word_id, slot: s } => ctx.tx.execute(
-                "UPDATE example_selections
-                 SET pinned = 0, approved = 0, approved_hash = NULL, approved_by = NULL,
-                     approved_at = NULL, updated_at = ?1
-                 WHERE word_id = ?2 AND slot = ?3",
-                rusqlite::params![ctx.now, word_id, s],
-            )?,
-            SlotRef::Image { word_id } => ctx.tx.execute(
-                "UPDATE image_selections
-                 SET pinned = 0, approved = 0, approved_hash = NULL, approved_by = NULL,
-                     approved_at = NULL, updated_at = ?1
-                 WHERE word_id = ?2",
-                rusqlite::params![ctx.now, word_id],
-            )?,
-        };
-        let entity = selection_entity(kind);
-        let entity_id = slot.entity_id();
-        ctx.event(
-            EventDraft::new(entity, entity_id.clone(), Action::PinFallback).detail(
-                serde_json::json!({ "reason": "selected_candidate_rejected", "cand_id": cand_id }),
-            ),
+        release_slot(
+            ctx,
+            &slot,
+            was_approved,
+            serde_json::json!({ "reason": "selected_candidate_rejected", "cand_id": cand_id }),
         )?;
-        if was_approved {
-            ctx.event(
-                EventDraft::new(entity, entity_id.clone(), Action::ApprovalInvalidated).detail(
-                    serde_json::json!({ "reason": "selected_candidate_rejected", "cand_id": cand_id }),
-                ),
-            )?;
-        }
-        ctx.touch(entity, entity_id);
     }
 
     Ok(WriteResult::Unit)

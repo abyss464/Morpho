@@ -7,10 +7,13 @@
 //! queries the marker, never "does a candidate exist" (README Part 4
 //! §"完成标记").
 
-use morpho_domain::canon::canonicalize;
+use rusqlite::OptionalExtension;
+
+use morpho_domain::canon::{canonicalize, fold_lemma};
 use morpho_domain::change::EntityType;
 use morpho_domain::event::{Action, EventDraft};
 use morpho_domain::hash::text_hash;
+use morpho_domain::sentence::locate;
 use morpho_domain::types::{
     DefinitionSource, ExampleSource, FetchedDefinition, FetchedExample, FetchedImage, ImageSource,
     MediaKind, Pos,
@@ -24,7 +27,13 @@ use crate::error::{Result, StoreError};
 pub struct MintExampleCandidate {
     pub word_id: i64,
     pub text: String,
-    /// UTF-8 byte offsets into the **canonicalized** text.
+    /// UTF-8 byte offsets into the **canonicalized** text — advisory.
+    ///
+    /// The stored text is canonicalized, which collapses internal whitespace,
+    /// so offsets a caller measured against the string it typed point at the
+    /// wrong bytes of the string this writes. The op locates the word itself
+    /// and keeps its own answer; these are read only when they agree with it,
+    /// which is to say never in a way anybody can observe.
     pub hl_start: i64,
     pub hl_end: i64,
     pub source: ExampleSource,
@@ -104,15 +113,20 @@ pub const FETCH_ETYMOLOGY: &str = "etymology";
 pub const FETCH_IMAGES: &str = "images";
 
 fn require_word(ctx: &OpCtx<'_, '_>, word_id: i64) -> Result<()> {
-    let found: i64 = ctx.tx.query_row(
-        "SELECT EXISTS (SELECT 1 FROM words WHERE word_id = ?1)",
-        rusqlite::params![word_id],
-        |row| row.get(0),
-    )?;
-    if found == 0 {
-        return Err(StoreError::not_found(format!("word {word_id}")));
-    }
-    Ok(())
+    word_lemma(ctx, word_id).map(|_| ())
+}
+
+/// The lemma of a word that must exist.
+fn word_lemma(ctx: &OpCtx<'_, '_>, word_id: i64) -> Result<String> {
+    let found: Option<String> = ctx
+        .tx
+        .query_row(
+            "SELECT lemma FROM words WHERE word_id = ?1",
+            rusqlite::params![word_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    found.ok_or_else(|| StoreError::not_found(format!("word {word_id}")))
 }
 
 pub(super) fn register_media(ctx: &mut OpCtx<'_, '_>, media: &MediaRegistration) -> Result<()> {
@@ -140,14 +154,26 @@ pub(super) fn mint_example_candidate(
     req: MintExampleCandidate,
     ctx: &mut OpCtx<'_, '_>,
 ) -> Result<WriteResult> {
-    require_word(ctx, req.word_id)?;
+    let lemma = word_lemma(ctx, req.word_id)?;
     let text = canonicalize(&req.text);
     if text.is_empty() {
         return Err(StoreError::invalid("example text must not be empty"));
     }
-    // The highlight belongs to this exact byte string; a range that does not
-    // land on it would corrupt the app's rendering, so refuse it here.
-    validate_highlight(&text, req.hl_start, req.hl_end)?;
+    // The highlight is a property of (word, canonical text), so it is computed
+    // from them rather than taken on trust. A caller measuring against the
+    // string it typed is measuring against a different string: canonicalization
+    // collapses internal whitespace, and a leading space alone shifts every
+    // offset by one. A sentence that does not contain the word it claims to
+    // illustrate has no highlight to compute and is refused — a wrong highlight
+    // is worse than a missing example, and it is never guessed.
+    let (hl_start, hl_end) = locate(&text, &fold_lemma(&lemma))
+        .map(|(start, end)| (start as i64, end as i64))
+        .ok_or_else(|| {
+            StoreError::unprocessable(format!(
+                "{text:?} does not contain {lemma:?} or an inflection of it"
+            ))
+        })?;
+    validate_highlight(&text, hl_start, hl_end)?;
 
     let hash = text_hash(&text);
     let created_by = req.created_by.unwrap_or_else(|| ctx.actor.to_string());
@@ -160,8 +186,8 @@ pub(super) fn mint_example_candidate(
             req.word_id,
             text,
             hash,
-            req.hl_start,
-            req.hl_end,
+            hl_start,
+            hl_end,
             req.source.as_str(),
             req.source_ref,
             created_by,
@@ -195,6 +221,66 @@ pub(super) fn mint_example_candidate(
         cand_id: ex_cand_id,
         created,
     })
+}
+
+/// Delete one example candidate outright.
+///
+/// Rejection is the engine's answer to bad content: it is reversible, it keeps
+/// the audit trail attached to a row that still exists, and it is what every
+/// automatic path uses. Erasure is the administrator's, and README Part 3 says
+/// so plainly — candidate rows are never garbage collected, only an explicit
+/// admin purge deletes one.
+///
+/// A candidate a slot points at is refused rather than deleted. The reference
+/// is a foreign key, so the delete would fail anyway; refusing says which slot
+/// to move first instead of surfacing a constraint violation. Nothing else has
+/// to be cleaned up: TTS rows and CLIP scores are content-addressed and
+/// tolerate orphans by design, and the media library is reference-counted from
+/// the live tables.
+pub(super) fn purge_example_candidate(
+    ex_cand_id: i64,
+    ctx: &mut OpCtx<'_, '_>,
+) -> Result<WriteResult> {
+    let found: Option<(i64, String)> = ctx
+        .tx
+        .query_row(
+            "SELECT word_id, text_hash FROM example_candidates WHERE ex_cand_id = ?1",
+            rusqlite::params![ex_cand_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let (word_id, text_hash) =
+        found.ok_or_else(|| StoreError::not_found(format!("example candidate {ex_cand_id}")))?;
+
+    let holder: Option<i64> = ctx
+        .tx
+        .query_row(
+            "SELECT slot FROM example_selections WHERE ex_cand_id = ?1",
+            rusqlite::params![ex_cand_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if let Some(slot) = holder {
+        return Err(StoreError::conflict(format!(
+            "example candidate {ex_cand_id} fills slot {slot} of word {word_id}"
+        )));
+    }
+
+    ctx.tx.execute(
+        "DELETE FROM example_candidates WHERE ex_cand_id = ?1",
+        rusqlite::params![ex_cand_id],
+    )?;
+    ctx.event(
+        EventDraft::new(
+            EntityType::ExampleCandidate,
+            ex_cand_id.to_string(),
+            Action::CandidatePurged,
+        )
+        .detail(serde_json::json!({ "word_id": word_id, "text_hash": text_hash })),
+    )?;
+    ctx.touch(EntityType::ExampleCandidate, ex_cand_id.to_string());
+    ctx.touch(EntityType::Word, word_id.to_string());
+    Ok(WriteResult::Unit)
 }
 
 /// The highlight must be a byte range inside `text` that starts and ends on a

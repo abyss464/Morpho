@@ -20,6 +20,10 @@ pub enum StoreError {
     /// The request itself is malformed.
     #[error("invalid request: {0}")]
     Invalid(String),
+    /// The request is well formed and its arguments are the right shape, but
+    /// the content cannot be processed — HTTP 422 rather than 400.
+    #[error("unprocessable: {0}")]
+    Unprocessable(String),
     /// The writer task is gone (shutdown in progress).
     #[error("store is closed")]
     Closed,
@@ -39,6 +43,10 @@ impl StoreError {
 
     pub fn invalid(what: impl Into<String>) -> Self {
         Self::Invalid(what.into())
+    }
+
+    pub fn unprocessable(what: impl Into<String>) -> Self {
+        Self::Unprocessable(what.into())
     }
 }
 

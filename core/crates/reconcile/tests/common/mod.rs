@@ -31,6 +31,23 @@ pub fn harness() -> Harness {
     Harness { dir, store }
 }
 
+impl Harness {
+    /// Write straight to the file, around the store.
+    ///
+    /// Reserved for stating what is *already* in a database. The corrupt
+    /// selections this repairs — a slot pinned and approved onto a rejected
+    /// candidate — are unreachable through any write op, precisely because the
+    /// ops that could produce them now refuse; the rows exist because they
+    /// predate the refusal. A test that wants to heal one has to put it there
+    /// the way history did.
+    pub fn force_sql(&self, sql: &str) {
+        let conn = rusqlite::Connection::open(self.dir.path().join("working.db")).unwrap();
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        conn.execute_batch(sql).unwrap();
+    }
+}
+
 /// An engine context with every external source absent.
 pub fn context(data_dir: &std::path::Path) -> EngineContext {
     let sources =
