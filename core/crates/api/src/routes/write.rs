@@ -18,8 +18,10 @@ use morpho_domain::types::{
     Role, SelectedBy, SlotRef,
 };
 use morpho_store::ops::{
-    CreateWord, DistractorRebind, MediaRegistration, MintDefinitionCandidate, MintExampleCandidate,
+    AssignTag, BulkRejectByTag, CreateTag, CreateTagCategory, CreateWord, DeleteTag,
+    DistractorRebind, MediaRegistration, MintDefinitionCandidate, MintExampleCandidate,
     MintImageCandidate, OovResolution, RebindDistractors, SetApproval, SetGloss, SetSelection,
+    UnassignTag,
 };
 use morpho_store::WriteOp;
 
@@ -213,9 +215,12 @@ pub async fn mint_example(
                 text: body.text,
                 hl_start: body.hl_start,
                 hl_end: body.hl_end,
+                // The column stays the coarse `manual` channel (it is what drives
+                // rejected-row revival); the true provenance rides the tag.
                 source: ExampleSource::Manual,
                 source_ref: None,
                 created_by: None,
+                source_tag: Some(body.source),
             }),
         )
         .await?;
@@ -234,6 +239,7 @@ pub async fn upload_image(
 ) -> ApiResult<(StatusCode, Json<WordDetail>)> {
     let mut word_id: Option<i64> = None;
     let mut bytes: Option<Vec<u8>> = None;
+    let mut source: Option<String> = None;
 
     while let Some(field) = multipart
         .next_field()
@@ -251,6 +257,13 @@ pub async fn upload_image(
                         .parse()
                         .map_err(|_| ApiError::bad_request("word_id must be an integer"))?,
                 );
+            }
+            Some("source") => {
+                let raw = field
+                    .text()
+                    .await
+                    .map_err(|err| ApiError::bad_request(format!("bad source: {err}")))?;
+                source = Some(raw.trim().to_string());
             }
             Some("file") => {
                 let data = field
@@ -271,6 +284,11 @@ pub async fn upload_image(
 
     let word_id = word_id.ok_or_else(|| ApiError::bad_request("word_id is required"))?;
     let bytes = bytes.ok_or_else(|| ApiError::bad_request("file is required"))?;
+    // Required provenance (#54): a manual upload names its true source and never
+    // falls back to a catch-all. The store validates it against the vocabulary.
+    let source = source
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| ApiError::bad_request("source is required"))?;
 
     let encoded = morpho_reconcile::sources::images::encode(&bytes)
         .map_err(|err| ApiError::bad_request(format!("unusable image: {}", err.message())))?;
@@ -302,6 +320,7 @@ pub async fn upload_image(
                 license: None,
                 query_used: None,
                 created_by: None,
+                source_tag: Some(source),
             }),
         )
         .await?;
@@ -367,6 +386,152 @@ async fn candidate_word_id(state: &AppState, kind: CandidateKind, cand_id: i64) 
         })
         .await?;
     found.ok_or_else(|| ApiError::not_found(format!("{kind} candidate {cand_id}")))
+}
+
+// ---------------------------------------------------------------------------
+// Candidate tags & vocabulary (#54)
+// ---------------------------------------------------------------------------
+
+fn tag_affected(result: morpho_store::WriteResult) -> usize {
+    match result {
+        morpho_store::WriteResult::Tags { affected } => affected,
+        _ => 0,
+    }
+}
+
+/// `POST /api/candidates/{kind}/{cand_id}/tags` — assign or move a tag.
+pub async fn assign_tag(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((kind, cand_id)): Path<(String, i64)>,
+    Json(body): Json<AssignTagBody>,
+) -> ApiResult<Json<WordDetail>> {
+    let kind = parse_kind(&kind)?;
+    let actor = state.actor(&headers);
+    let word_id = candidate_word_id(&state, kind, cand_id).await?;
+    state
+        .store
+        .write(
+            actor,
+            WriteOp::AssignTag(AssignTag {
+                kind,
+                cand_id,
+                category: body.category,
+                value: body.value,
+            }),
+        )
+        .await?;
+    word_response(&state, word_id).await
+}
+
+/// `DELETE /api/candidates/{kind}/{cand_id}/tags/{category}` — remove a tag.
+pub async fn unassign_tag(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((kind, cand_id, category)): Path<(String, i64, String)>,
+) -> ApiResult<Json<WordDetail>> {
+    let kind = parse_kind(&kind)?;
+    let actor = state.actor(&headers);
+    let word_id = candidate_word_id(&state, kind, cand_id).await?;
+    state
+        .store
+        .write(
+            actor,
+            WriteOp::UnassignTag(UnassignTag {
+                kind,
+                cand_id,
+                category,
+            }),
+        )
+        .await?;
+    word_response(&state, word_id).await
+}
+
+/// `POST /api/candidates/bulk-reject` — reject every candidate carrying a tag.
+/// The #55 lever for undoing a whole source's selections; reversible.
+pub async fn bulk_reject_by_tag(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<BulkRejectByTagBody>,
+) -> ApiResult<Json<TagActionResponse>> {
+    let actor = state.actor(&headers);
+    let outcome = state
+        .store
+        .write(
+            actor,
+            WriteOp::BulkRejectByTag(BulkRejectByTag {
+                category: body.category,
+                value: body.value,
+            }),
+        )
+        .await?;
+    Ok(Json(TagActionResponse {
+        affected: tag_affected(outcome.result),
+    }))
+}
+
+/// `POST /api/tags` — add one value to the vocabulary (idempotent).
+pub async fn create_tag(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<CreateTagBody>,
+) -> ApiResult<Json<TagActionResponse>> {
+    let actor = state.actor(&headers);
+    let outcome = state
+        .store
+        .write(
+            actor,
+            WriteOp::CreateTag(CreateTag {
+                category: body.category,
+                value: body.value,
+                note: body.note,
+            }),
+        )
+        .await?;
+    Ok(Json(TagActionResponse {
+        affected: tag_affected(outcome.result),
+    }))
+}
+
+/// `DELETE /api/tags/{category}/{value}` — remove a value; refused while any
+/// candidate still carries it.
+pub async fn delete_tag(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((category, value)): Path<(String, String)>,
+) -> ApiResult<Json<TagActionResponse>> {
+    let actor = state.actor(&headers);
+    let outcome = state
+        .store
+        .write(actor, WriteOp::DeleteTag(DeleteTag { category, value }))
+        .await?;
+    Ok(Json(TagActionResponse {
+        affected: tag_affected(outcome.result),
+    }))
+}
+
+/// `POST /api/tags/categories` — add a whole tag dimension.
+pub async fn create_tag_category(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<CreateTagCategoryBody>,
+) -> ApiResult<Json<TagActionResponse>> {
+    let actor = state.actor(&headers);
+    let outcome = state
+        .store
+        .write(
+            actor,
+            WriteOp::CreateTagCategory(CreateTagCategory {
+                category: body.category,
+                required: body.required,
+                exclusive: body.exclusive,
+                note: body.note,
+            }),
+        )
+        .await?;
+    Ok(Json(TagActionResponse {
+        affected: tag_affected(outcome.result),
+    }))
 }
 
 // ---------------------------------------------------------------------------

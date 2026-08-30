@@ -44,6 +44,36 @@ pub const CONTRACT_RATE_LIMITS: &[(&str, i64, f64, i64)] = &[
     ("cpu", 8, 6000.0, 16),
 ];
 
+/// Seed values for the required `source` tag category. Mirrors the normative
+/// seed rows at the bottom of `docs/contracts/working-db.sql` exactly; applied
+/// with `INSERT OR IGNORE` semantics so operator additions survive every
+/// restart. Adding a source in production is an admin insert, not an edit here —
+/// this list only backfills the vocabulary the shipped datasets already use.
+pub const CONTRACT_SOURCE_TAGS: &[&str] = &[
+    // Reconciler channels (mirror the image/example `source` columns).
+    "unsplash",
+    "pexels",
+    "pixabay",
+    "wikimedia",
+    "openverse",
+    "sdxl",
+    "codex",
+    "exam_corpus",
+    "freedict",
+    "tatoeba",
+    "llm",
+    // Genuine ad-hoc human upload; never an auto-applied default.
+    "manual",
+    // Paired image+caption datasets ingested through the manual endpoints.
+    "coco",
+    "vg",
+    "cc3m",
+    "wit",
+    "commons",
+    // Subtitle-mined example sentences (ops/mine_subs.py).
+    "opensubtitles",
+];
+
 /// A column one migration step introduces: `(table, column, definition)`.
 pub type ColumnAdd = (&'static str, &'static str, &'static str);
 
@@ -260,6 +290,18 @@ pub const MIGRATIONS: &[Migration] = &[
             previous_ddl: IMAGE_CANDIDATES_V6,
         }],
         creates: &["clip_scores"],
+    },
+    Migration {
+        from: 7,
+        // #54: the candidate tagging tables. Data-driven provenance replacing the
+        // overloaded `source = 'manual'`. Three wholly new tables created from the
+        // contract; the `source` columns and their CHECK unions are untouched, so
+        // no candidate table is rebuilt and nothing here can move a selection. The
+        // seed vocabulary is backfilled by `seed_candidate_tags` on every boot,
+        // exactly as the `rate_limits` lanes are.
+        add_columns: &[],
+        rebuilds: &[],
+        creates: &["tag_category", "tag", "candidate_tag"],
     },
 ];
 
@@ -573,11 +615,13 @@ pub fn ensure_schema(conn: &mut Connection) -> Result<bool> {
         conn.pragma_update(None, "user_version", CONTRACT_SCHEMA_VERSION)?;
         migrate(conn)?;
         seed_rate_limits(conn)?;
+        seed_candidate_tags(conn)?;
         return Ok(true);
     }
 
     migrate(conn)?;
     seed_rate_limits(conn)?;
+    seed_candidate_tags(conn)?;
     Ok(false)
 }
 
@@ -684,6 +728,29 @@ pub fn seed_rate_limits(conn: &Connection) -> Result<()> {
     )?;
     for (key, concurrency, refill, burst) in CONTRACT_RATE_LIMITS {
         stmt.execute(rusqlite::params![key, concurrency, refill, burst])?;
+    }
+    Ok(())
+}
+
+/// Insert any missing candidate-tag vocabulary. Mirrors the normative seed rows
+/// at the bottom of `docs/contracts/working-db.sql` so a database *migrated*
+/// into schema 8 (whose `creates` step makes the tables but not their seed
+/// rows) ends up with the same vocabulary a freshly created one has. Existing
+/// rows and operator additions are left untouched.
+pub fn seed_candidate_tags(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "INSERT INTO tag_category (category, required, exclusive, note)
+         VALUES ('source', 1, 1,
+                 'Authoritative provenance; exactly one required per candidate.')
+         ON CONFLICT (category) DO NOTHING",
+        [],
+    )?;
+    let mut stmt = conn.prepare(
+        "INSERT INTO tag (category, value) VALUES ('source', ?1)
+         ON CONFLICT (category, value) DO NOTHING",
+    )?;
+    for value in CONTRACT_SOURCE_TAGS {
+        stmt.execute(rusqlite::params![value])?;
     }
     Ok(())
 }
@@ -870,6 +937,8 @@ mod tests {
         assert!(WORKING_DB_SQL.contains("word_count"));
         assert!(WORKING_DB_SQL.contains("zh_gloss"));
         assert!(WORKING_DB_SQL.contains("CREATE TABLE clip_scores"));
+        assert!(WORKING_DB_SQL.contains("CREATE TABLE tag_category"));
+        assert!(WORKING_DB_SQL.contains("CREATE TABLE candidate_tag"));
     }
 
     /// The typed enumerations and the SQL `CHECK` unions are two spellings of
@@ -1137,6 +1206,112 @@ mod tests {
         assert_eq!(rows, 2);
     }
 
+    /// #54: a v7 database gains the three candidate-tag tables and the seed
+    /// vocabulary, and the candidates it already held survive untouched — the
+    /// rung creates tables, it rebuilds nothing.
+    #[test]
+    fn a_wave_seven_database_gains_the_candidate_tag_tables() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        legacy(&mut conn, 7);
+        seed_candidates(&conn);
+        for table in ["tag_category", "tag", "candidate_tag"] {
+            assert!(
+                !table_exists(&conn, table).unwrap(),
+                "{table} present at v7"
+            );
+        }
+        let before = live_ddl(&conn, "image_candidates").unwrap();
+
+        assert!(!ensure_schema(&mut conn).unwrap());
+
+        for table in ["tag_category", "tag", "candidate_tag"] {
+            assert!(
+                table_exists(&conn, table).unwrap(),
+                "{table} missing after migrate"
+            );
+        }
+        // Purely additive: the candidate tables are not rebuilt.
+        assert_eq!(live_ddl(&conn, "image_candidates").unwrap(), before);
+        let (source, selected): (String, i64) = conn
+            .query_row(
+                "SELECT c.source, s.img_cand_id FROM image_selections s
+                 JOIN image_candidates c ON c.img_cand_id = s.img_cand_id WHERE s.word_id = 7",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((source.as_str(), selected), ("unsplash", 21));
+
+        // The seed vocabulary is present, and 'source' is required + exclusive.
+        let (required, exclusive): (i64, i64) = conn
+            .query_row(
+                "SELECT required, exclusive FROM tag_category WHERE category = 'source'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((required, exclusive), (1, 1));
+        let sources: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tag WHERE category = 'source'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(sources as usize, CONTRACT_SOURCE_TAGS.len());
+
+        // The FK/uniqueness guarantees below need foreign keys enforced, which a
+        // raw test connection does not do by default (morphod sets it at runtime).
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+
+        // A referenced tag cannot be deleted; an unreferenced one can.
+        let vg: i64 = conn
+            .query_row(
+                "SELECT tag_id FROM tag WHERE category='source' AND value='vg'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        conn.execute(
+            "INSERT INTO candidate_tag (entity_type, cand_id, tag_id, category, assigned_by)
+             VALUES ('image', 21, ?1, 'source', 'test')",
+            rusqlite::params![vg],
+        )
+        .unwrap();
+        assert!(
+            conn.execute("DELETE FROM tag WHERE tag_id = ?1", rusqlite::params![vg])
+                .is_err(),
+            "a referenced source tag must not be deletable"
+        );
+        // Exactly one tag per (candidate, category): a second source is refused.
+        let coco: i64 = conn
+            .query_row(
+                "SELECT tag_id FROM tag WHERE category='source' AND value='coco'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            conn.execute(
+                "INSERT INTO candidate_tag (entity_type, cand_id, tag_id, category, assigned_by)
+                 VALUES ('image', 21, ?1, 'source', 'test')",
+                rusqlite::params![coco],
+            )
+            .is_err(),
+            "a second source tag on one candidate must be refused"
+        );
+        // The denormalized category is pinned to the tag's real category.
+        assert!(
+            conn.execute(
+                "INSERT INTO candidate_tag (entity_type, cand_id, tag_id, category, assigned_by)
+                 VALUES ('example', 11, ?1, 'quality', 'test')",
+                rusqlite::params![coco],
+            )
+            .is_err(),
+            "a mismatched (tag_id, category) must be refused by the composite FK"
+        );
+    }
+
     /// The rebuild puts back everything it took apart.
     #[test]
     fn a_rebuild_restores_the_indexes_and_the_views() {
@@ -1264,6 +1439,9 @@ mod tests {
             ("table", "image_selections"),
             ("table", "media_files"),
             ("table", "clip_scores"),
+            ("table", "tag_category"),
+            ("table", "tag"),
+            ("table", "candidate_tag"),
             ("table", "def_extractions"),
             ("table", "def_tokens"),
             ("table", "oos_queue"),

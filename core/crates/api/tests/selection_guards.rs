@@ -115,6 +115,7 @@ async fn seed_example(store: &Store, word_id: i64, text: &str, hl: (i64, i64)) -
                 source: ExampleSource::Tatoeba,
                 source_ref: None,
                 created_by: None,
+                source_tag: None,
             }),
         )
         .await
@@ -429,7 +430,7 @@ async fn mint(router: &axum::Router, word_id: i64, text: &str) -> (StatusCode, s
         router,
         "/api/candidates/example",
         // Offsets nobody computed: the op works them out from the text.
-        serde_json::json!({ "word_id": word_id, "text": text, "hl_start": 0, "hl_end": 1 }),
+        serde_json::json!({ "word_id": word_id, "text": text, "hl_start": 0, "hl_end": 1, "source": "manual" }),
     )
     .await
 }

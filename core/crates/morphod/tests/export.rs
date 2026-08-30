@@ -300,6 +300,7 @@ impl Fixture {
                     license: Some("Unsplash License".into()),
                     query_used: None,
                     created_by: None,
+                    source_tag: None,
                 }),
             )
             .await

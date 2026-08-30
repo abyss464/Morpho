@@ -64,6 +64,7 @@ entity_enum!({
     Plan => "plan",
     Distractor => "distractor",
     Release => "release",
+    Tag => "tag",
 });
 
 /// One published change: a set of ids of a single entity type.

@@ -9,13 +9,14 @@ use morpho_domain::change::EntityType;
 use morpho_domain::event::{Action, Actor};
 use morpho_domain::job::{JobKey, JobKind, JobStatus, RateKey, SubjectRef};
 use morpho_domain::types::{
-    CandidateKind, CreatedBy, DefinitionSource, ExtractedToken, FetchedImage, GlossSource,
-    ImageSource, Role, SelectedBy, SlotRef, WordImport,
+    CandidateKind, CreatedBy, DefinitionSource, ExampleSource, ExtractedToken, FetchedImage,
+    GlossSource, ImageSource, Role, SelectedBy, SlotRef, WordImport,
 };
 use morpho_store::ops::{
-    BindDistractors, CreateWord, DistractorBinding, DistractorRebind, IngestImages,
-    MintDefinitionCandidate, OovResolution, PrimaryMove, RebindDistractors, ReconcilePrimaries,
-    RecordDefExtraction, SetApproval, SetSelection, UpsertJobState,
+    AssignTag, BindDistractors, BulkRejectByTag, CreateTag, CreateWord, DeleteTag,
+    DistractorBinding, DistractorRebind, IngestImages, MintDefinitionCandidate,
+    MintExampleCandidate, OovResolution, PrimaryMove, RebindDistractors, ReconcilePrimaries,
+    RecordDefExtraction, SetApproval, SetSelection, UnassignTag, UpsertJobState,
 };
 use morpho_store::{Store, StoreConfig, StoreError, WriteOp, WriteResult};
 
@@ -1743,4 +1744,191 @@ async fn distractor_pairs_reads_both_lemmas() {
     assert_eq!(pairs[0].rank, 1);
     assert_eq!(pairs[0].word_id, adapt);
     assert_eq!(pairs[0].distractor_word_id, adapter);
+}
+
+// ---------------------------------------------------------------------------
+// Candidate tagging (#54)
+// ---------------------------------------------------------------------------
+
+async fn mint_example_tagged(store: &Store, word_id: i64, text: &str, source: &str) -> i64 {
+    store
+        .write(
+            Actor::admin("t"),
+            WriteOp::MintExampleCandidate(MintExampleCandidate {
+                word_id,
+                text: text.to_string(),
+                hl_start: 0,
+                hl_end: 0,
+                source: ExampleSource::Manual,
+                source_ref: None,
+                created_by: None,
+                source_tag: Some(source.to_string()),
+            }),
+        )
+        .await
+        .unwrap()
+        .result
+        .cand_id()
+        .unwrap()
+}
+
+async fn source_tag(store: &Store, cand_id: i64) -> String {
+    store
+        .read(move |conn| {
+            let sql = format!(
+                "SELECT t.value FROM candidate_tag ct JOIN tag t ON t.tag_id = ct.tag_id
+                 WHERE ct.entity_type = 'example' AND ct.cand_id = {cand_id}
+                   AND ct.category = 'source'"
+            );
+            Ok(conn.query_row(&sql, [], |r| r.get::<_, String>(0))?)
+        })
+        .await
+        .unwrap()
+}
+
+/// Every creation path stamps the required source tag, and an unknown source is
+/// refused outright rather than defaulting to a catch-all.
+#[tokio::test]
+async fn minting_stamps_the_source_tag_and_refuses_an_unknown_one() {
+    let (_dir, store) = fixture();
+    let w = seed_word(&store, "serene", Role::Target).await;
+    let cand = mint_example_tagged(&store, w, "A serene lake.", "coco").await;
+    assert_eq!(source_tag(&store, cand).await, "coco");
+
+    let err = store
+        .write(
+            Actor::admin("t"),
+            WriteOp::MintExampleCandidate(MintExampleCandidate {
+                word_id: w,
+                text: "A serene meadow at dawn.".into(),
+                hl_start: 0,
+                hl_end: 0,
+                source: ExampleSource::Manual,
+                source_ref: None,
+                created_by: None,
+                source_tag: Some("getty".into()),
+            }),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Invalid(_)), "{err}");
+    // The transaction rolled back: no candidate slipped in without a source.
+    assert_eq!(
+        count(&store, "SELECT COUNT(*) FROM example_candidates").await,
+        1
+    );
+}
+
+/// The admin paths honour exactly-one-source, delete safety, and bulk reject.
+#[tokio::test]
+async fn tag_admin_paths_enforce_the_guarantees() {
+    let (_dir, store) = fixture();
+    let w = seed_word(&store, "serene", Role::Target).await;
+    let cand = mint_example_tagged(&store, w, "A serene lake.", "coco").await;
+
+    // Moving the source replaces it in place — never two sources on one candidate.
+    store
+        .write(
+            Actor::admin("t"),
+            WriteOp::AssignTag(AssignTag {
+                kind: CandidateKind::Example,
+                cand_id: cand,
+                category: "source".into(),
+                value: "vg".into(),
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(source_tag(&store, cand).await, "vg");
+    assert_eq!(count(&store, "SELECT COUNT(*) FROM candidate_tag").await, 1);
+
+    // A required category may not be removed.
+    let err = store
+        .write(
+            Actor::admin("t"),
+            WriteOp::UnassignTag(UnassignTag {
+                kind: CandidateKind::Example,
+                cand_id: cand,
+                category: "source".into(),
+            }),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+
+    // A referenced value cannot be deleted; an unreferenced one can, and adding a
+    // value is an insert (no code change).
+    let err = store
+        .write(
+            Actor::admin("t"),
+            WriteOp::DeleteTag(DeleteTag {
+                category: "source".into(),
+                value: "vg".into(),
+            }),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+    store
+        .write(
+            Actor::admin("t"),
+            WriteOp::CreateTag(CreateTag {
+                category: "source".into(),
+                value: "getty".into(),
+                note: None,
+            }),
+        )
+        .await
+        .unwrap();
+    store
+        .write(
+            Actor::admin("t"),
+            WriteOp::DeleteTag(DeleteTag {
+                category: "source".into(),
+                value: "getty".into(),
+            }),
+        )
+        .await
+        .unwrap();
+
+    // Bulk-reject by tag flips exactly the candidates carrying it, and is a
+    // no-op on a second run.
+    let out = store
+        .write(
+            Actor::admin("t"),
+            WriteOp::BulkRejectByTag(BulkRejectByTag {
+                category: "source".into(),
+                value: "vg".into(),
+            }),
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(out.result, WriteResult::Tags { affected: 1 }),
+        "{:?}",
+        out.result
+    );
+    assert_eq!(
+        count(
+            &store,
+            "SELECT COUNT(*) FROM example_candidates WHERE status = 'rejected'"
+        )
+        .await,
+        1
+    );
+    let again = store
+        .write(
+            Actor::admin("t"),
+            WriteOp::BulkRejectByTag(BulkRejectByTag {
+                category: "source".into(),
+                value: "vg".into(),
+            }),
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(again.result, WriteResult::Tags { affected: 0 }),
+        "{:?}",
+        again.result
+    );
 }

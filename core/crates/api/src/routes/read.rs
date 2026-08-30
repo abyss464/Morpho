@@ -70,6 +70,38 @@ pub async fn gallery(
     Ok(Json(body))
 }
 
+/// `GET /api/tags` — the tag vocabulary, optionally filtered to one category.
+pub async fn list_tags(
+    State(state): State<AppState>,
+    Query(query): Query<TagVocabQuery>,
+) -> ApiResult<Json<Vec<TagEntry>>> {
+    let body = state
+        .store
+        .read(move |conn| queries::list_tags(conn, query.category.as_deref()))
+        .await?;
+    Ok(Json(body))
+}
+
+/// `GET /api/tags/categories` — the tag dimensions and their flags.
+pub async fn tag_categories(
+    State(state): State<AppState>,
+) -> ApiResult<Json<Vec<TagCategoryEntry>>> {
+    let body = state.store.read(queries::list_tag_categories).await?;
+    Ok(Json(body))
+}
+
+/// `GET /api/candidates/by-tag?category=&value=` — candidates carrying a tag.
+pub async fn candidates_by_tag(
+    State(state): State<AppState>,
+    Query(query): Query<CandidatesByTagQuery>,
+) -> ApiResult<Json<Page<TaggedCandidate>>> {
+    let body = state
+        .store
+        .read(move |conn| queries::candidates_by_tag(conn, &query))
+        .await?;
+    Ok(Json(body))
+}
+
 pub async fn word_detail(
     State(state): State<AppState>,
     Path(word_id): Path<i64>,

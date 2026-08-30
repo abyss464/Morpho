@@ -157,6 +157,95 @@ CREATE TABLE image_selections (
 );
 
 -- ----------------------------------------------------------------------------
+-- Candidate provenance & tagging (#54)
+--
+-- `image_candidates.source` / `example_candidates.source` stay the coarse
+-- acquisition CHANNEL the reconciler scores and covers by: a closed set, each
+-- value backed by a fetcher/generator in code, so it is legitimately code-bound
+-- and left unchanged. Fine-grained, AUTHORITATIVE provenance is a data-driven
+-- TAG here instead. Adding a new source is an INSERT into `tag` — zero code or
+-- schema change (that is the point: #53 had to overload 'manual' because adding
+-- VG/CC3M/WIT/Commons otherwise meant editing an enum).
+--
+--   * The vocabulary is DATA: `tag_category` and `tag` are CRUD-able.
+--   * A candidate carries exactly one tag of the required 'source' category; the
+--     relation is many-to-many so other categories (quality tier, review state)
+--     drop in later with no schema change. 'source' is required and exclusive:
+--     requiredness is enforced at the core layer on every creation path (a
+--     candidate cannot be minted without a source, and no path defaults to a
+--     catch-all), exclusivity by UNIQUE (entity_type, cand_id, category).
+--   * Delete safety: a tag still referenced by any candidate cannot be deleted
+--     (candidate_tag.tag_id REFERENCES tag(tag_id), RESTRICT).
+--
+-- Tags are working-DB / admin-side only and never enter release.db — the
+-- exporter reads neither `source` nor any tag table.
+-- ----------------------------------------------------------------------------
+CREATE TABLE tag_category (
+    category   TEXT PRIMARY KEY,
+    required   INTEGER NOT NULL DEFAULT 0,  -- a candidate must carry exactly one (core-enforced at creation)
+    exclusive  INTEGER NOT NULL DEFAULT 1,  -- at most one tag of this category per candidate (DB-enforced)
+    note       TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE tag (
+    tag_id     INTEGER PRIMARY KEY,
+    category   TEXT NOT NULL REFERENCES tag_category(category),
+    value      TEXT NOT NULL,
+    note       TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE (category, value),
+    UNIQUE (tag_id, category)   -- lets candidate_tag carry a composite FK, so its
+                                -- denormalized category can never disagree with the tag's
+);
+CREATE INDEX ix_tag_category ON tag(category);
+
+CREATE TABLE candidate_tag (
+    entity_type TEXT NOT NULL CHECK (entity_type IN ('image','example')),
+    cand_id     INTEGER NOT NULL,   -- image_candidates.img_cand_id / example_candidates.ex_cand_id
+    tag_id      INTEGER NOT NULL REFERENCES tag(tag_id),   -- RESTRICT: a referenced tag cannot be deleted
+    category    TEXT NOT NULL,      -- denormalized from tag; pinned to it by the composite FK below
+    assigned_by TEXT NOT NULL,
+    assigned_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY (entity_type, cand_id, tag_id),
+    FOREIGN KEY (tag_id, category) REFERENCES tag(tag_id, category),
+    UNIQUE (entity_type, cand_id, category)   -- one tag per category per candidate; 'source' required => exactly one
+);
+CREATE INDEX ix_candtag_tag ON candidate_tag(tag_id);
+CREATE INDEX ix_candtag_lookup ON candidate_tag(category, tag_id, entity_type);
+
+-- Normative seed vocabulary (operator additions survive: INSERT OR IGNORE on
+-- boot, mirrored by store::schema::seed_candidate_tags for migrated databases).
+-- 'source' is the required, exclusive provenance category.
+INSERT OR IGNORE INTO tag_category (category, required, exclusive, note) VALUES
+    ('source', 1, 1, 'Authoritative provenance; exactly one required per candidate.');
+INSERT OR IGNORE INTO tag (category, value, note) VALUES
+    -- Reconciler channels (mirror the image/example `source` columns).
+    ('source', 'unsplash',      NULL),
+    ('source', 'pexels',        NULL),
+    ('source', 'pixabay',       NULL),
+    ('source', 'wikimedia',     NULL),
+    ('source', 'openverse',     NULL),
+    ('source', 'sdxl',          NULL),
+    ('source', 'codex',         NULL),
+    ('source', 'exam_corpus',   NULL),
+    ('source', 'freedict',      NULL),
+    ('source', 'tatoeba',       NULL),
+    ('source', 'llm',           NULL),
+    -- Genuine ad-hoc human upload. A real provenance, never an auto-applied
+    -- default: the manual endpoints require the caller to name the source.
+    ('source', 'manual',        NULL),
+    -- Paired image+caption datasets ingested through the manual endpoints (#53
+    -- plus COCO); 'vg' covers the VG batches, 'cc3m' the CC3M literal + inflected.
+    ('source', 'coco',          NULL),
+    ('source', 'vg',            NULL),
+    ('source', 'cc3m',          NULL),
+    ('source', 'wit',           NULL),
+    ('source', 'commons',       NULL),
+    -- Subtitle-mined example sentences (ops/mine_subs.py, release 1.4).
+    ('source', 'opensubtitles', NULL);
+
+-- ----------------------------------------------------------------------------
 -- Media registry (content-addressed store: data/media/{hash[:2]}/{hash}.{webp|ogg})
 -- ----------------------------------------------------------------------------
 CREATE TABLE media_files (

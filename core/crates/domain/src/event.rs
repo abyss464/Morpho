@@ -83,6 +83,14 @@ pub enum Action {
     GlossCleared,
     MediaGcMarked,
     ReleaseExported,
+    /// A tag was assigned to (or moved on) a candidate (#54).
+    Tagged,
+    /// A tag was removed from a candidate.
+    Untagged,
+    /// A value or category was added to the tag vocabulary.
+    TagCreated,
+    /// A value or category was removed from the tag vocabulary.
+    TagDeleted,
 }
 
 impl Action {
@@ -117,6 +125,10 @@ impl Action {
             Self::GlossCleared => "gloss_cleared",
             Self::MediaGcMarked => "media_gc_marked",
             Self::ReleaseExported => "release_exported",
+            Self::Tagged => "tagged",
+            Self::Untagged => "untagged",
+            Self::TagCreated => "tag_created",
+            Self::TagDeleted => "tag_deleted",
         }
     }
 }

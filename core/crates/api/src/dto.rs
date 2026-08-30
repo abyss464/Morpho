@@ -529,6 +529,108 @@ pub struct MintExampleBody {
     pub text: String,
     pub hl_start: i64,
     pub hl_end: i64,
+    /// Authoritative provenance (#54). Required: a manual mint may not fall back
+    /// to a catch-all. Must be a value in the `source` tag vocabulary.
+    pub source: String,
+}
+
+// -- Candidate tagging (#54) -------------------------------------------------
+
+/// `POST /tags` body: add one value to the vocabulary.
+#[derive(Debug, Deserialize)]
+pub struct CreateTagBody {
+    pub category: String,
+    pub value: String,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// `POST /tags/categories` body: add a tag dimension.
+#[derive(Debug, Deserialize)]
+pub struct CreateTagCategoryBody {
+    pub category: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default = "default_true")]
+    pub exclusive: bool,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// `POST /candidates/{kind}/{cand_id}/tags` body.
+#[derive(Debug, Deserialize)]
+pub struct AssignTagBody {
+    pub category: String,
+    pub value: String,
+}
+
+/// `POST /candidates/bulk-reject` body.
+#[derive(Debug, Deserialize)]
+pub struct BulkRejectByTagBody {
+    pub category: String,
+    pub value: String,
+}
+
+/// One vocabulary entry, with how many candidates carry it.
+#[derive(Debug, Serialize)]
+pub struct TagEntry {
+    pub category: String,
+    pub value: String,
+    pub note: Option<String>,
+    pub in_use: i64,
+}
+
+/// One tag category.
+#[derive(Debug, Serialize)]
+pub struct TagCategoryEntry {
+    pub category: String,
+    pub required: bool,
+    pub exclusive: bool,
+    pub note: Option<String>,
+}
+
+/// Result of a vocabulary mutation or bulk candidate action.
+#[derive(Debug, Serialize)]
+pub struct TagActionResponse {
+    pub affected: usize,
+}
+
+/// One candidate carrying a queried tag (`GET /candidates/by-tag`).
+#[derive(Debug, Serialize)]
+pub struct TaggedCandidate {
+    pub kind: String,
+    pub cand_id: i64,
+    pub word_id: i64,
+    /// The coarse `source` column value (the acquisition channel).
+    pub source: String,
+    pub status: String,
+}
+
+/// `GET /tags?category=source` — list the vocabulary, optionally one category.
+#[derive(Debug, Default, Deserialize)]
+pub struct TagVocabQuery {
+    #[serde(default)]
+    pub category: Option<String>,
+}
+
+/// `GET /candidates/by-tag?category=source&value=vg&page=1&page_size=200`.
+#[derive(Debug, Deserialize)]
+pub struct CandidatesByTagQuery {
+    pub category: String,
+    pub value: String,
+    #[serde(default)]
+    pub page: Option<i64>,
+    #[serde(default)]
+    pub page_size: Option<i64>,
+}
+
+impl CandidatesByTagQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination {
+            page: self.page,
+            page_size: self.page_size,
+        }
+    }
 }
 
 /// `OverrideSelectionBody`

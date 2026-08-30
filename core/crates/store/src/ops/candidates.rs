@@ -39,6 +39,13 @@ pub struct MintExampleCandidate {
     pub source: ExampleSource,
     pub source_ref: Option<String>,
     pub created_by: Option<String>,
+    /// Authoritative provenance, written as the required `source` tag
+    /// (`candidate_tag`). `None` ⇒ the `source` column value is used, correct for
+    /// every producer whose channel is its true source. The manual-upload
+    /// endpoints pass `Some(..)`, because their `source` column is the catch-all
+    /// `manual` and the real provenance is the dataset the caller named. An
+    /// unknown value is refused (the tag must exist in the vocabulary).
+    pub source_tag: Option<String>,
 }
 
 /// Insert an immutable image candidate whose bytes are already in the library.
@@ -56,6 +63,9 @@ pub struct MintImageCandidate {
     pub license: Option<String>,
     pub query_used: Option<String>,
     pub created_by: Option<String>,
+    /// Authoritative provenance, written as the required `source` tag. See
+    /// [`MintExampleCandidate::source_tag`].
+    pub source_tag: Option<String>,
 }
 
 /// A `media_files` row to upsert in the same transaction as its referrer.
@@ -226,6 +236,14 @@ pub(super) fn mint_example_candidate(
             req.source == ExampleSource::Manual,
         )?;
     }
+    // Every creation path stamps the required source tag — this is what makes a
+    // candidate without a source unrepresentable. An unknown source aborts the
+    // whole transaction (and with it the insert above).
+    let provenance = req
+        .source_tag
+        .as_deref()
+        .unwrap_or_else(|| req.source.as_str());
+    super::tags::assign_source_tag(ctx, "example", ex_cand_id, provenance)?;
     Ok(WriteResult::Candidate {
         cand_id: ex_cand_id,
         created,
@@ -360,6 +378,9 @@ pub(super) fn purge_example_candidate(
         )));
     }
 
+    // The candidate↔tag association is polymorphic, so no foreign key cascades
+    // here; the erasure path clears the tags itself.
+    super::tags::delete_candidate_tags(ctx, "example", ex_cand_id)?;
     ctx.tx.execute(
         "DELETE FROM example_candidates WHERE ex_cand_id = ?1",
         rusqlite::params![ex_cand_id],
@@ -454,6 +475,12 @@ pub(super) fn mint_image_candidate(
         ctx.touch(EntityType::ImageCandidate, img_cand_id.to_string());
         ctx.touch(EntityType::Word, req.word_id.to_string());
     }
+    // The required source tag on every creation path (see mint_example_candidate).
+    let provenance = req
+        .source_tag
+        .as_deref()
+        .unwrap_or_else(|| req.source.as_str());
+    super::tags::assign_source_tag(ctx, "image", img_cand_id, provenance)?;
     Ok(WriteResult::Candidate {
         cand_id: img_cand_id,
         created,
@@ -544,6 +571,8 @@ pub(super) fn ingest_examples(req: IngestExamples, ctx: &mut OpCtx<'_, '_>) -> R
                 source: req.source,
                 source_ref: example.source_ref.clone(),
                 created_by: Some(format!("worker:{}", req.source.as_str())),
+                // A fetched example's channel is its true provenance.
+                source_tag: None,
             },
             ctx,
         )?;
@@ -585,6 +614,8 @@ pub(super) fn ingest_images(req: IngestImages, ctx: &mut OpCtx<'_, '_>) -> Resul
                 license: image.license.clone(),
                 query_used: image.query_used.clone(),
                 created_by: Some(format!("worker:{}", image.source.as_str())),
+                // A fetched/generated image's channel is its true provenance.
+                source_tag: None,
             },
             ctx,
         )?;

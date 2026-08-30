@@ -146,6 +146,7 @@ pub async fn seed_example(
                 source,
                 source_ref: example.source_ref,
                 created_by: None,
+                source_tag: None,
             }),
         )
         .await
@@ -185,6 +186,7 @@ pub async fn seed_image(
                 license: Some("test licence".into()),
                 query_used: None,
                 created_by: None,
+                source_tag: None,
             }),
         )
         .await
@@ -225,6 +227,7 @@ pub async fn seed_image_with_ref(
                 license: Some("generated".into()),
                 query_used: None,
                 created_by: None,
+                source_tag: None,
             }),
         )
         .await

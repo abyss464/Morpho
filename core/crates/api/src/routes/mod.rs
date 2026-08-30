@@ -30,6 +30,10 @@ pub fn api_router(state: AppState) -> Router {
         .route("/candidates/definition", post(write::mint_definition))
         .route("/candidates/example", post(write::mint_example))
         .route("/candidates/image", post(write::upload_image))
+        // Tag query + bulk lever (#54); literal segments, declared before the
+        // `{kind}` wildcard routes below.
+        .route("/candidates/by-tag", get(read::candidates_by_tag))
+        .route("/candidates/bulk-reject", post(write::bulk_reject_by_tag))
         // Before the `{kind}` wildcard for the same reason the two definition
         // sub-routes are: a literal segment must be declared first.
         .route(
@@ -40,6 +44,18 @@ pub fn api_router(state: AppState) -> Router {
             "/candidates/{kind}/{cand_id}/reject",
             post(write::reject_candidate),
         )
+        .route("/candidates/{kind}/{cand_id}/tags", post(write::assign_tag))
+        .route(
+            "/candidates/{kind}/{cand_id}/tags/{category}",
+            delete(write::unassign_tag),
+        )
+        // -- Tag vocabulary (#54) -----------------------------------------
+        .route("/tags", get(read::list_tags).post(write::create_tag))
+        .route(
+            "/tags/categories",
+            get(read::tag_categories).post(write::create_tag_category),
+        )
+        .route("/tags/{category}/{value}", delete(write::delete_tag))
         // The two fixed definition sub-routes must be declared before the
         // `{kind}` wildcard, or `definition` would swallow them.
         .route("/selections/definition/primary", post(write::set_primary))

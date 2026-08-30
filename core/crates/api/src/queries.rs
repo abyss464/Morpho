@@ -1391,6 +1391,110 @@ pub fn job_labels(conn: &Connection) -> Result<HashMap<String, String>> {
     Ok(out)
 }
 
+// ---------------------------------------------------------------------------
+// Candidate tags (#54)
+// ---------------------------------------------------------------------------
+
+/// The tag vocabulary, optionally one category, each with a live reference count.
+pub fn list_tags(conn: &Connection, category: Option<&str>) -> Result<Vec<TagEntry>> {
+    let mut sql = String::from(
+        "SELECT t.category, t.value, t.note, COUNT(ct.tag_id) AS in_use
+           FROM tag t LEFT JOIN candidate_tag ct ON ct.tag_id = t.tag_id",
+    );
+    if category.is_some() {
+        sql.push_str(" WHERE t.category = ?1");
+    }
+    sql.push_str(" GROUP BY t.tag_id ORDER BY t.category, t.value");
+    let mut stmt = conn.prepare(&sql)?;
+    let map = |row: &rusqlite::Row<'_>| {
+        Ok(TagEntry {
+            category: row.get(0)?,
+            value: row.get(1)?,
+            note: row.get(2)?,
+            in_use: row.get(3)?,
+        })
+    };
+    let rows = match category {
+        Some(cat) => stmt.query_map(rusqlite::params![cat], map)?,
+        None => stmt.query_map([], map)?,
+    }
+    .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// Every tag category and its enforcement flags.
+pub fn list_tag_categories(conn: &Connection) -> Result<Vec<TagCategoryEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT category, required, exclusive, note FROM tag_category ORDER BY category",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(TagCategoryEntry {
+                category: row.get(0)?,
+                required: row.get::<_, i64>(1)? != 0,
+                exclusive: row.get::<_, i64>(2)? != 0,
+                note: row.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// The candidates carrying one tag, paged. The workhorse #55 uses to find every
+/// candidate a source produced.
+pub fn candidates_by_tag(
+    conn: &Connection,
+    query: &CandidatesByTagQuery,
+) -> Result<Page<TaggedCandidate>> {
+    let tag_id: Option<i64> = conn
+        .query_row(
+            "SELECT tag_id FROM tag WHERE category = ?1 AND value = ?2",
+            rusqlite::params![query.category, query.value],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(tag_id) = tag_id else {
+        return Err(StoreError::not_found(format!(
+            "tag {}={:?}",
+            query.category, query.value
+        )));
+    };
+
+    let total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM candidate_tag WHERE tag_id = ?1",
+        rusqlite::params![tag_id],
+        |row| row.get(0),
+    )?;
+
+    let page = query.pagination();
+    let mut stmt = conn.prepare(
+        "SELECT 'image' AS kind, ic.img_cand_id AS cand_id, ic.word_id, ic.source, ic.status
+           FROM candidate_tag ct JOIN image_candidates ic ON ic.img_cand_id = ct.cand_id
+          WHERE ct.tag_id = ?1 AND ct.entity_type = 'image'
+         UNION ALL
+         SELECT 'example', ec.ex_cand_id, ec.word_id, ec.source, ec.status
+           FROM candidate_tag ct JOIN example_candidates ec ON ec.ex_cand_id = ct.cand_id
+          WHERE ct.tag_id = ?1 AND ct.entity_type = 'example'
+          ORDER BY kind, cand_id
+          LIMIT ?2 OFFSET ?3",
+    )?;
+    let items = stmt
+        .query_map(
+            rusqlite::params![tag_id, page.limit(), page.offset()],
+            |row| {
+                Ok(TaggedCandidate {
+                    kind: row.get(0)?,
+                    cand_id: row.get(1)?,
+                    word_id: row.get(2)?,
+                    source: row.get(3)?,
+                    status: row.get(4)?,
+                })
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(Page { items, total })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

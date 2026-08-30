@@ -28,6 +28,7 @@ mod plan;
 mod readiness;
 mod release;
 mod selections;
+mod tags;
 mod tts;
 mod words;
 
@@ -46,6 +47,10 @@ pub use release::RecordRelease;
 pub use selections::{
     ApplyAutoSelections, ApplyScores, AutoSelection, MintDefinitionCandidate, PrimaryMove,
     ReconcilePrimaries, ReleaseInvalidSelection, ScoreUpdate, SetApproval, SetSelection,
+};
+pub use tags::{
+    AssignTag, BulkRejectByTag, CreateTag, CreateTagCategory, DeleteTag, UnassignTag,
+    SOURCE_CATEGORY,
 };
 pub use tts::RecordTtsAsset;
 pub use words::{CreateWord, ImportStats, ImportWords, SetAuxStatus, SetEtymology, SetGloss};
@@ -147,6 +152,18 @@ pub enum WriteOp {
         action: morpho_domain::event::Action,
         detail: Option<serde_json::Value>,
     },
+    /// Assign or move a candidate's tag in one category (#54).
+    AssignTag(AssignTag),
+    /// Remove a candidate's tag in one category (refused for a required one).
+    UnassignTag(UnassignTag),
+    /// Add one value to the tag vocabulary.
+    CreateTag(CreateTag),
+    /// Remove one value from the tag vocabulary (refused while still referenced).
+    DeleteTag(DeleteTag),
+    /// Add a whole tag dimension.
+    CreateTagCategory(CreateTagCategory),
+    /// Reject every candidate carrying one tag (the #55 bulk lever).
+    BulkRejectByTag(BulkRejectByTag),
     /// Apply several operations in a single transaction.
     Batch(Vec<WriteOp>),
 }
@@ -216,6 +233,11 @@ pub enum WriteResult {
     },
     Event {
         event_id: i64,
+    },
+    /// Candidate-tag or vocabulary change: rows created, moved, removed, or
+    /// candidates bulk-rejected.
+    Tags {
+        affected: usize,
     },
     Batch(Vec<WriteResult>),
 }
@@ -371,6 +393,12 @@ pub(crate) fn apply_op(op: WriteOp, ctx: &mut OpCtx<'_, '_>) -> Result<WriteResu
             ctx.touch(entity_type, entity_id);
             Ok(WriteResult::Event { event_id })
         }
+        WriteOp::AssignTag(req) => tags::assign_tag(req, ctx),
+        WriteOp::UnassignTag(req) => tags::unassign_tag(req, ctx),
+        WriteOp::CreateTag(req) => tags::create_tag(req, ctx),
+        WriteOp::DeleteTag(req) => tags::delete_tag(req, ctx),
+        WriteOp::CreateTagCategory(req) => tags::create_tag_category(req, ctx),
+        WriteOp::BulkRejectByTag(req) => tags::bulk_reject_by_tag(req, ctx),
         WriteOp::Batch(ops) => {
             let mut results = Vec::with_capacity(ops.len());
             for op in ops {

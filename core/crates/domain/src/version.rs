@@ -98,7 +98,11 @@ pub const RELEASE_SCHEMA_VER: &str = "2";
 ///   addressed on the picture and the sentence) and a widened
 ///   `image_candidates.source` union carrying `codex`, the generative source at
 ///   the end of the image chain.
-pub const SCHEMA_USER_VERSION: i32 = 7;
+/// * 8 — #54: the candidate tagging tables (`tag_category`, `tag`,
+///   `candidate_tag`), a data-driven provenance vocabulary that replaces
+///   overloading `source = 'manual'`. Purely additive — the `source` columns and
+///   their CHECK unions are untouched, so no candidate table is rebuilt.
+pub const SCHEMA_USER_VERSION: i32 = 8;
 
 /// Version the embedded `docs/contracts/working-db.sql` describes.
 ///
@@ -114,7 +118,7 @@ pub const SCHEMA_USER_VERSION: i32 = 7;
 /// never exceed [`SCHEMA_USER_VERSION`]; `store::schema` asserts that at compile
 /// time.
 ///
-/// It is level with the code: the contract file ships `clip_scores` and the
-/// widened `image_candidates.source` union, so a freshly created database is
-/// stamped 7 and the ladder runs nothing.
-pub const CONTRACT_SCHEMA_VERSION: i32 = 7;
+/// It is level with the code: the contract file ships the candidate tagging
+/// tables, so a freshly created database is stamped 8 and the ladder runs
+/// nothing.
+pub const CONTRACT_SCHEMA_VERSION: i32 = 8;

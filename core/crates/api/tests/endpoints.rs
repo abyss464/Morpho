@@ -531,7 +531,8 @@ async fn minting_an_example_recomputes_the_highlight() {
             "word_id": word,
             "text": "  A  serene   lake lay below.",
             "hl_start": 5,
-            "hl_end": 11
+            "hl_end": 11,
+            "source": "manual"
         }),
     )
     .await;
@@ -558,7 +559,8 @@ async fn minting_an_example_recomputes_the_highlight() {
             "word_id": word,
             "text": "Short and quite unrelated.",
             "hl_start": 0,
-            "hl_end": 5
+            "hl_end": 5,
+            "source": "manual"
         }),
     )
     .await;
@@ -1035,6 +1037,7 @@ async fn seed_gallery_word(h: &Harness, lemma: &str, rank: i64, similarity: Opti
                 license: None,
                 query_used: None,
                 created_by: None,
+                source_tag: None,
             }),
         )
         .await
@@ -1108,6 +1111,7 @@ async fn gallery_exposes_the_slot1_sentence_and_null_when_unselected() {
                 source: ExampleSource::Manual,
                 source_ref: None,
                 created_by: None,
+                source_tag: None,
             }),
         )
         .await
@@ -1716,6 +1720,7 @@ async fn every_contract_endpoint_is_implemented() {
                 source: ExampleSource::Manual,
                 source_ref: None,
                 created_by: None,
+                source_tag: None,
             }),
         )
         .await
@@ -1746,7 +1751,7 @@ async fn every_contract_endpoint_is_implemented() {
         (
             "/api/candidates/example",
             // "It was serene." — bytes 7..13 cover the target word.
-            serde_json::json!({"word_id": word, "text": "It was serene.", "hl_start": 7, "hl_end": 13}),
+            serde_json::json!({"word_id": word, "text": "It was serene.", "hl_start": 7, "hl_end": 13, "source": "manual"}),
         ),
     ] {
         let (status, payload) = post(&h.router, uri, body).await;
