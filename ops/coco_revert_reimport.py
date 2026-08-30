@@ -389,7 +389,7 @@ def cmd_reimport(args):
                 cid = None
             else:
                 r = api("POST", "/candidates/example",
-                        {"word_id": wid, "text": caption, "hl_start": 0, "hl_end": 0})
+                        {"word_id": wid, "text": caption, "source": "coco", "hl_start": 0, "hl_end": 0})
                 if r.status_code == 422:
                     mint_exceptions.append({"word_id": wid, "lemma": lemma, "status_code": 422, "body": r.text[:300],
                                              "blocked_by_unpurged": row is not None,
@@ -514,7 +514,7 @@ def cmd_fix_slot_conflicts(args):
         lemma, caption = e["lemma"], e["caption"]
         text = canonicalize(caption)
 
-        r = api("POST", "/candidates/example", {"word_id": wid, "text": caption, "hl_start": 0, "hl_end": 0})
+        r = api("POST", "/candidates/example", {"word_id": wid, "text": caption, "source": "coco", "hl_start": 0, "hl_end": 0})
         if r.status_code >= 400:
             exceptions.append({"word_id": wid, "lemma": lemma, "stage": "mint",
                                 "status_code": r.status_code, "body": r.text[:300]})

@@ -126,7 +126,7 @@ def main():
             r = requests.post(
                 f"{API}/candidates/image",
                 headers=HEADERS,
-                data={"word_id": str(word_id)},
+                data={"word_id": str(word_id), "source": "cc3m"},
                 files={"file": (file_name, img_bytes, content_type)},
                 timeout=60,
             )
@@ -149,7 +149,7 @@ def main():
             r = requests.post(
                 f"{API}/candidates/example",
                 headers=HEADERS,
-                json={"word_id": word_id, "text": caption,
+                json={"word_id": word_id, "text": caption, "source": "cc3m",
                       "hl_start": hl_start, "hl_end": hl_end},
                 timeout=30,
             )
