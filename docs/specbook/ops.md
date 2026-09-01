@@ -1,6 +1,6 @@
 # ops
 
-19 specs.
+20 specs.
 
 
 ============================================================
@@ -295,6 +295,51 @@ Calls the manage API's rejection endpoint for each row in the input list and rec
 ## Side Effects
 - The `regate --apply` and `reject` subcommands reject image candidates through the manage API.
 - The remaining subcommands only read the data database and media files, and write report JSON or PNG files.
+
+
+--- release.sh ---
+
+# Release Pipeline
+
+One-shot script that automates the full release pipeline (OPERATIONS.md §5–§6): health check, bulk approve, preview gate, export, copy release.db, sync media, patch ReleaseDatabaseTest.kt, specbook refresh, build + test, git commit.
+
+## Usage
+
+`ops/release.sh [--yes]`
+
+## Parameters
+
+- `--yes`: auto-confirm specbook interface changes (skip the interactive prompt)
+
+## Prerequisites
+
+- Docker engine running on port 30012 (`docker compose up -d`)
+- `jq`, `sqlite3`, `curl`, `rsync`, `gio` available in PATH
+- Android SDK configured for Gradle builds
+
+## Pipeline Steps
+
+1. Health check: `GET /api/dashboard`
+2. Bulk approve: runs `ops/bulk_approve.py` with `MORPHO_API` pointing at the Docker engine
+3. Preview gate: `GET /api/releases/preview`, fails if `gate_failures` is non-empty
+4. Export: `POST /api/releases/export`, locates the newest `data/releases/export-*/` directory
+5. Copy `release.db` to `app/app/src/main/assets/release.db`
+6. Sync media (`img/`, `audio/`) to `app/content_media/src/main/assets/content_media/` — adds missing files via rsync, trashes removed files with `gio trash`, verifies zero missing and zero extra vs manifest
+7. Patch `ReleaseDatabaseTest.kt` with counts from the new release.db (content_version, words, senses, examples, distractors, gloss_anchors, groups, learning_order density, highlight check)
+8. Specbook refresh: runs `ops/specbook.py refresh --all`; hash-only changes proceed silently; interface changes pause for confirmation (or auto-confirm with `--yes`)
+9. Build + test: `./gradlew :domain:test :app:testFatApkDebugUnitTest :app:assembleFatApkDebug :app:assembleFatApkRelease`
+10. Git commit with message `ops: cut release <version>`, staging release.db, test file, and specbook files
+11. Print summary: APK path, version, word count, media count
+
+## Output
+
+Prints step-by-step progress to stdout. Fails fast (non-zero exit) on any step failure.
+
+## Side Effects
+
+- Exports a release via the engine API
+- Writes release.db, media files, and test assertions into the app module
+- Creates a git commit (local only, no push)
 
 
 --- translate_sentences.py ---

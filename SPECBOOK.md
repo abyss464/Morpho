@@ -1,6 +1,6 @@
 # Specbook
 
-299 specs across 17 modules.
+300 specs across 17 modules.
 
 - [adapters/clip](docs/specbook/adapters-clip.md) — 8 specs
 - [adapters/codex](docs/specbook/adapters-codex.md) — 8 specs
@@ -18,4 +18,4 @@
 - [core/morphod](docs/specbook/core-morphod.md) — 7 specs
 - [core/reconcile](docs/specbook/core-reconcile.md) — 48 specs
 - [core/store](docs/specbook/core-store.md) — 22 specs
-- [ops](docs/specbook/ops.md) — 19 specs
+- [ops](docs/specbook/ops.md) — 20 specs
