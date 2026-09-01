@@ -13,13 +13,12 @@
 | #24 | 支持多词书体系 | domain/core/app | P2 | 实施词书标签、依赖边、个人基底与目标配置、运行时学习集推导和跨配置进度保留。导入高中及以上词表前确认来源。 |
 | #25 | 记录逐词学习与复习事件 | app | P2 | 新增加法迁移及事件表，记录 `word_id`、事件类型、时间和结果，并提交对应 `.sqm`。完成标准：每次学习和复习均形成可查询事件。 |
 | #26 | 实现可插拔专用复习模式 | app | P2 | 保留 FSRS v5 调度，实现”单词与发音 + 四个图片释义组合”的循环答题模块；错题重复至全部答对，并接入 #25。 |
-| #56 | Reconciler 图片选择振荡（残留） | core | P1 | duplicate 硬排除已合并（`85dff63`），word 4774 收敛。17 词仍因不同机制振荡（非 duplicate 反馈环）。需排查残留振荡根因并修复。完成标准：全部词 selection_rev 停止增长，reconciler 进入 idle。 |
 
 ## 已完成
 
 | 编号 | 交付项 | 结果 | 参考 |
 |---|---|---|---|
-| #56（部分） | duplicate 硬排除修复 + specbook 提交 | `rank_images` 排除 duplicate 候选，word 4774 收敛；specbook 299 specs 入库 | A10 · `85dff63`, `dd531ef` |
+| #56 | Reconciler 图片选择振荡完全修复 | A10: duplicate 硬排除（`85dff63`）；对称排斥打破：多词同 hash 时最低 word_id 保留（`be6f979`）。全部词 selection_rev 停止增长，reconciler idle | A10 · `85dff63`, `be6f979` |
 | #54+#55 | 来源标签体系 + 非 COCO 候选清退 | schema v8,69721 tags,VG/CC3M/WIT/Commons 5655 条 rejected,COCO 零变动 | A7 |
 | #53 | 天然配对图文数据集替换图库图 | VG+CC3M+WIT+Commons 导入，stock-only 1601→0，release 1.9 | `690b5fe`, `a3c456d` |
 | #52 | CLIP 评分改为子进程适配器 | sidecar 退役，subprocess adapter，gate 通过 | `7d8d591` |
