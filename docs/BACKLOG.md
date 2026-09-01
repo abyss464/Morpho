@@ -1,5 +1,9 @@
 # Morpho 工程日志
 
+## Inbox
+
+- A10 · #56 · 修复 reconciler 图片选择振荡并提交 specbook。振荡原因：word 4774 与 5156 共享四张 openverse 候选图(同 file_hash),duplicate 惩罚跨词反馈环致 selection_rev 无限增长。修复方案：将 duplicate 从惩罚改为硬排除——已被其他词选中的 file_hash 不参与本词排名(与 `conflicts` veto 同级),保证每张图片只分配给一个词。改动点：`core/crates/reconcile/src/stages/select.rs` 的 `rank_images` 函数,将 `duplicate` 过滤逻辑与 `conflicts` 合并。跑 §9 gates 全绿后提交;同时将 specbook(`.specs/`、`SPECBOOK.md`、`docs/specbook/`、`ops/specbook.py`)和 `ops/nsfw_screen.py` 提交到 dev/wave-1(不 push);刷新 specbook;验证两词 selection_rev 停止增长且 reconciler 收敛;交修复前后 event 计数对比。
+
 ## 未完成
 
 | 编号 | 事项 | 领域 | 优先级 | 后续行动与完成标准 |
@@ -8,12 +12,14 @@
 | #38 | 建立崩溃诊断通道 | app | P0 | 确定本地导出或远程上报方案并实现。完成标准：外部设备崩溃后可取得完整堆栈、机型、系统版本、应用版本和内容版本。 |
 | #24 | 支持多词书体系 | domain/core/app | P2 | 实施词书标签、依赖边、个人基底与目标配置、运行时学习集推导和跨配置进度保留。导入高中及以上词表前确认来源。 |
 | #25 | 记录逐词学习与复习事件 | app | P2 | 新增加法迁移及事件表，记录 `word_id`、事件类型、时间和结果，并提交对应 `.sqm`。完成标准：每次学习和复习均形成可查询事件。 |
-| #26 | 实现可插拔专用复习模式 | app | P2 | 保留 FSRS v5 调度，实现“单词与发音 + 四个图片释义组合”的循环答题模块；错题重复至全部答对，并接入 #25。 |
+| #26 | 实现可插拔专用复习模式 | app | P2 | 保留 FSRS v5 调度，实现”单词与发音 + 四个图片释义组合”的循环答题模块；错题重复至全部答对，并接入 #25。 |
+| #56 | Reconciler 图片选择振荡 | core | P0 | word 4774 与 5156 共享四张 openverse 候选图(同 file_hash),duplicate 惩罚跨词反馈环致 selection_rev 无限增长。在 duplicate 惩罚或选择逻辑中打破耦合,使 reconciler 收敛。完成标准：两词 selection_rev 停止增长,reconciler 进入 idle。 |
 
 ## 已完成
 
 | 编号 | 交付项 | 结果 | 参考 |
 |---|---|---|---|
+| #54+#55 | 来源标签体系 + 非 COCO 候选清退 | schema v8,69721 tags,VG/CC3M/WIT/Commons 5655 条 rejected,COCO 零变动 | A7 |
 | #53 | 天然配对图文数据集替换图库图 | VG+CC3M+WIT+Commons 导入，stock-only 1601→0，release 1.9 | `690b5fe`, `a3c456d` |
 | #52 | CLIP 评分改为子进程适配器 | sidecar 退役，subprocess adapter，gate 通过 | `7d8d591` |
 | #51 | 启用 CLIP 与 Codex 运行服务 | 被 #52 取代，CLIP 随引擎自动启动 | — |
