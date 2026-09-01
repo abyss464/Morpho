@@ -57,23 +57,12 @@ pub const STRATEGY_PENALTY: f64 = 0.10;
 /// The penalty is useless at or below the switching margin: see above.
 const _: () = assert!(STRATEGY_PENALTY > HYSTERESIS_DELTA);
 
-/// How much a picture gives up for being the one another word already shows.
-///
-/// Media is content-addressed, so two words that search for the same idea come
-/// back with the same `file_hash` — and a question renders the word beside its
-/// three fixed distractors, which makes two identical option images an
-/// unanswerable card. This is the pressure that pulls the second-best picture
-/// into the slot when the best one is spoken for.
-///
-/// It clears [`HYSTERESIS_DELTA`] for the same reason [`STRATEGY_PENALTY`] does,
-/// and here the reason is sharper: two candidates of equal merit, one duplicated
-/// and one not, must actually *move* the slot rather than merely reorder behind
-/// it. A penalty inside the margin would rank the unique picture first and leave
-/// the duplicate sitting in the selection forever.
-pub const DUPLICATE_IMAGE_PENALTY: f64 = 0.10;
-
-/// Same reasoning as the strategy penalty, enforced the same way.
-const _: () = assert!(DUPLICATE_IMAGE_PENALTY > HYSTERESIS_DELTA);
+// Duplicate images (another word already shows the same `file_hash`) are
+// excluded from the candidate pool entirely rather than penalised. A penalty
+// changes between passes — each word's selection changes the other's penalty
+// — and two words sharing enough hashes oscillate indefinitely (#56). Hard
+// exclusion is idempotent: once the word is excluded, the pool does not
+// change on the next pass, and the selection converges.
 
 /// Which search strategy produced an image candidate.
 ///
@@ -682,14 +671,15 @@ pub fn clip_component(similarity: f64) -> f64 {
 /// The score automatic selection ranks an image candidate by.
 ///
 /// [`score_image`] is a pure function of the candidate and is cached in
-/// `auto_score` under a `scorer_ver`. Two things a slot must nevertheless be
-/// decided on are not: whether a picture is *also* somebody else's is a property
-/// of the selection table, which changes every time a slot moves, and how well a
-/// picture matches the word's sentence depends on which sentence slot 1
-/// currently holds. Folding either into the stored score would make an unrelated
-/// edit invalidate scores across the whole lexicon and rescore a live database
-/// in circles. So both are applied here, at ranking time, to a value nothing
-/// persists.
+/// `auto_score` under a `scorer_ver`. Semantic aptness — how well the picture
+/// matches the word's sentence — depends on which sentence slot 1 currently
+/// holds, so it is applied here at ranking time rather than cached. Folding it
+/// into the stored score would make an unrelated edit invalidate scores across
+/// the whole lexicon and rescore a live database in circles.
+///
+/// Duplicate images (another word already shows the same `file_hash`) are
+/// excluded from the candidate pool before this function is called, so
+/// duplication is not a scoring concern here.
 ///
 /// `clip` is `None` when no comparison exists — the sidecar is unconfigured,
 /// still working through the backlog, or dead-lettered on this word. Then the
@@ -701,17 +691,12 @@ pub fn clip_component(similarity: f64) -> f64 {
 /// The result is deliberately not clamped into `[0, 1]`: it is a comparison key,
 /// and flooring it at zero would let two weak candidates tie where the
 /// preference is real.
-pub fn image_selection_score(auto_score: f64, clip: Option<f64>, duplicate: bool) -> f64 {
-    let merit = match clip {
+pub fn image_selection_score(auto_score: f64, clip: Option<f64>) -> f64 {
+    match clip {
         Some(similarity) => {
             (1.0 - CLIP_WEIGHT) * auto_score + CLIP_WEIGHT * clip_component(similarity)
         }
         None => auto_score,
-    };
-    if duplicate {
-        merit - DUPLICATE_IMAGE_PENALTY
-    } else {
-        merit
     }
 }
 
@@ -1497,83 +1482,21 @@ mod tests {
     }
 
     // -- global image uniqueness -------------------------------------------
-
-    #[test]
-    fn a_picture_another_word_already_shows_ranks_below_a_fresh_one() {
-        let taken = image_selection_score(0.865, None, true);
-        let free = image_selection_score(0.865, None, false);
-        assert!(taken < free);
-        assert!((free - taken - DUPLICATE_IMAGE_PENALTY).abs() < 1e-9);
-    }
-
-    /// The ordering the whole gate rests on: penalty > margin, so a candidate of
-    /// equal merit whose hash is free actually takes the slot instead of merely
-    /// ranking above the duplicate that sits in it.
-    #[test]
-    fn the_duplicate_penalty_clears_the_switching_margin() {
-        const { assert!(DUPLICATE_IMAGE_PENALTY > HYSTERESIS_DELTA) };
-        let incumbent = image_selection_score(0.865, None, true);
-        let challenger = image_selection_score(0.865, None, false);
-        assert!(should_switch(Some(incumbent), challenger));
-        // And one hundredth of a mark would not have: the compile-time
-        // assertion above is what keeps that from being tuned into the code.
-        assert!(!should_switch(Some(0.865 - 0.01), 0.865));
-    }
+    //
+    // Duplicate images (another word shows the same file_hash) are excluded
+    // from the candidate pool before scoring — see `stages::select`. The
+    // scoring function itself carries no duplicate awareness.
 
     /// Nothing moves when no candidate is spoken for — the pool scores exactly
-    /// as it did before the penalty existed, bit for bit.
+    /// as it did before semantic scoring existed, bit for bit.
     #[test]
     fn a_pool_with_no_shared_hash_is_scored_exactly_as_before() {
         for raw in [0.0, 0.3, 0.865, 1.0] {
-            assert_eq!(image_selection_score(raw, None, false), raw);
+            assert_eq!(image_selection_score(raw, None), raw);
         }
-        let incumbent = image_selection_score(0.90, None, false);
-        let challenger = image_selection_score(0.88, None, false);
+        let incumbent = image_selection_score(0.90, None);
+        let challenger = image_selection_score(0.88, None);
         assert!(!should_switch(Some(incumbent), challenger));
-    }
-
-    /// Two duplicates are still ranked against each other on merit, which is why
-    /// the effective score is a comparison key rather than a clamped `[0, 1]`
-    /// score.
-    #[test]
-    fn two_duplicates_keep_their_relative_order_even_at_the_bottom() {
-        let better = image_selection_score(0.06, None, true);
-        let worse = image_selection_score(0.03, None, true);
-        assert!(better > worse);
-        assert!(worse < 0.0, "a comparison key may go negative");
-    }
-
-    #[test]
-    fn a_duplicate_still_loses_to_a_far_better_picture_of_its_own_kind() {
-        // Merit is not overruled: a strict, full-resolution, primary-sense-
-        // matching hit that happens to be shared still beats a widened keyless
-        // one that is neither full resolution nor a primary-sense match, even
-        // after the duplicate penalty lands.
-        let stock = image_selection_score(
-            score_image(&ImageFacts {
-                source: ImageSource::Unsplash,
-                width: Some(1600),
-                height: Some(1200),
-                pos_matches_primary: true,
-                strategy: ImageStrategy::Strict,
-            })
-            .score,
-            None,
-            true,
-        );
-        let widened = image_selection_score(
-            score_image(&ImageFacts {
-                source: ImageSource::Openverse,
-                width: Some(1600),
-                height: Some(1200),
-                pos_matches_primary: false,
-                strategy: ImageStrategy::WidenedQuery,
-            })
-            .score,
-            None,
-            false,
-        );
-        assert!(stock > widened);
     }
 
     // -- semantic aptness ---------------------------------------------------
@@ -1597,8 +1520,8 @@ mod tests {
     /// loses to a soft picture of the right one.
     #[test]
     fn semantic_aptness_outweighs_every_quality_signal_combined() {
-        let apt_but_poor = image_selection_score(0.0, Some(CLIP_CEIL), false);
-        let flawless_but_wrong = image_selection_score(1.0, Some(CLIP_FLOOR), false);
+        let apt_but_poor = image_selection_score(0.0, Some(CLIP_CEIL));
+        let flawless_but_wrong = image_selection_score(1.0, Some(CLIP_FLOOR));
         assert!(
             apt_but_poor > flawless_but_wrong,
             "{apt_but_poor} vs {flawless_but_wrong}"
@@ -1610,12 +1533,12 @@ mod tests {
     /// `ops/clip_rematch.py` re-selected at has to move a slot here too.
     #[test]
     fn a_clip_gap_of_two_hundredths_takes_the_slot() {
-        let incumbent = image_selection_score(0.9, Some(0.20), false);
-        let challenger = image_selection_score(0.9, Some(0.22), false);
+        let incumbent = image_selection_score(0.9, Some(0.20));
+        let challenger = image_selection_score(0.9, Some(0.22));
         assert!(should_switch(Some(incumbent), challenger));
         // …and a gap of a thousandth does not, so a rescore does not churn the
         // library over noise.
-        let hair = image_selection_score(0.9, Some(0.201), false);
+        let hair = image_selection_score(0.9, Some(0.201));
         assert!(!should_switch(Some(incumbent), hair));
     }
 
@@ -1625,16 +1548,12 @@ mod tests {
     #[test]
     fn an_absent_score_leaves_the_ranking_exactly_as_it_was() {
         for raw in [0.0, 0.3, 0.55, 0.865, 1.0] {
-            assert_eq!(image_selection_score(raw, None, false), raw);
-            assert_eq!(
-                image_selection_score(raw, None, true),
-                raw - DUPLICATE_IMAGE_PENALTY
-            );
+            assert_eq!(image_selection_score(raw, None), raw);
         }
         // And a word ranked without scores keeps the order its quality prior
         // gives it, rather than collapsing towards a neutral middle.
-        let better = image_selection_score(0.90, None, false);
-        let worse = image_selection_score(0.60, None, false);
+        let better = image_selection_score(0.90, None);
+        let worse = image_selection_score(0.60, None);
         assert!(better - worse > HYSTERESIS_DELTA);
     }
 
@@ -1643,20 +1562,10 @@ mod tests {
     /// slot, and among those the quality prior still separates them.
     #[test]
     fn a_below_floor_picture_still_wins_a_slot_nothing_better_can_fill() {
-        let sharp = image_selection_score(0.95, Some(0.03), false);
-        let soft = image_selection_score(0.40, Some(0.01), false);
+        let sharp = image_selection_score(0.95, Some(0.03));
+        let soft = image_selection_score(0.40, Some(0.01));
         assert!(sharp > 0.0);
         assert!(sharp > soft);
-    }
-
-    /// The duplicate pressure survives the new term: two identical option
-    /// pictures make a card unanswerable whatever either of them depicts.
-    #[test]
-    fn the_duplicate_penalty_still_applies_on_top_of_the_semantic_term() {
-        let taken = image_selection_score(0.8, Some(0.25), true);
-        let free = image_selection_score(0.8, Some(0.25), false);
-        assert!((free - taken - DUPLICATE_IMAGE_PENALTY).abs() < 1e-9);
-        assert!(should_switch(Some(taken), free));
     }
 
     #[test]

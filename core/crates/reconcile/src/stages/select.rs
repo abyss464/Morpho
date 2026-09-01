@@ -647,12 +647,15 @@ fn collect_selections(
     //   three fixed distractors, and two identical option pictures make the card
     //   unanswerable.
     //
-    // The last one is enforced twice, at two strengths. Across the lexicon it is
-    // a *penalty*, because a shared picture is a preference and merit can
-    // outweigh it. Inside one question card it is a **veto**: an option grid with
-    // one picture twice has no right answer, and that is not a matter of merit.
-    // The veto is what makes the exporter's `question_images_distinct` gate
-    // structurally unreachable from an automatic selection.
+    // The last one is enforced twice, both as hard exclusions (#56). Across the
+    // lexicon, a picture another word already selected is removed from the pool
+    // entirely — a penalty that changes between passes (each word's selection
+    // changes the other's penalty) caused two words sharing candidates to
+    // oscillate indefinitely. Inside one question card a picture a mate shows is
+    // also removed. Both are idempotent: once a word is excluded from a pool the
+    // pool does not change on the next pass, and the selection converges. The
+    // question-mate veto is what makes the exporter's `question_images_distinct`
+    // gate structurally unreachable from an automatic selection.
     let taken = facts::selected_image_hashes(conn)?;
     let mates = question_mate_images(conn)?;
     let queries = clip_queries(conn)?;
@@ -707,7 +710,8 @@ fn collect_selections(
         let semantic = uniformly_scored(pool);
         let choices = rank_images(pool, semantic);
         let state = slot.map(|slot| slot.state(semantic));
-        // An incumbent a question mate also shows is not an occupant to be
+        // An incumbent that is a duplicate (another word shows the same hash)
+        // or that a question mate also shows is not an occupant to be
         // out-argued — it is an invalid one, so the slot is decided as if it
         // were empty and the best admissible picture takes it outright. Without
         // that, the two words would each need to beat the other by the
@@ -723,6 +727,7 @@ fn collect_selections(
             Some(slot) if !slot.available => None,
             Some(slot) if slot.pinned => state,
             Some(slot) if slot.conflicts => None,
+            Some(slot) if slot.duplicate => None,
             _ => state,
         };
         let Some(cand_id) = pick(&choices, effective) else {
@@ -776,20 +781,21 @@ fn uniformly_scored(pool: &[ImageChoice]) -> bool {
 /// `semantic` comes from [`uniformly_scored`] over this same pool, and the
 /// incumbent is measured with the identical flag — see the caller.
 ///
-/// A picture a question mate shows is **removed, not docked**. If that empties
+/// Two kinds of picture are **removed, not docked**: a picture a question mate
+/// shows (the per-question veto), and a picture another word anywhere in the
+/// lexicon already selected (the duplicate exclusion, #56). If that empties
 /// the pool the word makes no decision at all and keeps whatever it has, which
 /// is honest: the reconciler never empties a slot, and the word is already
 /// flagged as needing more candidates, so the image chain walks it down to a
 /// picture nobody else holds — up to and including generating one.
 fn rank_images(pool: &[ImageChoice], semantic: bool) -> Vec<Choice> {
     pool.iter()
-        .filter(|choice| !choice.conflicts)
+        .filter(|choice| !choice.conflicts && !choice.duplicate)
         .map(|choice| Choice {
             cand_id: choice.cand_id,
             score: score::image_selection_score(
                 choice.auto_score,
                 semantic.then_some(choice.clip).flatten(),
-                choice.duplicate,
             ),
         })
         .collect()
@@ -1045,16 +1051,16 @@ struct ImageSlot {
 
 impl ImageSlot {
     /// The incumbent as the selector sees it, on the ruler `semantic` names.
+    ///
+    /// Duplicate status is not folded into the score: an incumbent that is a
+    /// duplicate is treated as if the slot were empty (see
+    /// `collect_selections`), so scoring it would be pointless.
     fn state(&self, semantic: bool) -> SlotState {
         SlotState {
             cand_id: self.cand_id,
             pinned: self.pinned,
             score: self.auto_score.map(|score| {
-                score::image_selection_score(
-                    score,
-                    semantic.then_some(self.clip).flatten(),
-                    self.duplicate,
-                )
+                score::image_selection_score(score, semantic.then_some(self.clip).flatten())
             }),
         }
     }
@@ -1369,6 +1375,19 @@ mod tests {
         let mut best = image(1, 1.0, Some(CLIP_CEIL));
         best.conflicts = true;
         let pool = vec![best, image(2, 0.10, Some(CLIP_FLOOR))];
+        let ranked = rank_images(&pool, true);
+        assert_eq!(ranked.len(), 1);
+        assert_eq!(ranked[0].cand_id, 2);
+    }
+
+    /// #56: a picture another word already shows is removed from the pool, not
+    /// penalised. A penalty oscillates when two words share candidates; hard
+    /// exclusion is idempotent and the selection converges.
+    #[test]
+    fn a_duplicate_picture_is_removed_from_the_pool() {
+        let mut dup = image(1, 1.0, Some(CLIP_CEIL));
+        dup.duplicate = true;
+        let pool = vec![dup, image(2, 0.10, Some(CLIP_FLOOR))];
         let ranked = rank_images(&pool, true);
         assert_eq!(ranked.len(), 1);
         assert_eq!(ranked[0].cand_id, 2);
