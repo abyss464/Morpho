@@ -5,7 +5,7 @@ design whitepaper) + `docs/contracts/` (the interface contracts) to pick the
 project up cold. This file holds what the code cannot tell you: current state,
 how to run things, and the traps.
 
-Last updated: 2026-08-28 (last cut: release 1.8, 2026.08.28+78d30f9d).
+Last updated: 2026-09-01 (last cut: release 2.0, 2026.09.01+44c6a2f7).
 
 ---
 
@@ -26,7 +26,7 @@ Last updated: 2026-08-28 (last cut: release 1.8, 2026.08.28+78d30f9d).
 | `ops/` | reusable operator scripts (persisted from the ephemeral scratchpad) |
 | `~/Code/vendor/ComfyUI/` | ComfyUI + `.venv` (ROCm torch, open_clip) for CLIP/SDXL |
 
-The working DB is currently at schema `user_version` 7 (wave-9 `clip_scores` + the `codex` image source).
+The working DB is currently at schema `user_version` 8 (wave-10 `source_tags` + mandatory source on mint).
 
 ## 2. Starting the engine
 
