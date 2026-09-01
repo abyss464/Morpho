@@ -4,12 +4,30 @@ Motion, sound, and haptics are specified as one system rather than per screen. E
 
 ## Brand
 
-Morpho = the blue morpho butterfly. Identity: **electric morpho blue on deep neutrals**, wings/flutter as the celebration motif (learning = metamorphosis).
+### Colour
 
-- Primary: `#2461FF` (morpho blue); container tints derived per Material 3 tonal roles
-- Secondary: `#00B8A9` (teal, correctness accents); Error: `#E5484D`
-- Dark theme is first-class, both themes ship in wave 1. Use M3 `ColorScheme` (static branded scheme, not dynamic color).
-- Typography: UI text `FontFamily.SansSerif`; **definitions & example sentences use `FontFamily.Serif`** (dictionary feel, long-form readability). Type scale: M3 defaults with `displaySmall` for the word headline, `bodyLarge` 1.5 line-height for definitions. Phonetics (IPA) in sans, `alpha 0.7`. Bundled custom fonts (Inter + Literata) are a later wave — build the Typography layer so swapping is one file.
+| Seed | Hex | Light theme | Dark theme |
+|---|---|---|---|
+| Ink blue | `#22314A` | text | ground |
+| Copper gold | `#C08F4A` | accent | accent |
+| Parchment | `#F2EDE2` | ground | text |
+| Mist blue | `#6B7893` | secondary | secondary |
+
+| Semantic | Hex | Use |
+|---|---|---|
+| Verdigris | `#3B7A67` | correct |
+| Oxblood | `#9E322D` | error |
+
+Static scheme, no Material You dynamic colour. Implementation: `ui/designsystem/theme/Color.kt` — `MorphoPalette` defines tonal ramps per seed, `MorphoLightColorScheme` / `MorphoDarkColorScheme` map to M3 roles, `MorphoAccents` carries semantic colours.
+
+### Typography
+
+- Display / headline / title: EB Garamond
+- Content text (definitions, sentences, quiz options, etymology): system sans-serif
+- Phonetics: sans, alpha 0.7
+- Type scale: M3 defaults, `displaySmall` for word headline, `bodyLarge` 1.5× line-height for definitions
+
+Implementation: `ui/designsystem/theme/Type.kt` — `MorphoFonts.displayFontFamily` controls display face, `MorphoFonts.readingFontFamily` controls content face. `MorphoReadingTypography` defines per-content-type sizes: definition 16sp/24sp, sentence 22sp/34sp, phonetic 15sp/20sp.
 
 ## Component inventory (`ui/designsystem/`)
 
@@ -18,11 +36,11 @@ Tokens (`ui/designsystem/token/`): spacing (4dp grid), radii (12/16/24), elevati
 Components (`ui/designsystem/component/`), each with `@Preview` in both themes:
 
 - `WordHeader` — word + IPA + `AudioChipButton` (pulsing ring while playing)
-- `SentenceCard` — serif sentence, target span highlighted (primary-container pill background), tap-to-play audio
+- `SentenceCard` — sentence (sans, reading style), target span highlighted (primary-container pill background), tap-to-play audio
 - `QuizImageGrid` — 2×2 images, states: idle / pressed (scale .97) / correct (blue ring + check badge) / wrong (shake + dim); min touch target 48dp
-- `QuizImageDefGrid` — image + one-line serif definition caption per cell (mode 2)
+- `QuizImageDefGrid` — image + one-line definition caption per cell (mode 2)
 - `QuizTextOptions` — 4 stacked definition cards (mode 3)
-- `DefinitionBlock` — pos chip + serif text + audio button
+- `DefinitionBlock` — pos chip + definition text (sans, reading style) + audio button
 - `ModePips` — 3-dot mode-level indicator with animated fill on promotion
 - `GroupProgressBar` — segmented per-word progress within group
 - `ProgressRing` — animated sweep, center stats (home screen)

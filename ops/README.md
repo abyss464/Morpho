@@ -1,16 +1,13 @@
 # Morpho operator scripts
 
-Reusable operator scripts, persisted out of the ephemeral /tmp scratchpad.
-See `docs/OPERATIONS.md` for the full runbook. The older scripts assume a native
-engine at 127.0.0.1:8787; compose publishes the containerised one on 30012, so
-point them there when the engine runs under Docker. CLIP scripts need
-`~/Code/vendor/ComfyUI/.venv/bin/python`.
+Engine: `http://127.0.0.1:30012`. CLIP scripts: `~/Code/vendor/ComfyUI/.venv/bin/python`.
 
-- `bulk_approve.py` — approve every ready definition/example/image selection
-- `unapprove_auto.py` — release the pins approval put on auto-selected slots, so
-  a `scorer_ver` bump can actually re-select (re-approve afterwards)
-- `fix_primary_pos.py` — move a primary sense onto the part of speech the
-  corpus uses, for words an earlier triage pass collapsed onto the wrong one
-  (rule 6 will not move a primary onto a disabled slot). `--dry-run` first
-- `clip_rematch.py` — CLIP-re-match images to slot-1 sentences (needs the venv)
+- `bulk_approve.py` — approve all ready selections
+- `unapprove_auto.py` — release auto-selected pins so scorer rebump can re-select
+- `fix_primary_pos.py` — move primary sense onto corpus POS (`--dry-run` first)
 - `mine_subs.py` — mine OpenSubtitles for per-lemma example sentences
+- `coco_ingest.py` — ingest COCO Captions image-sentence pairs as native candidates
+- `coco_revert_reimport.py` — revert bad COCO candidates and reimport with corrected offsets
+- `verify_genimg.py` — verify codex-generated images against incumbents via CLIP, select winners
+- `nsfw_screen.py` — NSFW and content-quality screening (CLIP probe, text-body, solid-color)
+- `translate_sentences.py` — sentence translation
