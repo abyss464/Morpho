@@ -389,7 +389,7 @@ private fun QuizImageCell(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(captionBand)
-                    .padding(tokens.spacing.sm),
+                    .padding(horizontal = tokens.spacing.sm),
             ) {
                 // Same rule as the mode-3 cards: the cell is an answer button, so the
                 // gloss hangs off a long press and a tap always picks the option.
