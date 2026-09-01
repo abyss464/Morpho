@@ -439,18 +439,25 @@ pub(crate) fn selected_image_hashes(conn: &Connection) -> Result<HashMap<String,
     Ok(out)
 }
 
-/// Is this picture the selected image of some word other than `word_id`?
+/// Is this picture claimed by another word that outranks `word_id`?
 ///
-/// A word's *own* selection never counts against it — otherwise every settled
-/// slot in the lexicon would read as unserved the first pass after this shipped.
+/// When multiple words currently select the same `file_hash`, the lowest
+/// `word_id` keeps it and every higher one is told "duplicate". Without
+/// that tiebreak the exclusion is symmetric — both owners see the other
+/// and both relinquish, freeing the hash so both reclaim it next pass,
+/// oscillating forever (#56).
 pub(crate) fn is_duplicate_image(
     selected: &HashMap<String, Vec<i64>>,
     file_hash: &str,
     word_id: i64,
 ) -> bool {
-    selected
-        .get(file_hash)
-        .is_some_and(|words| words.iter().any(|owner| *owner != word_id))
+    selected.get(file_hash).is_some_and(|words| {
+        if words.contains(&word_id) {
+            words.iter().any(|&w| w < word_id)
+        } else {
+            !words.is_empty()
+        }
+    })
 }
 
 /// What one scan of `image_candidates` says about who is served.

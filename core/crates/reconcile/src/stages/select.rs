@@ -649,13 +649,12 @@ fn collect_selections(
     //
     // The last one is enforced twice, both as hard exclusions (#56). Across the
     // lexicon, a picture another word already selected is removed from the pool
-    // entirely — a penalty that changes between passes (each word's selection
-    // changes the other's penalty) caused two words sharing candidates to
-    // oscillate indefinitely. Inside one question card a picture a mate shows is
-    // also removed. Both are idempotent: once a word is excluded from a pool the
-    // pool does not change on the next pass, and the selection converges. The
-    // question-mate veto is what makes the exporter's `question_images_distinct`
-    // gate structurally unreachable from an automatic selection.
+    // entirely. When two words share the same file_hash, the lowest word_id
+    // keeps it — symmetric exclusion (both see the other and both relinquish)
+    // caused indefinite oscillation. Inside one question card a picture a mate
+    // shows is also removed. Both are idempotent: once a word is excluded from
+    // a pool the pool does not change on the next pass, and the selection
+    // converges.
     let taken = facts::selected_image_hashes(conn)?;
     let mates = question_mate_images(conn)?;
     let queries = clip_queries(conn)?;
@@ -782,8 +781,8 @@ fn uniformly_scored(pool: &[ImageChoice]) -> bool {
 /// incumbent is measured with the identical flag — see the caller.
 ///
 /// Two kinds of picture are **removed, not docked**: a picture a question mate
-/// shows (the per-question veto), and a picture another word anywhere in the
-/// lexicon already selected (the duplicate exclusion, #56). If that empties
+/// shows (the per-question veto), and a picture a lower-numbered word already
+/// selected (the duplicate exclusion, #56). If that empties
 /// the pool the word makes no decision at all and keeps whatever it has, which
 /// is honest: the reconciler never empties a slot, and the word is already
 /// flagged as needing more candidates, so the image chain walks it down to a
