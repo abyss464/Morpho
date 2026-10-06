@@ -1,4 +1,4 @@
-data/
+/data/
 ops/logs/
 ops/__pycache__/
 content/corpora/
