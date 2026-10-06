@@ -1,6 +1,7 @@
 package dev.morpho.ui.common
 
 import dev.morpho.data.content.EtymologySegments
+import dev.morpho.domain.content.maskHeadword
 import dev.morpho.domain.model.WordBundle
 import dev.morpho.ui.designsystem.component.ExampleDetail
 import dev.morpho.ui.designsystem.component.SenseDetail
@@ -37,3 +38,11 @@ fun WordBundle.toWordDetail(): WordDetail = WordDetail(
     etymology = word.etymology,
     etymologySegments = EtymologySegments.parse(word.etymologySegmentsJson),
 )
+
+/**
+ * The primary definition as a quiz option or prompt shows it: every occurrence of this
+ * word's own headword is masked ([maskHeadword]), so a definition that names its word does
+ * not answer the question it sits in. Detail surfaces use [toWordDetail], which keeps the
+ * full text.
+ */
+fun WordBundle.quizDefinition(): String = maskHeadword(word.word, primarySense.definition)

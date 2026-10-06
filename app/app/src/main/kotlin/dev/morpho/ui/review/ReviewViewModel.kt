@@ -16,6 +16,7 @@ import dev.morpho.domain.model.WordBundle
 import dev.morpho.domain.progress.ProgressTracker
 import dev.morpho.domain.review.ReviewItem
 import dev.morpho.domain.util.seedOf
+import dev.morpho.ui.common.quizDefinition
 import dev.morpho.ui.common.toWordDetail
 import dev.morpho.ui.designsystem.component.FeedbackSignal
 import dev.morpho.ui.designsystem.component.ImageOption
@@ -166,12 +167,16 @@ class ReviewViewModel(private val container: AppContainer) : ViewModel() {
         )
     }
 
-    private fun WordBundle.toImageOption(index: Int, total: Int) = ImageOption(
-        wordId = word.wordId,
-        imageFile = word.imageFile,
-        caption = primarySense.definition,
-        accessibilityLabel = "Option ${index + 1} of $total: ${primarySense.definition}",
-    )
+    private fun WordBundle.toImageOption(index: Int, total: Int): ImageOption {
+        // Each caption masks its own word's headword, distractors included.
+        val caption = quizDefinition()
+        return ImageOption(
+            wordId = word.wordId,
+            imageFile = word.imageFile,
+            caption = caption,
+            accessibilityLabel = "Option ${index + 1} of $total: $caption",
+        )
+    }
 
     // --------------------------------------------------------------- answers
 

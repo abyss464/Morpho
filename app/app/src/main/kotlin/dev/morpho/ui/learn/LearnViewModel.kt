@@ -19,6 +19,7 @@ import dev.morpho.domain.model.LearnMode
 import dev.morpho.domain.model.WordBundle
 import dev.morpho.domain.progress.ProgressTracker
 import dev.morpho.domain.progress.SessionBank
+import dev.morpho.ui.common.quizDefinition
 import dev.morpho.ui.common.toWordDetail
 import dev.morpho.ui.designsystem.component.FeedbackSignal
 import dev.morpho.ui.designsystem.component.GroupSegmentState
@@ -230,7 +231,8 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
                 ordered.mapIndexed { index, bundle -> bundle.toImageOption(index, ordered.size, question.mode) }
             },
             textOptions = if (question.mode == LearnMode.WORD_TEXT_DEF) {
-                ordered.map { TextOption(it.word.wordId, it.primarySense.definition, it.primarySense.pos) }
+                // Each card masks its own word's headword, distractors included.
+                ordered.map { TextOption(it.word.wordId, it.quizDefinition(), it.primarySense.pos) }
             } else {
                 emptyList()
             },
@@ -246,16 +248,19 @@ class LearnViewModel(private val container: AppContainer) : ViewModel() {
         )
     }
 
-    private fun WordBundle.toImageOption(index: Int, total: Int, mode: LearnMode) = ImageOption(
-        wordId = word.wordId,
-        imageFile = word.imageFile,
-        caption = if (mode == LearnMode.WORD_IMAGE_DEF) primarySense.definition else null,
-        accessibilityLabel = if (mode == LearnMode.WORD_IMAGE_DEF) {
-            "Option ${index + 1} of $total: ${primarySense.definition}"
-        } else {
-            "Option ${index + 1} of $total"
-        },
-    )
+    private fun WordBundle.toImageOption(index: Int, total: Int, mode: LearnMode): ImageOption {
+        val caption = if (mode == LearnMode.WORD_IMAGE_DEF) quizDefinition() else null
+        return ImageOption(
+            wordId = word.wordId,
+            imageFile = word.imageFile,
+            caption = caption,
+            accessibilityLabel = if (caption != null) {
+                "Option ${index + 1} of $total: $caption"
+            } else {
+                "Option ${index + 1} of $total"
+            },
+        )
+    }
 
     private fun segmentsFor(state: LearningSessionState): List<GroupSegmentState> {
         val currentId = state.currentQuestion?.wordId
