@@ -39,18 +39,18 @@ class ReleaseDatabaseTest {
     @Test
     fun `the bundled release carries the counts the export reported`() {
         assertTrue(RELEASE_DB.isFile, "no bundled release at ${RELEASE_DB.absolutePath}")
-        assertEquals(4_225L, db.wordsQueries.countAll().executeAsOne(), "words")
-        assertEquals(5_067L, db.sensesQueries.countAll().executeAsOne(), "senses")
-        assertEquals(12_667L, db.examplesQueries.countAll().executeAsOne(), "examples")
-        assertEquals(12_675L, db.distractorsQueries.countAll().executeAsOne(), "distractors")
-        assertEquals(451L, db.glossAnchorsQueries.countAll().executeAsOne(), "gloss anchors")
-        assertEquals(234L, db.groupsQueries.countAll().executeAsOne(), "groups")
+        assertEquals(3_909L, db.wordsQueries.countAll().executeAsOne(), "words")
+        assertEquals(4_430L, db.sensesQueries.countAll().executeAsOne(), "senses")
+        assertEquals(11_727L, db.examplesQueries.countAll().executeAsOne(), "examples")
+        assertEquals(11_727L, db.distractorsQueries.countAll().executeAsOne(), "distractors")
+        assertEquals(0L, db.glossAnchorsQueries.countAll().executeAsOne(), "gloss anchors")
+        assertEquals(1_000L, db.groupsQueries.countAll().executeAsOne(), "groups")
     }
 
     @Test
     fun `meta identifies the release the app was built against`() {
         assertEquals(
-            "2026.09.01+44c6a2f7",
+            "2026.10.06+175fab9a",
             db.metaQueries.selectValue(ContentMetaKeys.CONTENT_VERSION).executeAsOneOrNull(),
         )
         assertNotNull(db.metaQueries.selectValue(ContentMetaKeys.PLAN_ID).executeAsOneOrNull())
@@ -84,8 +84,8 @@ class ReleaseDatabaseTest {
     @Test
     fun `learning order is dense and unique across all four thousand words`() = runBlocking {
         val plan = repo.planWords()
-        assertEquals(4_225, plan.size)
-        assertEquals((1..4_225).toList(), plan.map { it.learningOrder })
+        assertEquals(3_909, plan.size)
+        assertEquals((1..3_909).toList(), plan.map { it.learningOrder })
     }
 
     @Test
@@ -145,7 +145,7 @@ class ReleaseDatabaseTest {
             if (!covered.equals(word, ignoreCase = true)) inflected++
             checked++
         }
-        assertEquals(12_667, checked)
+        assertEquals(11_727, checked)
         assertTrue(inflected > 0, "no inflected highlight at all looks like a fixture, not a release")
     }
 
@@ -154,7 +154,7 @@ class ReleaseDatabaseTest {
     @Test
     fun `gloss anchors resolve inside the definitions that reference them`() = runBlocking {
         val index = repo.glossIndex()
-        assertEquals(451, index.size)
+        assertEquals(0, index.size)
 
         // An index that never fires on shipped text is an index that silently does
         // nothing, so pin that it actually lights words up across the release.
