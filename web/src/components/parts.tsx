@@ -105,6 +105,16 @@ export function Picture({ w, eager }: { w: WordFull; eager?: boolean }) {
   );
 }
 
+/** The definition and example audio that follow the word when a card is read aloud in full. */
+function afterWord(w: WordFull): string[] {
+  return [primarySense(w)?.audio, w.example?.audio].filter((a): a is string => !!a);
+}
+
+/** Reads a card aloud: the word, its definition, then its example. */
+export function readAloud(w: WordFull): void {
+  play([w.audio, ...afterWord(w)]);
+}
+
 /** The headword's speaker reads the word, then (when they are on screen) its definition and example. */
 export function Head({
   w,
@@ -119,7 +129,7 @@ export function Head({
   readAll?: boolean;
   children?: ReactNode;
 }) {
-  const then = readAll ? [primarySense(w)?.audio, w.example?.audio].filter((a): a is string => !!a) : [];
+  const then = readAll ? afterWord(w) : [];
   return (
     <div className="head">
       <Tag className="word">{link ? <a href={link}>{w.word}</a> : w.word}</Tag>

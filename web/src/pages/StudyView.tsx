@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { loadUnit, prefetchImage, unitWordIds, useAsync } from '../api';
 import type { Index } from '../api';
-import { WordCard } from '../components/parts';
+import { readAloud, WordCard } from '../components/parts';
 import { isTyping, plural, useKeydown, useNow } from '../hooks';
 import { go, href } from '../router';
 import { dueIds, markStudied, strength, STRENGTH_LABEL, useProgress } from '../store';
@@ -17,8 +17,12 @@ export function StudyView({ index, unit, at }: { index: Index; unit: number; at:
   const w = words[i - 1];
   const last = i === n;
 
-  const step = (k: number) => {
-    if (k >= 1 && k <= n) go(href.study(unit, k), true);
+  /** Moving on to the next card reads it aloud once; going back or jumping does not. */
+  const step = (k: number, read = false) => {
+    if (k < 1 || k > n) return;
+    go(href.study(unit, k), true);
+    const next = words[k - 1];
+    if (read && next) readAloud(next);
   };
   const finish = () => {
     markStudied(words.map((x) => x.id));
@@ -32,7 +36,7 @@ export function StudyView({ index, unit, at }: { index: Index; unit: number; at:
   useKeydown((e) => {
     if (isTyping(e) || e.altKey || e.ctrlKey || e.metaKey || !n) return;
     if (e.key === 'ArrowLeft') step(i - 1);
-    else if (e.key === 'ArrowRight') step(i + 1);
+    else if (e.key === 'ArrowRight') step(i + 1, true);
   });
 
   if (!valid) return <UnitNotFound unit={unit} index={index} />;
@@ -71,7 +75,7 @@ export function StudyView({ index, unit, at }: { index: Index; unit: number; at:
                 Finish unit &rarr;
               </button>
             ) : (
-              <button type="button" className="btn primary" onClick={() => step(i + 1)}>
+              <button type="button" className="btn primary" onClick={() => step(i + 1, true)}>
                 Next &rarr;
               </button>
             )}
