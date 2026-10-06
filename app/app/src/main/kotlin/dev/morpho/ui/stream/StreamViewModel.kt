@@ -18,6 +18,7 @@ import dev.morpho.domain.review.Grade
 import dev.morpho.domain.stream.Difficulty
 import dev.morpho.domain.stream.Outcome
 import dev.morpho.domain.stream.Pieces
+import dev.morpho.domain.stream.Puzzle
 import dev.morpho.domain.stream.ReviewTask
 import dev.morpho.domain.stream.Seeded
 import dev.morpho.domain.stream.Step
@@ -38,12 +39,13 @@ sealed interface TaskState {
 }
 
 /**
- * The explain task (docs/contracts/stream.md §2): pieces tapped into a tray in order.
- * Placing the last piece checks it; [misses] counts failed checks.
+ * The explain task (docs/contracts/stream.md §2, §4): the definition with its blanks, filled
+ * piece by piece. [filled] holds, per blank, the id of the piece in it or null; filling the
+ * last blank checks the tray, and [misses] counts failed checks.
  */
 data class RebuildState(
-    val puzzle: dev.morpho.domain.stream.Puzzle,
-    val placed: List<Int> = emptyList(),
+    val puzzle: Puzzle,
+    val filled: List<Int?> = List(puzzle.answer.size) { null },
     val checked: Boolean = false,
     val misses: Int = 0,
     val hinted: Boolean = false,
@@ -51,11 +53,24 @@ data class RebuildState(
 ) : TaskState {
     fun textOf(id: Int): String = puzzle.pieces.first { it.id == id }.text
 
-    /** Whether the piece in tray slot [k] is the right one for that slot. */
-    fun right(k: Int): Boolean = Pieces.norm(textOf(placed[k])) == puzzle.answer[k]
+    private val answerTexts: List<String> = puzzle.answer.map { Pieces.norm(textOf(it)) }
+
+    /** Whether blank [k] holds a piece with the right text, in [slots] (the current fill by default). */
+    fun right(k: Int, slots: List<Int?> = filled): Boolean =
+        slots[k]?.let { Pieces.norm(textOf(it)) == answerTexts[k] } ?: false
+
+    /** The first empty blank, the one the next tapped piece fills; -1 when all are full. */
+    val nextOpen: Int get() = filled.indexOf(null)
+
+    fun used(id: Int): Boolean = id in filled
 
     /** The tray was checked and is wrong: misplaced pieces show red. */
-    val wrongShown: Boolean get() = checked && placed.size == puzzle.answer.size && !solved
+    val wrongShown: Boolean get() = checked && null !in filled && !solved
+
+    /** The piece that belongs in blank [k]: the first with its text not already right elsewhere. */
+    fun pieceFor(k: Int): Int? = puzzle.pieces.firstOrNull { p ->
+        Pieces.norm(p.text) == answerTexts[k] && filled.indices.none { i -> filled[i] == p.id && right(i) }
+    }?.id
 }
 
 /**
@@ -110,7 +125,24 @@ data class DoneSummary(
     val tomorrow: Int,
     val newPerDay: Int,
     val streak: Int,
+    /** Units finished today, or null when none was. */
+    val units: UnitNews? = null,
 )
+
+/** What comes after the units finished today. */
+enum class UnitEnding {
+    /** The next unit is untouched: it starts tomorrow. */
+    NEXT_TOMORROW,
+
+    /** The next unit has already begun. */
+    NEXT_BEGUN,
+
+    /** The last finished unit was the release's last. */
+    LAST_UNIT,
+}
+
+/** Units whose last words graduated today, in order, and what follows the last of them. */
+data class UnitNews(val finished: List<Int>, val ending: UnitEnding)
 
 data class StreamUiState(
     val done: Int = 0,
@@ -270,11 +302,35 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
             tomorrow = engine.dueReviews(snap.state, snap.cards, snap.order.toSet(), endOfTomorrow).size,
             newPerDay = newPerDay,
             streak = ProgressTracker.streak(container.progressRepository.recentStats(), today),
+            units = unitNews(snap, today),
         )
         val arriving = _state.value.view != null
         _state.value = _state.value.copy(view = null, summary = summary)
         refreshProgress()
         if (arriving) container.playSfx(SfxEvent.REVIEW_DONE)
+    }
+
+    /**
+     * Units finished today: a unit is finished when one of its words graduated today (its
+     * card has one review, made today) and every word in it has a card.
+     */
+    private fun unitNews(snap: StreamSnapshot, today: LocalDate): UnitNews? {
+        val zone = ZoneId.systemDefault()
+        val wordsOf = snap.order.chunked(StreamSnapshot.UNIT_SIZE)
+        val finished = snap.cards.values
+            .filter { it.reps == 1 && it.lastReview?.atZone(zone)?.toLocalDate() == today }
+            .filter { snap.positionOf(it.wordId) >= 0 }
+            .map { snap.unitOf(it.wordId) }
+            .distinct()
+            .filter { u -> wordsOf[u - 1].all { it in snap.cards } }
+            .sorted()
+        val last = finished.lastOrNull() ?: return null
+        val ending = when {
+            last >= wordsOf.size -> UnitEnding.LAST_UNIT
+            wordsOf[last].any { it in snap.cards || it in snap.state.words } -> UnitEnding.NEXT_BEGUN
+            else -> UnitEnding.NEXT_TOMORROW
+        }
+        return UnitNews(finished, ending)
     }
 
     private fun refreshProgress() {
@@ -285,62 +341,71 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
 
     // ------------------------------------------------------------- the task
 
+    /** A tapped piece fills the first open blank. */
     fun onPlacePiece(id: Int) {
         val rebuild = currentRebuild() ?: return
-        if (rebuild.solved || id in rebuild.placed) return
-        val next = rebuild.placed + id
-        if (next.size < rebuild.puzzle.answer.size) container.playSfx(SfxEvent.TAP)
-        check(rebuild.copy(placed = next, checked = false), usedHint = rebuild.hinted)
+        val open = rebuild.nextOpen
+        if (rebuild.solved || rebuild.used(id) || open < 0) return
+        update(rebuild, rebuild.filled.mapIndexed { k, x -> if (k == open) id else x })
     }
 
-    fun onReturnPiece(id: Int) {
+    /** A tapped chip goes back to the bank and reopens its blank. */
+    fun onReturnPiece(blank: Int) {
         val rebuild = currentRebuild() ?: return
         if (rebuild.solved) return
-        container.playSfx(SfxEvent.TAP)
-        setTask(rebuild.copy(placed = rebuild.placed - id, checked = false))
+        update(rebuild, rebuild.filled.mapIndexed { k, x -> if (k == blank) null else x })
     }
 
     fun onStartOver() {
         val rebuild = currentRebuild() ?: return
-        if (rebuild.solved) return
-        container.playSfx(SfxEvent.TAP)
-        setTask(rebuild.copy(placed = emptyList(), checked = false))
+        if (rebuild.solved || rebuild.filled.all { it == null }) return
+        update(rebuild, rebuild.filled.map { null })
     }
 
-    /** Keeps the correct opening pieces and places the next correct one. */
+    /** Puts the right piece into the first blank that is open or wrong. Counts as help. */
     fun onShowNextPiece() {
         val rebuild = currentRebuild() ?: return
         if (rebuild.solved) return
-        var keep = 0
-        while (keep < rebuild.placed.size && rebuild.right(keep)) keep += 1
-        val head = rebuild.placed.take(keep)
-        val piece = rebuild.puzzle.pieces.firstOrNull {
-            it.id !in head && Pieces.norm(it.text) == rebuild.puzzle.answer.getOrNull(keep)
-        } ?: return
-        val next = head + piece.id
-        if (next.size < rebuild.puzzle.answer.size) container.playSfx(SfxEvent.TAP)
-        check(rebuild.copy(placed = next, checked = false, hinted = true), usedHint = true)
+        val k = rebuild.filled.indices.firstOrNull { !rebuild.right(it) } ?: return
+        val piece = rebuild.pieceFor(k) ?: return
+        val next = rebuild.filled.mapIndexed { i, x ->
+            when {
+                i == k -> piece
+                x == piece -> null
+                else -> x
+            }
+        }
+        update(rebuild.copy(hinted = true), next, usedHint = true)
     }
 
-    /** Placing the last piece checks the tray. */
-    private fun check(rebuild: RebuildState, usedHint: Boolean) {
-        if (rebuild.placed.size != rebuild.puzzle.answer.size) {
-            setTask(rebuild)
+    /** Fills every blank with the answer, which solves the step as failed. */
+    fun onShowAnswer() {
+        val rebuild = currentRebuild() ?: return
+        if (rebuild.solved) return
+        update(rebuild.copy(hinted = true), rebuild.puzzle.answer, usedHint = true)
+    }
+
+    /** Sets the blanks; filling the last one checks the tray. */
+    private fun update(rebuild: RebuildState, next: List<Int?>, usedHint: Boolean = rebuild.hinted) {
+        val placed = rebuild.copy(filled = next, checked = false)
+        if (null in next) {
+            container.playSfx(SfxEvent.TAP)
+            setTask(placed)
             return
         }
-        val correct = rebuild.placed.indices.all(rebuild::right)
-        if (!correct) {
+        if (!next.indices.all { placed.right(it, next) }) {
             feedback(correct = false)
-            setTask(rebuild.copy(checked = true, misses = rebuild.misses + 1))
+            setTask(placed.copy(checked = true, misses = rebuild.misses + 1))
             return
         }
-        feedback(correct = true)
+        // A tray solved with help gets a plain tap, not the correct chime.
+        if (usedHint) container.playSfx(SfxEvent.TAP) else feedback(correct = true)
         val outcome = when {
             usedHint || rebuild.misses >= 2 -> Outcome.FAILED
             rebuild.misses == 1 -> Outcome.SHAKY
             else -> Outcome.CLEAN
         }
-        setTask(rebuild.copy(checked = true, solved = true))
+        setTask(placed.copy(checked = true, solved = true))
         solved(outcome) { view -> container.audioPlayer.play(view.word.primarySense.defAudioFile) }
     }
 

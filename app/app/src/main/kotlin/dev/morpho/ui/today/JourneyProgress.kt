@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import dev.morpho.R
 import dev.morpho.domain.progress.OverallProgress
@@ -26,16 +27,16 @@ import dev.morpho.ui.designsystem.theme.MorphoTheme
  *
  * One Garamond figure carries the card — the count of words met — with the total set
  * beside it as a quiet denominator. The quarter marks ride the rail as the icon's
- * diamonds: copper once passed, an outline while still ahead.
+ * diamonds: copper once passed, an outline while still ahead. Under it, the unit the
+ * learner is in and the days left at the daily pace; "Complete" once every word is met.
  */
 @Composable
 fun JourneyProgress(
     overall: OverallProgress,
-    estimatedDaysRemaining: Int?,
+    pace: JourneyPace,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MorphoTheme.spacing
-    val percentComplete = (overall.fraction * 100).toInt()
 
     ElevatedCard(
         modifier = modifier.fillMaxWidth(),
@@ -79,47 +80,46 @@ fun JourneyProgress(
             MotifMilestoneRail(
                 fraction = overall.fraction,
                 contentDescription = stringResource(
-                    R.string.today_journey_complete,
-                    percentComplete,
+                    R.string.cd_journey,
+                    formatCount(overall.learnedWords),
+                    formatCount(overall.totalWords),
                 ),
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
+            if (overall.remainingWords > 0) {
+                val days = (overall.remainingWords + pace.newPerDay - 1) / pace.newPerDay.coerceAtLeast(1)
                 Text(
-                    text = stringResource(R.string.today_journey_complete, percentComplete),
+                    text = stringResource(
+                        R.string.today_journey_pace,
+                        pace.unit,
+                        pace.unitCount,
+                        pluralStringResource(R.plurals.days, days, days),
+                        pace.newPerDay,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                when {
-                    overall.remainingWords == 0 -> Text(
-                        text = stringResource(R.string.today_journey_done),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MorphoTheme.accents.motifActive,
-                    )
-                    estimatedDaysRemaining != null -> Text(
-                        text = stringResource(
-                            R.string.today_journey_days_left,
-                            estimatedDaysRemaining,
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            } else {
+                Text(
+                    text = stringResource(R.string.today_journey_done),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MorphoTheme.accents.motifActive,
+                )
             }
         }
     }
 }
+
+/** Where the learner stands: the first unit not fully in review, of all units, at this many new words a day. */
+data class JourneyPace(val unit: Int, val unitCount: Int, val newPerDay: Int)
 
 @ThemePreviews
 @Composable
 private fun JourneyProgressPreview() {
     PreviewBox {
         JourneyProgress(
-            overall = OverallProgress(totalWords = 4253, learnedWords = 2090, inFlightWords = 17),
-            estimatedDaysRemaining = 43,
+            overall = OverallProgress(totalWords = 3909, learnedWords = 212, inFlightWords = 3),
+            pace = JourneyPace(unit = 11, unitCount = 196, newPerDay = 20),
         )
     }
 }

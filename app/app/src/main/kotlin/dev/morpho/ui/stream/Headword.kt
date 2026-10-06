@@ -6,26 +6,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import dev.morpho.domain.model.Example
 import dev.morpho.domain.model.WordBundle
-
-/**
- * The headword and its regular forms inside running text, case-insensitively, as whole
- * words: the lemma, +s/es/ed/d/ing/'s; e-final stem + ing/ed; y-final stem + ies/ied; a
- * doubled final b d g k l m n p r t + ed/ing. A multi-word headword matches with any run of
- * spaces between its words. Same rule as the web client's `wordPattern`.
- */
-internal fun wordPattern(word: String): Regex? {
-    val w = word.trim().lowercase()
-    if (w.isEmpty()) return null
-    if (w.contains(Regex("\\s"))) {
-        return Regex("\\b" + w.split(Regex("\\s+")).joinToString("\\s+") { Regex.escape(it) } + "\\b", RegexOption.IGNORE_CASE)
-    }
-    val alts = mutableListOf("${Regex.escape(w)}(?:s|es|ed|d|ing|'s)?")
-    if (w.endsWith("e")) alts += "${Regex.escape(w.dropLast(1))}(?:ing|ed)"
-    if (w.endsWith("y")) alts += "${Regex.escape(w.dropLast(1))}(?:ies|ied)"
-    val last = w.last()
-    if (last in "bdgklmnprt") alts += "${Regex.escape(w)}$last(?:ed|ing)"
-    return Regex("\\b(?:${alts.joinToString("|")})\\b", RegexOption.IGNORE_CASE)
-}
+import dev.morpho.domain.stream.wordPattern
 
 private val Bold = SpanStyle(fontWeight = FontWeight.SemiBold)
 

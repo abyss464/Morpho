@@ -35,6 +35,9 @@ class ContentRepository(private val db: ContentDatabase) {
     @Volatile
     private var cachedGlossIndex: GlossIndex? = null
 
+    @Volatile
+    private var cachedIndex: List<IndexedWord>? = null
+
     suspend fun planWords(): List<PlanWord> = cachedPlan ?: withContext(Dispatchers.IO) {
         db.wordsQueries.selectPlanSlice().executeAsList().map {
             PlanWord(
@@ -43,6 +46,12 @@ class ContentRepository(private val db: ContentDatabase) {
                 learningOrder = it.learning_order.toInt(),
             )
         }.also { cachedPlan = it }
+    }
+
+    /** Every shipped word's id and spelling, in learning order: what "Look up a word" searches. Cached. */
+    suspend fun wordIndex(): List<IndexedWord> = cachedIndex ?: withContext(Dispatchers.IO) {
+        db.wordsQueries.selectAllOrdered().executeAsList().map { IndexedWord(it.word_id, it.word) }
+            .also { cachedIndex = it }
     }
 
     suspend fun shippedWordIds(): Set<Long> = planWords().mapTo(HashSet()) { it.wordId }
@@ -156,6 +165,9 @@ class ContentRepository(private val db: ContentDatabase) {
         }
     }
 }
+
+/** A word's id and spelling. */
+data class IndexedWord(val wordId: Long, val word: String)
 
 // ------------------------------------------------------------------ mapping
 

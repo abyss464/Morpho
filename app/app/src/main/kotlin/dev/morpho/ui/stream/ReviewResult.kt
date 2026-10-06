@@ -57,7 +57,7 @@ internal fun ReviewResultContent(
     val word = view.word
     Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
         WordPicture(word, Modifier.fillMaxWidth().height(MorphoTheme.sizes.resultPictureHeight))
-        StageLabel(StageMark.REVIEW, stringResource(R.string.stream_stage_review, ordinal(view.reps)))
+        StageLabel(StageMark.REVIEW, reviewLabel(view.reps))
         WordTitle(
             word = word,
             playing = nowPlaying == word.word.wordAudioFile,
@@ -100,13 +100,13 @@ internal fun ReviewResultContent(
     }
 }
 
-/** How the task went, in the good, shaky or bad tint, around the definition. */
+/** How the task went, in the good, close or bad tint, around the definition. */
 @Composable
 private fun Verdict(task: ReviewTask, outcome: Outcome, content: @Composable () -> Unit) {
     val accents = MorphoTheme.accents
     val (line, fill) = when (outcome) {
         Outcome.CLEAN -> accents.correct to accents.correctContainer
-        Outcome.SHAKY -> accents.motifActive to accents.highlight
+        Outcome.SHAKY -> MaterialTheme.colorScheme.tertiary to accents.highlight
         Outcome.FAILED -> accents.wrong to accents.wrongContainer
     }
     val caption = when (task) {
@@ -158,7 +158,7 @@ private fun RatingControl(verdict: ReviewVerdict, onRate: (Grade) -> Unit) {
             val (fill, ink) = when {
                 !selected -> colors.surfaceContainerLow to colors.onSurfaceVariant
                 grade == Grade.AGAIN -> accents.wrongContainer to accents.wrong
-                grade == Grade.HARD -> accents.highlight to accents.onHighlight
+                grade == Grade.HARD -> accents.highlight to colors.tertiary
                 else -> accents.correctContainer to accents.correct
             }
             if (k > 0) VerticalDivider(color = colors.outlineVariant)

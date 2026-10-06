@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import dev.morpho.data.repository.IndexedWord
 import dev.morpho.data.stream.StreamSnapshot
 import dev.morpho.di.AppContainer
 import dev.morpho.domain.model.ActivityChartStyle
@@ -47,8 +48,9 @@ data class TodayUiState(
     /** Due reviews have reached the backlog guard, so new words wait. */
     val backlogged: Boolean = false,
     val entry: TodayEntry = TodayEntry.START,
+    /** Words in the release, words met (carded words plus words in the stream), words being learned. */
     val journey: OverallProgress = OverallProgress(0, 0, 0),
-    val estimatedDaysRemaining: Int? = null,
+    val pace: JourneyPace = JourneyPace(unit = 1, unitCount = 0, newPerDay = 1),
     val weeklyActivity: List<DailyActivity> = emptyList(),
     val heatmapData: HeatmapData = HeatmapData(emptyList(), 0, 0),
     val activityChartStyle: ActivityChartStyle = ActivityChartStyle.BAR,
@@ -56,6 +58,8 @@ data class TodayUiState(
     val units: List<UnitProgress> = emptyList(),
     val unitsFinished: Int = 0,
     val unitCount: Int = 0,
+    /** Every shipped word, for "Look up a word". */
+    val index: List<IndexedWord> = emptyList(),
 )
 
 /** Today: what the stream holds for the day, and the long view around it. */
@@ -100,13 +104,18 @@ class TodayViewModel(private val container: AppContainer) : ViewModel() {
                     else -> TodayEntry.START
                 },
                 journey = journey,
-                estimatedDaysRemaining = ProgressTracker.estimatedDaysRemaining(journey.remainingWords, recentStats),
+                pace = JourneyPace(
+                    unit = if (firstOpen < units.size) firstOpen + 1 else units.size,
+                    unitCount = units.size,
+                    newPerDay = settings.dailyGoal,
+                ),
                 weeklyActivity = ProgressTracker.weeklyActivity(recentStats, today),
                 heatmapData = ProgressTracker.heatmapData(recentStats, today),
                 activityChartStyle = settings.activityChartStyle,
                 units = units.drop(from).take(UNITS_SHOWN),
                 unitsFinished = units.count { it.finished },
                 unitCount = units.size,
+                index = container.contentRepository.wordIndex(),
             )
         }
     }

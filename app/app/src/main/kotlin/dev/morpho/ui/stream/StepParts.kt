@@ -196,6 +196,36 @@ fun NoteBlock(note: WordNote?, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * The full word card: picture, the step label, word with phonetic, part of speech and a
+ * speaker that reads word, definition and example, then the definition, the example and the
+ * learner's note. The stream's `know` step and a looked-up word both show it.
+ */
+@Composable
+fun WordCard(
+    word: WordBundle,
+    mark: StageMark,
+    label: String,
+    note: WordNote?,
+    playing: Boolean,
+    onPlay: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(MorphoTheme.spacing.sm)) {
+        WidePicture(word)
+        StageLabel(mark = mark, text = label)
+        WordTitle(
+            word = word,
+            playing = playing,
+            onPlay = onPlay,
+            playLabel = stringResource(R.string.cd_play_card),
+        )
+        DefinitionText(word)
+        ExampleText(word)
+        NoteBlock(note)
+    }
+}
+
 /** A one-line status under a task: neutral, good or bad. */
 enum class Tone { NEUTRAL, GOOD, BAD }
 

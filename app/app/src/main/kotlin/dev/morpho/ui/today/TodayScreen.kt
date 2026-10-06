@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -53,14 +54,15 @@ import java.time.LocalDate
 
 /**
  * Today, the only way into learning (docs/contracts/stream.md §7): one line on what the
- * day holds and one button into the stream, then the journey, this week and the units as
- * progress.
+ * day holds and one button into the stream, then the journey, this week, "Look up a word"
+ * and the units as progress.
  */
 @Composable
 fun TodayScreen(
     container: AppContainer,
     onOpenStream: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenWord: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: TodayViewModel = viewModel(factory = TodayViewModel.factory(container))
@@ -83,6 +85,10 @@ fun TodayScreen(
             container.playSfx(SfxEvent.TAP)
             viewModel.setActivityChartStyle(style)
         },
+        onOpenWord = { id ->
+            container.playSfx(SfxEvent.TAP)
+            onOpenWord(id)
+        },
     )
 }
 
@@ -92,6 +98,7 @@ private fun TodayContent(
     onOpenStream: () -> Unit,
     onOpenSettings: () -> Unit,
     onToggleChartStyle: (ActivityChartStyle) -> Unit,
+    onOpenWord: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MorphoTheme.spacing
@@ -99,6 +106,7 @@ private fun TodayContent(
         modifier = modifier
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.screenGutter)
             .padding(top = spacing.md, bottom = spacing.xxl),
@@ -114,7 +122,7 @@ private fun TodayContent(
 
         JourneyProgress(
             overall = state.journey,
-            estimatedDaysRemaining = state.estimatedDaysRemaining,
+            pace = state.pace,
         )
 
         Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
@@ -148,6 +156,8 @@ private fun TodayContent(
                 ActivityChartStyle.HEATMAP -> ActivityHeatmap(data = state.heatmapData)
             }
         }
+
+        WordSearch(index = state.index, onPick = onOpenWord)
 
         if (state.units.isNotEmpty()) {
             UnitsSection(state)
@@ -318,7 +328,7 @@ private fun TodayContentPreview() {
                 newWords = 20,
                 entry = TodayEntry.CONTINUE,
                 journey = OverallProgress(totalWords = 3909, learnedWords = 212, inFlightWords = 3),
-                estimatedDaysRemaining = 185,
+                pace = JourneyPace(unit = 11, unitCount = 196, newPerDay = 20),
                 weeklyActivity = (6 downTo 0).map { daysAgo ->
                     DailyActivity(today.minusDays(daysAgo.toLong()), listOf(12, 45, 30, 0, 55, 20, 38)[6 - daysAgo])
                 },
@@ -334,6 +344,7 @@ private fun TodayContentPreview() {
             onOpenStream = {},
             onOpenSettings = {},
             onToggleChartStyle = {},
+            onOpenWord = {},
         )
     }
 }

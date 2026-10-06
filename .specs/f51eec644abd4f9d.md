@@ -13,13 +13,16 @@ One frame for every step (docs/contracts/stream.md §2, §7): pause, today's pro
 
 ### Steps
 
-- **know** — picture, "New word · Unit N" (or "Look again"), word with phonetic and part of speech and a play button for the whole card, the definition on the copper tint with the headword in semibold, the example with its headword over a copper rule, and the learner's note when there is one. Continue is always enabled.
-- **explain1 / explain2** — "Explain it", "What does *word* mean?" (with a picture thumbnail on `explain1` only), the tray and its helpers; the piece bank sits above Continue, which opens once the tray is right.
+- **know** — the word card with "New word · Unit N" (or "Look again"). Continue is always enabled.
+- **explain1 / explain2** — "Explain it", "What does *word* mean?" (with a picture thumbnail on `explain1` only), the definition with its blanks; the piece bank and its ways out sit above Continue, which opens once the tray is right.
 - **use** — "Use it", the picture, "Which word fits?", the example with its blank, the meanings of wrongly picked words; the four options sit above Continue.
 - **review** — "Review · Nth time", the picture covered behind "Show picture"; a rebuild shows "What does *word* mean?" with a play button, a fill shows the sentence only. Solving turns the step into its result.
 - **review result** — picture, word, the verdict box (how the task went, around the definition), the example, the note, the rating with its next interval, the four-way rating control, and "Say it in your own words".
 
 The answer area never moves while the learner works; content above it scrolls, and the frame pads for the keyboard.
+
+## reviewLabel(reps)
+"Review · Nth time", N being the card's review count before this review; "Review" without one.
 
 ## ordinal(n)
 1 -> "1st", 2 -> "2nd", 11 -> "11th".

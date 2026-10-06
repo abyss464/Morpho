@@ -212,7 +212,15 @@ private const val ANSWER_SHARE = 0.5f
 @Composable
 private fun AnswerArea(view: StepView, viewModel: StreamViewModel) {
     when (val task = view.task) {
-        is RebuildState -> PieceBank(state = task, onPlace = viewModel::onPlacePiece)
+        is RebuildState -> {
+            PieceBank(state = task, onPlace = viewModel::onPlacePiece)
+            RebuildActions(
+                state = task,
+                onShowNextPiece = viewModel::onShowNextPiece,
+                onShowAnswer = viewModel::onShowAnswer,
+                onStartOver = viewModel::onStartOver,
+            )
+        }
         is FillState -> WordOptions(state = task, onPick = viewModel::onPickWord)
         null -> Unit
     }
@@ -222,28 +230,18 @@ private fun AnswerArea(view: StepView, viewModel: StreamViewModel) {
 
 @Composable
 private fun KnowContent(view: StepView, nowPlaying: String?, viewModel: StreamViewModel) {
-    val spacing = MorphoTheme.spacing
-    val word = view.word
-    Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
-        WidePicture(word)
-        StageLabel(
-            mark = if (view.again) StageMark.LEARN else StageMark.NEW,
-            text = if (view.again) {
-                stringResource(R.string.stream_stage_again)
-            } else {
-                stringResource(R.string.stream_stage_new, view.unit)
-            },
-        )
-        WordTitle(
-            word = word,
-            playing = nowPlaying == word.word.wordAudioFile,
-            onPlay = { viewModel.readAloud(word) },
-            playLabel = stringResource(R.string.cd_play_card),
-        )
-        DefinitionText(word)
-        ExampleText(word)
-        NoteBlock(view.note)
-    }
+    WordCard(
+        word = view.word,
+        mark = if (view.again) StageMark.LEARN else StageMark.NEW,
+        label = if (view.again) {
+            stringResource(R.string.stream_stage_again)
+        } else {
+            stringResource(R.string.stream_stage_new, view.unit)
+        },
+        note = view.note,
+        playing = nowPlaying == view.word.word.wordAudioFile,
+        onPlay = { viewModel.readAloud(view.word) },
+    )
 }
 
 // ------------------------------------------------------------------ explain, use, review task
@@ -270,7 +268,7 @@ private fun TaskContent(view: StepView, nowPlaying: String?, viewModel: StreamVi
             text = when (view.step.kind) {
                 StepKind.EXPLAIN1, StepKind.EXPLAIN2 -> stringResource(R.string.stream_stage_explain)
                 StepKind.USE -> stringResource(R.string.stream_stage_use)
-                else -> stringResource(R.string.stream_stage_review, ordinal(view.reps))
+                else -> reviewLabel(view.reps)
             },
         )
         when (val task = view.task) {
@@ -294,12 +292,7 @@ private fun TaskContent(view: StepView, nowPlaying: String?, viewModel: StreamVi
                         )
                     }
                 }
-                RebuildTray(
-                    state = task,
-                    onReturn = viewModel::onReturnPiece,
-                    onStartOver = viewModel::onStartOver,
-                    onShowNextPiece = viewModel::onShowNextPiece,
-                )
+                RebuildTray(state = task, onReturn = viewModel::onReturnPiece)
             }
 
             is FillState -> {
@@ -335,6 +328,11 @@ private fun AskTitle(word: String, modifier: Modifier = Modifier) {
         modifier = modifier,
     )
 }
+
+/** "Review · 4th time", where 4 is the card's review count before this review; "Review" without one. */
+@Composable
+internal fun reviewLabel(reps: Int): String =
+    if (reps > 0) stringResource(R.string.stream_stage_review, ordinal(reps)) else stringResource(R.string.stream_stage_review_plain)
 
 /** 1 -> "1st", 2 -> "2nd", 11 -> "11th". */
 internal fun ordinal(n: Int): String {

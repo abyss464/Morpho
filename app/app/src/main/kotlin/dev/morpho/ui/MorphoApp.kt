@@ -18,12 +18,16 @@ import dev.morpho.ui.designsystem.motion.rememberSharedAxis
 import dev.morpho.ui.settings.SettingsScreen
 import dev.morpho.ui.stream.StreamScreen
 import dev.morpho.ui.today.TodayScreen
+import dev.morpho.ui.word.WordScreen
 
-/** Navigation graph. Single activity, one Compose NavHost: Today, the stream, settings. */
+/** Navigation graph. Single activity, one Compose NavHost: Today, the stream, settings, a looked-up word. */
 object MorphoRoutes {
     const val TODAY = "today"
     const val STREAM = "stream"
     const val SETTINGS = "settings"
+    const val WORD = "word/{id}"
+
+    fun word(id: Long) = "word/$id"
 }
 
 @Composable
@@ -59,6 +63,16 @@ fun MorphoApp(
                     container = container,
                     onOpenStream = { navController.navigate(MorphoRoutes.STREAM) },
                     onOpenSettings = { navController.navigate(MorphoRoutes.SETTINGS) },
+                    onOpenWord = { id -> navController.navigate(MorphoRoutes.word(id)) },
+                )
+            }
+
+            composable(MorphoRoutes.WORD) { entry ->
+                val id = entry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
+                WordScreen(
+                    container = container,
+                    wordId = id,
+                    onBack = { navController.popBackStack() },
                 )
             }
 

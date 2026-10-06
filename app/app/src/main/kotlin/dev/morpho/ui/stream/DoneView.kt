@@ -32,8 +32,8 @@ import dev.morpho.ui.designsystem.theme.MorphoTheme
 
 /**
  * Today's stream is done (docs/contracts/stream.md §7): steps and words, then reviewed
- * (with the clean count), met (with the first-time count), tomorrow's due reviews and the
- * streak; Done for today, or Meet 5 more words.
+ * (with the clean count), met (with the first-time count), tomorrow's due reviews, the
+ * streak and any unit finished today; Done for today, or Meet 5 more words.
  */
 @Composable
 internal fun DoneView(
@@ -90,14 +90,20 @@ internal fun DoneView(
                     figure = summary.tomorrow,
                 )
             }
+            val units = summary.units?.let { unitLine(it) }
             if (summary.streak > 0) {
                 StreakBadge(
                     days = summary.streak,
                     label = stringResource(R.string.stream_done_streak),
                 )
-            } else {
+            }
+            val line = listOfNotNull(
+                stringResource(R.string.stream_done_no_streak).takeIf { summary.streak == 0 },
+                units,
+            ).joinToString(" ")
+            if (line.isNotEmpty()) {
                 Text(
-                    text = stringResource(R.string.stream_done_no_streak),
+                    text = line,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -111,6 +117,22 @@ internal fun DoneView(
             PrimaryAction(stringResource(R.string.stream_done_for_today), onDone)
             PrimaryAction(stringResource(R.string.stream_meet_more), onMeetMore, outlined = true)
         }
+    }
+}
+
+/** "Unit 11 is finished; Unit 12 starts tomorrow." and its variants. */
+@Composable
+private fun unitLine(news: UnitNews): String {
+    val last = news.finished.last()
+    val done = if (news.finished.size > 1) {
+        stringResource(R.string.stream_done_units_finished, news.finished.joinToString(", "))
+    } else {
+        stringResource(R.string.stream_done_unit_finished, last)
+    }
+    return when (news.ending) {
+        UnitEnding.LAST_UNIT -> stringResource(R.string.stream_done_last_unit, done)
+        UnitEnding.NEXT_BEGUN -> stringResource(R.string.stream_done_unit_plain, done)
+        UnitEnding.NEXT_TOMORROW -> stringResource(R.string.stream_done_next_unit, done, last + 1)
     }
 }
 
@@ -156,6 +178,7 @@ private fun DoneViewPreview() {
                 tomorrow = 23,
                 newPerDay = 20,
                 streak = 13,
+                units = UnitNews(listOf(11), UnitEnding.NEXT_TOMORROW),
             ),
             onDone = {},
             onMeetMore = {},

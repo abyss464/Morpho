@@ -37,8 +37,11 @@
     <string name="today_summary">Today\'s summary</string>
     <string name="today_section_journey">Journey</string>
     <string name="today_journey_of">of %1$s words</string>
-    <string name="today_journey_complete">%1$d%% met</string>
-    <string name="today_journey_days_left">~%1$d days left</string>
+    <string name="today_journey_pace">Unit %1$d of %2$d · about %3$s at %4$d a day</string>
+    <plurals name="days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
     <string name="today_journey_done">Complete</string>
     <string name="today_section_this_week">This week</string>
     <string name="today_section_units">Units · progress</string>
@@ -46,6 +49,11 @@
     <string name="today_unit">Unit %1$d</string>
     <string name="today_unit_tally">%1$d/%2$d</string>
     <string name="today_unit_done">done</string>
+    <string name="today_lookup">Look up a word</string>
+    <string name="today_lookup_none">No word matches "%1$s".</string>
+
+    <!-- Word -->
+    <string name="word_in_review">In review · Unit %1$d</string>
 
     <!-- Stream -->
     <string name="stream_progress">%1$d / %2$d</string>
@@ -54,25 +62,26 @@
     <string name="stream_stage_explain">Explain it</string>
     <string name="stream_stage_use">Use it</string>
     <string name="stream_stage_review">Review · %1$s time</string>
+    <string name="stream_stage_review_plain">Review</string>
     <string name="stream_explain_title">What does %1$s mean?</string>
-    <string name="stream_tray_empty">Your explanation is built here.</string>
-    <string name="stream_rebuild_hint">Tap the pieces in order. Some belong to other words.</string>
+        <string name="stream_rebuild_hint">Tap pieces into the blanks in order. Some belong to other words.</string>
     <string name="stream_rebuild_wrong">Not quite. Tap the red pieces to take them back.</string>
     <string name="stream_rebuild_solved">That\'s the meaning.</string>
     <string name="stream_start_over">Start over</string>
     <string name="stream_show_next_piece">Show the next piece</string>
+    <string name="stream_show_answer">Show the answer</string>
     <string name="stream_fill_title">Which word fits?</string>
     <string name="stream_fill_hint">The wrong words look alike on purpose.</string>
     <string name="stream_fill_wrong">Not that one. Pick again.</string>
     <string name="stream_fill_solved">That\'s the word.</string>
     <string name="stream_show_picture">Show picture</string>
     <string name="stream_verdict_rebuild_clean">Rebuilt with no mistakes</string>
-    <string name="stream_verdict_rebuild_shaky">Rebuilt after one slip</string>
-    <string name="stream_verdict_rebuild_failed">Rebuilt with help</string>
-    <string name="stream_verdict_fill_clean">Picked first time</string>
-    <string name="stream_verdict_fill_failed">Picked after a miss</string>
+    <string name="stream_verdict_rebuild_shaky">Rebuilt after one wrong check</string>
+    <string name="stream_verdict_rebuild_failed">Needed help or several tries</string>
+    <string name="stream_verdict_fill_clean">Filled in first time</string>
+    <string name="stream_verdict_fill_failed">Filled in after a wrong pick</string>
     <string name="stream_next_review">next review in %1$s</string>
-    <string name="stream_rating_hint">Rated from how you did. Tap another to change it.</string>
+    <string name="stream_rating_hint">Rated from how it went. Tap another to change it.</string>
     <string name="grade_again">Again</string>
     <string name="grade_hard">Hard</string>
     <string name="grade_good">Good</string>
@@ -113,6 +122,11 @@
     </plurals>
     <string name="stream_done_streak">day streak</string>
     <string name="stream_done_no_streak">Come back tomorrow to start a streak.</string>
+    <string name="stream_done_unit_finished">Unit %1$d is finished</string>
+    <string name="stream_done_units_finished">Units %1$s are finished</string>
+    <string name="stream_done_next_unit">%1$s; Unit %2$d starts tomorrow.</string>
+    <string name="stream_done_last_unit">%1$s; that was the last unit.</string>
+    <string name="stream_done_unit_plain">%1$s.</string>
     <string name="stream_done_for_today">Done for today</string>
     <string name="stream_meet_more">Meet 5 more words</string>
 
@@ -176,6 +190,9 @@
     <string name="cd_stream_progress">Today\'s stream</string>
     <string name="cd_tray">Your explanation</string>
     <string name="cd_bank">Pieces</string>
+    <string name="cd_blank">Blank</string>
+    <string name="cd_next_blank">Next blank</string>
     <string name="cd_piece_remove">%1$s, remove</string>
+    <string name="cd_journey">%1$s of %2$s words met</string>
     <string name="cd_unit_progress">Unit %1$d, %2$d of %3$d words in review</string>
 </resources>

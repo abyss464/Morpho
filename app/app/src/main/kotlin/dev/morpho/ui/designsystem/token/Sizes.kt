@@ -22,8 +22,8 @@ data class Sizes(
     /** The picture beside "What does … mean?" in the first explain step. */
     val thumbnailWidth: Dp = 72.dp,
     val thumbnailHeight: Dp = 54.dp,
-    /** The explain step's tray, so it reads as a place to build in before anything is in it. */
-    val trayMinHeight: Dp = 150.dp,
+    /** An open blank in the explain step's sentence. */
+    val blankWidth: Dp = 64.dp,
     /** The covered picture of a review question. */
     val coverHeight: Dp = 160.dp,
     /** The picture on a review result. */
