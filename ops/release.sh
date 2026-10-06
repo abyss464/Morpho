@@ -225,6 +225,19 @@ echo "==> build + test"
 (cd app && ./gradlew :domain:test :app:testFatApkDebugUnitTest \
     :app:assembleFatApkDebug :app:assembleFatApkRelease)
 
+# Sign the release APK with the owner's release key, read in place from ~/.android-certs
+# (docs: the private keys never leave that directory). Without the key it stays unsigned.
+CERTS="$HOME/.android-certs"
+RELEASE_UNSIGNED="app/app/build/outputs/apk/fatApk/release/app-fatApk-release-unsigned.apk"
+RELEASE_APK="app/app/build/outputs/apk/fatApk/release/app-fatApk-release.apk"
+if [ -f "$CERTS/releasekey.pk8" ] && [ -f "$RELEASE_UNSIGNED" ]; then
+    SDK_DIR="$(sed -n 's/^sdk\.dir=//p' app/local.properties)"
+    BUILD_TOOLS="$(find "$SDK_DIR/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+    "$BUILD_TOOLS/apksigner" sign --key "$CERTS/releasekey.pk8" \
+        --cert "$CERTS/releasekey.x509.pem" --out "$RELEASE_APK" "$RELEASE_UNSIGNED"
+    echo "    release APK signed with releasekey"
+fi
+
 # ------------------------------------------------------------------ 10. git commit
 
 echo "==> git commit"
@@ -249,6 +262,7 @@ echo "  version:     $CONTENT_VERSION"
 echo "  words:       $WORDS"
 echo "  media files: $MEDIA_COUNT"
 echo "  APK:         $APK"
+[ -f "$RELEASE_APK" ] && echo "  signed APK:  $RELEASE_APK"
 if [ -f "$APK" ]; then
     APK_SIZE="$(du -h "$APK" | cut -f1)"
     echo "  APK size:    $APK_SIZE"
