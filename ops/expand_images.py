@@ -43,7 +43,7 @@ DB = os.path.join(ROOT, "data/working.db")
 API = os.environ.get("MORPHO_API", "http://127.0.0.1:30012")
 LOG = os.path.join(ROOT, "ops/logs/expand_images.jsonl")
 STAGE = os.environ.get("EXPAND_STAGE", "/tmp/morpho-expand")
-CONTAINER_STAGE = "/tmp/expand"
+CONTAINER_STAGE = os.environ.get("EXPAND_CONTAINER_STAGE", "/tmp/expand")
 UA = "MorphoStudy/1.0 (personal vocabulary app)"
 CHUNK = 200
 # Pictures are scored from Wikimedia's standard 330px thumbnail bucket (cached,
