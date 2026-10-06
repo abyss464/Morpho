@@ -44,6 +44,12 @@ STAGE = os.environ.get("EXPAND_STAGE", "/tmp/morpho-expand")
 CONTAINER_STAGE = "/tmp/expand"
 UA = "MorphoStudy/1.0 (personal vocabulary app)"
 CHUNK = 200
+# Pictures are scored from Wikimedia's standard 330px thumbnail bucket (cached,
+# so fast and not throttled) and the few that win are fetched again at 960px,
+# the width the engine itself asks Commons for.
+SCORE_WIDTH = 330
+UPLOAD_WIDTH = 960
+TIMEOUT = 15
 PER_WORD_RESULTS = 16
 UPLOADS_PER_WORD = 2
 MARGIN = 0.02
@@ -73,8 +79,14 @@ def api_upload(word_id, path, source):
 
 def http_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return json.load(resp)
+
+
+def fetch(url):
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        return resp.read(24 * 1024 * 1024)
 
 
 def content_words(sentence, lemma):
@@ -110,7 +122,7 @@ def search_commons(q):
     params = {
         "action": "query", "format": "json", "generator": "search", "gsrnamespace": "6",
         "gsrsearch": f"{q} filetype:bitmap", "gsrlimit": "10", "prop": "imageinfo",
-        "iiprop": "url|mime|size|extmetadata", "iiurlwidth": "640",
+        "iiprop": "url|mime|size|extmetadata", "iiurlwidth": str(SCORE_WIDTH),
         "iiextmetadatafilter": "LicenseShortName|Artist",
     }
     data = http_json("https://commons.wikimedia.org/w/api.php?" + urllib.parse.urlencode(params))
@@ -121,8 +133,10 @@ def search_commons(q):
             continue
         meta = info.get("extmetadata") or {}
         artist = re.sub(r"<[^>]+>", "", (meta.get("Artist") or {}).get("value", "")).strip()
+        thumb = info.get("thumburl")
+        full = thumb.replace(f"/{SCORE_WIDTH}px-", f"/{UPLOAD_WIDTH}px-") if thumb and info["width"] > UPLOAD_WIDTH else info.get("url")
         out.append({
-            "source": "wikimedia", "thumb": info.get("thumburl"), "page": info.get("descriptionurl"),
+            "source": "wikimedia", "thumb": thumb, "full": full, "page": info.get("descriptionurl"),
             "license": (meta.get("LicenseShortName") or {}).get("value", ""), "author": artist[:200], "query": q,
         })
     return out
@@ -148,7 +162,8 @@ class Openverse:
             if (r.get("width") or 640) < 400:
                 continue
             out.append({
-                "source": "openverse", "thumb": r.get("thumbnail") or r.get("url"), "page": r.get("foreign_landing_url"),
+                "source": "openverse", "thumb": r.get("thumbnail") or r.get("url"), "full": r.get("url"),
+                "page": r.get("foreign_landing_url"),
                 "license": f"{r.get('license', '')} {r.get('license_version', '')}".strip(),
                 "author": (r.get("creator") or "")[:200], "query": q,
             })
@@ -174,9 +189,7 @@ def gather(word, openverse):
 
 def download(result, stage):
     try:
-        req = urllib.request.Request(result["thumb"], headers={"User-Agent": UA})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = resp.read()
+        data = fetch(result["thumb"])
     except Exception:
         return None
     if len(data) < 8000:
@@ -186,6 +199,21 @@ def download(result, stage):
     with open(path, "wb") as fh:
         fh.write(data)
     return dict(result, file=f"{digest}.jpg")
+
+
+def full_size(found):
+    """The winner at upload size; the scoring thumbnail when that fails."""
+    path = os.path.join(STAGE, found["file"])
+    if found.get("full") and found["full"] != found["thumb"]:
+        try:
+            data = fetch(found["full"])
+            if len(data) > 8000:
+                path = os.path.join(STAGE, "full-" + found["file"])
+                with open(path, "wb") as fh:
+                    fh.write(data)
+        except Exception:
+            pass
+    return path
 
 
 def clip_score(jobs, stage):
@@ -276,11 +304,11 @@ def main():
             if w["best"] < args.threshold:
                 under.append(w)
         # Pass 2: search, download, score the under-bar words' finds.
-        with cf.ThreadPoolExecutor(4) as pool:
+        with cf.ThreadPoolExecutor(8) as pool:
             finds = list(pool.map(lambda w: gather(w, openverse), under))
         shutil.rmtree(STAGE, ignore_errors=True)
         os.makedirs(STAGE)
-        with cf.ThreadPoolExecutor(8) as pool:
+        with cf.ThreadPoolExecutor(16) as pool:
             for w, found in zip(under, finds):
                 w["finds"] = [d for d in pool.map(lambda r: download(r, STAGE), found) if d]
         jobs = [{"key": w["word_id"], "text": w["text"],
@@ -300,7 +328,7 @@ def main():
                     for score, d in ranked[:UPLOADS_PER_WORD]:
                         if score < w["best"] + MARGIN:
                             break
-                        status = "dry" if args.dry_run else api_upload(w["word_id"], os.path.join(STAGE, d["file"]), d["source"])
+                        status = "dry" if args.dry_run else api_upload(w["word_id"], full_size(d), d["source"])
                         record["uploads"].append({"score": round(score, 4), "status": status, "source": d["source"],
                                                   "page": d["page"], "license": d["license"], "author": d["author"],
                                                   "query": d["query"]})

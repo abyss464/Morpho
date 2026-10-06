@@ -53,19 +53,23 @@ def main():
             query = model.encode_text(tokenizer([job["text"]]).to(device))
             query = query / query.norm(dim=-1, keepdim=True)
             scores, flags = {}, {}
+            paths, tensors = [], []
             for path in job["images"]:
                 try:
                     with Image.open(path) as handle:
-                        tensor = preprocess(handle.convert("RGB")).unsqueeze(0).to(device)
+                        tensors.append(preprocess(handle.convert("RGB")))
+                    paths.append(path)
                 except Exception:
                     continue
-                feat = model.encode_image(tensor)
-                feat = feat / feat.norm(dim=-1, keepdim=True)
-                scores[path] = float(query[0] @ feat[0])
-                sims = (probe @ feat[0]).tolist()
-                bad = max(range(len(INAPPROPRIATE)), key=lambda i: sims[i])
-                if sims[bad] > max(sims[len(INAPPROPRIATE):]):
-                    flags[path] = INAPPROPRIATE[bad]
+            if paths:
+                feats = model.encode_image(torch.stack(tensors).to(device))
+                feats = feats / feats.norm(dim=-1, keepdim=True)
+                for path, feat in zip(paths, feats):
+                    scores[path] = float(query[0] @ feat)
+                    sims = (probe @ feat).tolist()
+                    bad = max(range(len(INAPPROPRIATE)), key=lambda i: sims[i])
+                    if sims[bad] > max(sims[len(INAPPROPRIATE):]):
+                        flags[path] = INAPPROPRIATE[bad]
             out[str(job["key"])] = {"scores": scores, "flags": flags}
             if n % 100 == 0:
                 print(f"scored {n}/{len(jobs)}", file=sys.stderr, flush=True)
