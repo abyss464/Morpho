@@ -24,6 +24,11 @@ data class Sizes(
     val thumbnailHeight: Dp = 54.dp,
     /** An open blank in the explain step's sentence. */
     val blankWidth: Dp = 64.dp,
+    /** A letter cell of the spelling. */
+    val letterWidth: Dp = 44.dp,
+    val letterHeight: Dp = 52.dp,
+    /** A space or hyphen inside a spelled word. */
+    val letterGap: Dp = 14.dp,
     /** The covered picture of a review question. */
     val coverHeight: Dp = 160.dp,
     /** The picture on a review result. */

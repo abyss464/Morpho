@@ -61,7 +61,7 @@ fun GapSentence(state: FillState, modifier: Modifier = Modifier) {
         text = text,
         style = MorphoTheme.reading.gapSentence,
         color = MaterialTheme.colorScheme.onSurface,
-        underline = gap.before.length until gap.before.length + middle.length,
+        underlines = listOf(gap.before.length until gap.before.length + middle.length),
         underlineColor = MorphoTheme.accents.motifActive,
         modifier = modifier,
     )

@@ -21,6 +21,8 @@ import dev.morpho.domain.stream.Pieces
 import dev.morpho.domain.stream.Puzzle
 import dev.morpho.domain.stream.ReviewTask
 import dev.morpho.domain.stream.Seeded
+import dev.morpho.domain.stream.SpellPuzzle
+import dev.morpho.domain.stream.Spelling
 import dev.morpho.domain.stream.Step
 import dev.morpho.domain.stream.StepKind
 import dev.morpho.domain.stream.StepResult
@@ -74,6 +76,52 @@ data class RebuildState(
 }
 
 /**
+ * The spelling that ends a rebuild review (docs/contracts/stream.md §2): the word's letters
+ * as blanks, filled from letter tiles. [filled] holds, per blank, the tile in it or null.
+ */
+data class SpellState(
+    val puzzle: SpellPuzzle,
+    val filled: List<Int?> = List(puzzle.answer.size) { null },
+    val checked: Boolean = false,
+    val misses: Int = 0,
+    val hinted: Boolean = false,
+    override val solved: Boolean = false,
+) : TaskState {
+    fun letterOf(id: Int): String = puzzle.tiles.first { it.id == id }.letter
+
+    /** Whether blank [k] holds the right letter, in [slots] (the current fill by default). */
+    fun right(k: Int, slots: List<Int?> = filled): Boolean =
+        slots[k]?.let { letterOf(it) == puzzle.answer[k] } ?: false
+
+    /** The first empty blank, the one the next tapped tile fills; -1 when all are full. */
+    val nextOpen: Int get() = filled.indexOf(null)
+
+    fun used(id: Int): Boolean = id in filled
+
+    /** The word was checked and is wrong: wrong letters show red. */
+    val wrongShown: Boolean get() = checked && null !in filled && !solved
+
+    /** The tile that belongs in blank [k]: the first with its letter not already right elsewhere. */
+    fun tileFor(k: Int): Int? = puzzle.tiles.firstOrNull { t ->
+        t.letter == puzzle.answer[k] && filled.indices.none { i -> filled[i] == t.id && right(i) }
+    }?.id
+
+    /** Every blank filled with its right letter, each tile used once. */
+    fun answerFill(): List<Int> {
+        val taken = mutableSetOf<Int>()
+        return puzzle.answer.map { letter ->
+            puzzle.tiles.first { it.letter == letter && it.id !in taken }.id.also { taken += it }
+        }
+    }
+}
+
+/** How a rebuild review's two parts went, for its result card. */
+data class ReviewParts(val rebuild: Outcome, val spell: Outcome)
+
+/** A rebuild review's first part, carried into its spelling: how it went and how long it took. */
+data class RebuiltPart(val outcome: Outcome, val elapsedMs: Long)
+
+/**
  * The use task: the example with the word blanked, and four words to fill it with.
  * [wrong] holds the ids of options already picked wrongly.
  */
@@ -91,6 +139,8 @@ data class ReviewVerdict(
     val grade: Grade,
     /** Days until the next review, per rating, from the card as it was before this review. */
     val intervals: Map<Grade, Long>,
+    /** A rebuild review's two parts; null for a fill-in. */
+    val parts: ReviewParts? = null,
 )
 
 /** The step on screen. */
@@ -108,6 +158,8 @@ data class StepView(
     val pictureShown: Boolean = false,
     /** The task's result once solved; Continue opens when it is set (or always, for `know`). */
     val outcome: Outcome? = null,
+    /** A rebuild review's rebuild, once its spelling has begun. */
+    val rebuilt: RebuiltPart? = null,
     /** A solved review: shown as its result card. */
     val verdict: ReviewVerdict? = null,
     /** Bumps on every step load, so the screen re-keys its transition. */
@@ -169,6 +221,9 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
     private var snapshot: StreamSnapshot? = null
     private var notes: Map<Long, WordNote> = emptyMap()
     private var startedAt = 0L
+
+    /** How long a rebuild review's rebuild took, from the step's start to its solve. */
+    private var rebuildMs = 0L
     private var serial = 0
     private var busy = false
     private val skipped = mutableSetOf<Long>()
@@ -356,10 +411,13 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         update(rebuild, rebuild.filled.mapIndexed { k, x -> if (k == blank) null else x })
     }
 
+    /** Empties every blank, of the rebuild or of the spelling. */
     fun onStartOver() {
-        val rebuild = currentRebuild() ?: return
-        if (rebuild.solved || rebuild.filled.all { it == null }) return
-        update(rebuild, rebuild.filled.map { null })
+        when (val task = _state.value.view?.task) {
+            is RebuildState -> if (!task.solved && task.filled.any { it != null }) update(task, task.filled.map { null })
+            is SpellState -> if (!task.solved && task.filled.any { it != null }) updateSpell(task, task.filled.map { null })
+            else -> Unit
+        }
     }
 
     /** Puts the right piece into the first blank that is open or wrong. Counts as help. */
@@ -409,6 +467,84 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         solved(outcome) { view -> container.audioPlayer.play(view.word.primarySense.defAudioFile) }
     }
 
+    // ------------------------------------------------------------- spelling
+
+    /** A tapped tile fills the first open blank of the word. */
+    fun onPlaceLetter(id: Int) {
+        val spell = currentSpell() ?: return
+        val open = spell.nextOpen
+        if (spell.solved || spell.used(id) || open < 0) return
+        updateSpell(spell, spell.filled.mapIndexed { k, x -> if (k == open) id else x })
+    }
+
+    /** A tapped letter goes back to the tiles and reopens its blank. */
+    fun onReturnLetter(blank: Int) {
+        val spell = currentSpell() ?: return
+        if (spell.solved) return
+        updateSpell(spell, spell.filled.mapIndexed { k, x -> if (k == blank) null else x })
+    }
+
+    /** Puts the right letter into the first blank that is open or wrong. Counts as help. */
+    fun onShowNextLetter() {
+        val spell = currentSpell() ?: return
+        if (spell.solved) return
+        val k = spell.filled.indices.firstOrNull { !spell.right(it) } ?: return
+        val tile = spell.tileFor(k) ?: return
+        val next = spell.filled.mapIndexed { i, x ->
+            when {
+                i == k -> tile
+                x == tile -> null
+                else -> x
+            }
+        }
+        updateSpell(spell.copy(hinted = true), next, usedHint = true)
+    }
+
+    /** Fills in the whole word, which solves the spelling as failed. */
+    fun onShowWord() {
+        val spell = currentSpell() ?: return
+        if (spell.solved) return
+        updateSpell(spell.copy(hinted = true), spell.answerFill(), usedHint = true)
+    }
+
+    /** Sets the word's blanks; filling the last one checks the word. */
+    private fun updateSpell(spell: SpellState, next: List<Int?>, usedHint: Boolean = spell.hinted) {
+        val placed = spell.copy(filled = next, checked = false)
+        if (null in next) {
+            container.playSfx(SfxEvent.TAP)
+            setTask(placed)
+            return
+        }
+        if (!next.indices.all { placed.right(it, next) }) {
+            feedback(correct = false)
+            setTask(placed.copy(checked = true, misses = spell.misses + 1))
+            return
+        }
+        if (usedHint) container.playSfx(SfxEvent.TAP) else feedback(correct = true)
+        val outcome = when {
+            usedHint || spell.misses >= 2 -> Outcome.FAILED
+            spell.misses == 1 -> Outcome.SHAKY
+            else -> Outcome.CLEAN
+        }
+        setTask(placed.copy(checked = true, solved = true))
+        solved(outcome) { view -> container.audioPlayer.play(view.word.word.wordAudioFile) }
+    }
+
+    /** "Now spell it": the rebuild review goes on to spelling the word from its meaning. */
+    private fun startSpelling(view: StepView) {
+        val rebuilt = view.outcome ?: return
+        container.playSfx(SfxEvent.TAP)
+        container.audioPlayer.stop()
+        startedAt = SystemClock.elapsedRealtime()
+        setView(
+            view.copy(
+                task = SpellState(Spelling.puzzle(view.word.word.word, view.word.word.wordId)),
+                outcome = null,
+                rebuilt = RebuiltPart(rebuilt, rebuildMs),
+            ),
+        )
+    }
+
     fun onPickWord(wordId: Long) {
         val view = _state.value.view ?: return
         val fill = view.task as? FillState ?: return
@@ -430,18 +566,31 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
      */
     private fun solved(outcome: Outcome, playSolved: (StepView) -> Unit) {
         val view = _state.value.view ?: return
-        if (view.step.kind != StepKind.REVIEW) {
+        val elapsed = SystemClock.elapsedRealtime() - startedAt
+        // Learning steps, and a review's rebuild, wait for Continue ("Now spell it").
+        if (view.step.kind != StepKind.REVIEW || view.task is RebuildState) {
+            if (view.step.kind == StepKind.REVIEW) rebuildMs = elapsed
             setView(view.copy(outcome = outcome))
             playSolved(view)
             return
         }
+        // The review is recorded once: after the fill-in, or after spelling, rated from the
+        // worse of rebuild and spelling over both parts' time.
+        val rebuilt = view.rebuilt
+        val total = if (rebuilt != null) worse(rebuilt.outcome, outcome) else outcome
+        val parts = rebuilt?.let { ReviewParts(it.outcome, outcome) }
         val snap = snapshot ?: return
         val prev = snap.cards[view.step.wordId] ?: return
         val now = Instant.now()
         viewModelScope.launch {
-            val result = finishStep(view.step, outcome, SystemClock.elapsedRealtime() - startedAt)
+            val result = finishStep(view.step, total, (rebuilt?.elapsedMs ?: 0) + elapsed)
             val grade = result.state.lastReview?.grade ?: return@launch
-            setView(view.copy(outcome = outcome, verdict = ReviewVerdict(outcome, grade, engine.intervals(prev, now))))
+            setView(
+                view.copy(
+                    outcome = total,
+                    verdict = ReviewVerdict(total, grade, engine.intervals(prev, now), parts),
+                ),
+            )
             readAloud(view.word)
         }
     }
@@ -466,7 +615,10 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
             }
             return
         }
-        if (view.step.kind == StepKind.REVIEW) return
+        if (view.step.kind == StepKind.REVIEW) {
+            if (view.task is RebuildState && view.outcome != null) startSpelling(view)
+            return
+        }
         val outcome = if (view.step.kind == StepKind.KNOW) Outcome.CLEAN else view.outcome ?: return
         busy = true
         viewModelScope.launch {
@@ -556,6 +708,8 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
 
     private fun currentRebuild(): RebuildState? = _state.value.view?.task as? RebuildState
 
+    private fun currentSpell(): SpellState? = _state.value.view?.task as? SpellState
+
     private fun setTask(task: TaskState) {
         val view = _state.value.view ?: return
         setView(view.copy(task = task))
@@ -584,6 +738,9 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 }
+
+/** The worse of two outcomes: failed over shaky over clean. */
+private fun worse(a: Outcome, b: Outcome): Outcome = if (a.ordinal >= b.ordinal) a else b
 
 private fun Map<Long, FsrsCard>.withCards(changed: List<FsrsCard>): Map<Long, FsrsCard> =
     if (changed.isEmpty()) this else this + changed.associateBy { it.wordId }

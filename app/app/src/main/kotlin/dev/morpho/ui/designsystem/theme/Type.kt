@@ -167,6 +167,13 @@ data class MorphoReadingTypography(
         lineHeight = 22.sp,
         fontWeight = FontWeight.Normal,
     ),
+    /** A letter of the spelling, in its cell or on its tile. */
+    val letter: TextStyle = TextStyle(
+        fontFamily = MorphoFonts.readingFontFamily,
+        fontSize = 24.sp,
+        lineHeight = 28.sp,
+        fontWeight = FontWeight.Normal,
+    ),
     /** IPA — sans, never serif; render at alpha 0.7. */
     val phonetic: TextStyle = TextStyle(
         fontFamily = MorphoFonts.uiFontFamily,

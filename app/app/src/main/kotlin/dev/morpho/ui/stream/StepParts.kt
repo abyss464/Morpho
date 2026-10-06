@@ -165,7 +165,7 @@ fun ExampleText(word: WordBundle, modifier: Modifier = Modifier) {
         text = marked.text,
         style = MorphoTheme.reading.sentence,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        underline = marked.range,
+        underlines = listOf(marked.range),
         underlineColor = MorphoTheme.accents.motifActive,
         modifier = modifier,
     )

@@ -193,6 +193,22 @@ private fun StepFrame(view: StepView, nowPlaying: String?, viewModel: StreamView
             val action = Modifier.padding(horizontal = spacing.screenGutter, vertical = spacing.sm)
             when {
                 verdict != null -> PrimaryAction(stringResource(R.string.action_continue), viewModel::onContinue, action)
+                // A rebuild review goes on to spelling the word once its rebuild is right.
+                view.step.kind == StepKind.REVIEW && view.task is RebuildState -> Column(action) {
+                    if (view.outcome == null) {
+                        Text(
+                            text = stringResource(R.string.stream_spell_next),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = spacing.xs),
+                        )
+                    }
+                    PrimaryAction(
+                        text = stringResource(R.string.stream_spell_now),
+                        onClick = viewModel::onContinue,
+                        enabled = view.outcome != null,
+                    )
+                }
                 view.step.kind == StepKind.REVIEW -> Spacer(Modifier.height(spacing.sm))
                 else -> PrimaryAction(
                     text = stringResource(R.string.action_continue),
@@ -208,7 +224,7 @@ private fun StepFrame(view: StepView, nowPlaying: String?, viewModel: StreamView
 /** The most of the frame the answer area takes before it scrolls on its own. */
 private const val ANSWER_SHARE = 0.5f
 
-/** The lower half of a task: the bank of pieces, or the four words. */
+/** The lower half of a task: the bank of pieces, the four words, or the letter tiles. */
 @Composable
 private fun AnswerArea(view: StepView, viewModel: StreamViewModel) {
     when (val task = view.task) {
@@ -222,6 +238,15 @@ private fun AnswerArea(view: StepView, viewModel: StreamViewModel) {
             )
         }
         is FillState -> WordOptions(state = task, onPick = viewModel::onPickWord)
+        is SpellState -> {
+            LetterTiles(state = task, onPlace = viewModel::onPlaceLetter)
+            SpellActions(
+                state = task,
+                onShowNextLetter = viewModel::onShowNextLetter,
+                onShowWord = viewModel::onShowWord,
+                onStartOver = viewModel::onStartOver,
+            )
+        }
         null -> Unit
     }
 }
@@ -308,6 +333,16 @@ private fun TaskContent(view: StepView, nowPlaying: String?, viewModel: StreamVi
                 WrongMeanings(task)
             }
 
+            is SpellState -> {
+                Text(
+                    text = stringResource(R.string.stream_spell_title),
+                    style = MorphoTheme.reading.prompt,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                MaskedDefinition(word)
+                SpellBoard(state = task, onReturn = viewModel::onReturnLetter)
+            }
+
             null -> Unit
         }
     }
@@ -323,7 +358,7 @@ private fun AskTitle(word: String, modifier: Modifier = Modifier) {
         text = AnnotatedString(text),
         style = MorphoTheme.reading.prompt,
         color = MaterialTheme.colorScheme.onSurface,
-        underline = if (start < 0) IntRange.EMPTY else start until start + word.length,
+        underlines = if (start < 0) emptyList() else listOf(start until start + word.length),
         underlineColor = copper,
         modifier = modifier,
     )

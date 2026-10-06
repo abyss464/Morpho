@@ -28,7 +28,7 @@ import dev.morpho.ui.designsystem.theme.MorphoTheme
  * One Garamond figure carries the card — the count of words met — with the total set
  * beside it as a quiet denominator. The quarter marks ride the rail as the icon's
  * diamonds: copper once passed, an outline while still ahead. Under it, the unit the
- * learner is in and the days left at the daily pace; "Complete" once every word is met.
+ * learner is in and the days left at the daily pace, until every word is met.
  */
 @Composable
 fun JourneyProgress(
@@ -98,12 +98,6 @@ fun JourneyProgress(
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                Text(
-                    text = stringResource(R.string.today_journey_done),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MorphoTheme.accents.motifActive,
                 )
             }
         }

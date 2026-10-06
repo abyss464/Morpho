@@ -57,8 +57,8 @@ val LocalGlossIndex = staticCompositionLocalOf { GlossIndex.EMPTY }
  * meaning and Chinese is a grounding modality of last resort, no different from the
  * picture. Nothing appears on screen until it is asked for.
  *
- * @param underline a span drawn with a 2dp rule in [underlineColor] beneath it — the
- *   headword inside an example sentence.
+ * @param underlines spans drawn with a 2dp rule in [underlineColor] beneath them — the
+ *   headword inside an example sentence, the blank of the use step, the masked word.
  */
 @Composable
 fun GlossedText(
@@ -66,7 +66,7 @@ fun GlossedText(
     style: TextStyle,
     color: Color,
     modifier: Modifier = Modifier,
-    underline: IntRange = IntRange.EMPTY,
+    underlines: List<IntRange> = emptyList(),
     underlineColor: Color = Color.Unspecified,
 ) {
     val index = LocalGlossIndex.current
@@ -74,7 +74,7 @@ fun GlossedText(
     val matches = remember(text, index) { index.scan(text.text) }
 
     // Nothing to reveal or draw: a plain Text, so most definitions cost nothing extra.
-    if (matches.isEmpty() && underline.isEmpty()) {
+    if (matches.isEmpty() && underlines.isEmpty()) {
         Text(text = text, style = style, color = color, modifier = modifier)
         return
     }
@@ -95,7 +95,7 @@ fun GlossedText(
             modifier = Modifier
                 .drawBehind {
                     val result = layout ?: return@drawBehind
-                    result.lineBoxesOf(underline).forEach { box ->
+                    underlines.flatMap(result::lineBoxesOf).forEach { box ->
                         drawRect(
                             color = underlineColor,
                             topLeft = androidx.compose.ui.geometry.Offset(box.left, box.bottom + rule),

@@ -64,7 +64,7 @@ internal fun ReviewResultContent(
             onPlay = { viewModel.readAloud(word) },
             playLabel = stringResource(R.string.cd_play_card),
         )
-        Verdict(task = view.step.task ?: ReviewTask.REBUILD, outcome = verdict.outcome) {
+        Verdict(task = view.step.task ?: ReviewTask.REBUILD, outcome = verdict.outcome, parts = verdict.parts) {
             DefinitionText(word, compact = true)
         }
         ExampleText(word)
@@ -102,24 +102,22 @@ internal fun ReviewResultContent(
 
 /** How the task went, in the good, close or bad tint, around the definition. */
 @Composable
-private fun Verdict(task: ReviewTask, outcome: Outcome, content: @Composable () -> Unit) {
+private fun Verdict(task: ReviewTask, outcome: Outcome, parts: ReviewParts?, content: @Composable () -> Unit) {
     val accents = MorphoTheme.accents
     val (line, fill) = when (outcome) {
         Outcome.CLEAN -> accents.correct to accents.correctContainer
         Outcome.SHAKY -> MaterialTheme.colorScheme.tertiary to accents.highlight
         Outcome.FAILED -> accents.wrong to accents.wrongContainer
     }
-    val caption = when (task) {
-        ReviewTask.REBUILD -> when (outcome) {
-            Outcome.CLEAN -> R.string.stream_verdict_rebuild_clean
-            Outcome.SHAKY -> R.string.stream_verdict_rebuild_shaky
-            Outcome.FAILED -> R.string.stream_verdict_rebuild_failed
-        }
-        ReviewTask.FILL -> if (outcome == Outcome.CLEAN) {
-            R.string.stream_verdict_fill_clean
-        } else {
-            R.string.stream_verdict_fill_failed
-        }
+    val caption = when {
+        parts != null -> stringResource(
+            R.string.stream_verdict_parts,
+            stringResource(rebuildCaption(parts.rebuild)),
+            stringResource(spellCaption(parts.spell)),
+        )
+        task == ReviewTask.REBUILD -> stringResource(rebuildCaption(outcome))
+        outcome == Outcome.CLEAN -> stringResource(R.string.stream_verdict_fill_clean)
+        else -> stringResource(R.string.stream_verdict_fill_failed)
     }
     Column(
         modifier = Modifier
@@ -131,12 +129,24 @@ private fun Verdict(task: ReviewTask, outcome: Outcome, content: @Composable () 
         verticalArrangement = Arrangement.spacedBy(MorphoTheme.spacing.xxs),
     ) {
         Text(
-            text = stringResource(caption),
+            text = caption,
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
             color = line,
         )
         content()
     }
+}
+
+private fun rebuildCaption(outcome: Outcome): Int = when (outcome) {
+    Outcome.CLEAN -> R.string.stream_verdict_rebuild_clean
+    Outcome.SHAKY -> R.string.stream_verdict_rebuild_shaky
+    Outcome.FAILED -> R.string.stream_verdict_rebuild_failed
+}
+
+private fun spellCaption(outcome: Outcome): Int = when (outcome) {
+    Outcome.CLEAN -> R.string.stream_verdict_spell_clean
+    Outcome.SHAKY -> R.string.stream_verdict_spell_shaky
+    Outcome.FAILED -> R.string.stream_verdict_spell_failed
 }
 
 /** Again / Hard / Good / Easy, each with the interval it would give; the chosen one tinted. */

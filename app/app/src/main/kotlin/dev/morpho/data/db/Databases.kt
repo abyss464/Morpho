@@ -127,16 +127,18 @@ class DatabaseProvider(private val context: Context) {
     }.getOrNull()
 
     /**
-     * Throws away a `release.db` left behind by a build whose content DDL was a
-     * different shape.
+     * Throws away a `release.db` copied out of a different build: one whose content DDL
+     * was a different shape, or any install before the app was last updated.
      *
      * SQLDelight owns no migrations for this file, and rightly so — it is a derived,
      * read-only artifact that can always be produced again by re-copying the bundled
      * asset. So when the DDL moves (wave 3b adding `gloss_anchors`, say), the answer is
-     * to delete the file rather than to migrate it. Without this an app updated over an
-     * older install opens a
-     * database whose columns its generated queries no longer describe, and dies on the
-     * first `SELECT *`.
+     * to delete the file rather than to migrate it; without this an app updated over an
+     * older install opens a database whose columns its generated queries no longer
+     * describe, and dies on the first `SELECT *`. The same holds for content: an update
+     * that bundles a new release must not keep reading the copy the previous build
+     * installed, so the copy is tied to the package's last update time too. User
+     * progress lives in user.db, keyed on word ids, and is untouched.
      *
      * The stamp lives in a sibling marker file, not in the database: `user_version`
      * belongs to SQLDelight's open helper, which compares it against its own schema
@@ -146,22 +148,28 @@ class DatabaseProvider(private val context: Context) {
         val database = context.getDatabasePath(CONTENT_DB_NAME)
         val marker = File(database.parentFile, "$CONTENT_DB_NAME$DDL_MARKER_SUFFIX")
 
+        val wanted = "$CONTENT_DDL_VERSION ${packageUpdatedAt()}"
         val stamped = runCatching {
-            if (marker.isFile) marker.readText().trim().toIntOrNull() else null
+            if (marker.isFile) marker.readText().trim() else null
         }.getOrNull()
-        if (stamped == CONTENT_DDL_VERSION) return
+        if (stamped == wanted) return
 
         if (database.exists()) {
-            Log.i(TAG, "content DDL $stamped -> $CONTENT_DDL_VERSION; rebuilding release.db")
+            Log.i(TAG, "release.db stamp '$stamped' -> '$wanted'; reinstalling the bundled release")
             listOf("", "-wal", "-shm").forEach { suffix ->
                 File(database.parentFile, database.name + suffix).delete()
             }
         }
         runCatching {
             marker.parentFile?.mkdirs()
-            marker.writeText(CONTENT_DDL_VERSION.toString())
+            marker.writeText(wanted)
         }.onFailure { Log.w(TAG, "could not write the content DDL marker", it) }
     }
+
+    /** When this package was installed or last updated; 0 when the platform will not say. */
+    private fun packageUpdatedAt(): Long = runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+    }.getOrDefault(0L)
 
     /**
      * Copies the bundled `assets/release.db` into the databases directory the first time
