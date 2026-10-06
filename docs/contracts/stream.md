@@ -64,7 +64,18 @@ Outcome: **clean** = right on the first pick; **failed** = otherwise.
 ### `review` — one task per due word
 Shows the word only (picture behind a "Show picture" button) and plays the word. The task
 type alternates with the word's review count: odd reviews (1st, 3rd, …) are an `explain2`
-style rebuild; even reviews are a `use` style fill-in. After the task, the full card is shown
+style rebuild followed by **spelling the word**; even reviews are a `use` style fill-in.
+
+Spelling: "Which word means this?" over the primary definition with every form of the word
+blanked out; the picture stays behind "Show picture" and the word is not played. The word's
+letters are blanks, except spaces, hyphens and hint letters: the first letter, and the last
+too when the word has more than five letters. The tiles are the missing letters plus two
+decoy letters the word does not contain, shuffled deterministically per word id. Tapping a
+tile fills the first open blank; filling the last blank checks it; wrong letters turn red
+and go back when tapped. "Show the next letter" and "Show the word" are always there and
+make the spelling **failed**; otherwise clean / shaky / failed as for a rebuild. Solving
+plays the word. The review's outcome is the worse of the rebuild and the spelling, and its
+time is the two parts' time added. After the task, the full card is shown
 (picture, definition, example; definition read aloud) with the derived rating (§6), the next
 interval, and a four-button control to change the rating. "Say it in your own words" is an
 optional note, saved per word and shown on the word card afterwards.
@@ -160,7 +171,7 @@ Review ratings are derived from the task, never asked for first:
 
 | Task result | Rating |
 |---|---|
-| clean and answered within 10 s (rebuild) / 4 s (fill-in) | Easy |
+| clean and answered within 18 s (rebuild and spelling together) / 4 s (fill-in) | Easy |
 | clean | Good |
 | shaky | Hard |
 | failed | Again |

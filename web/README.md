@@ -7,7 +7,7 @@ There is one way in. Today shows how many reviews and new words are waiting; Con
 - **New word**: the full card, read aloud (word, definition, example).
 - **Explain it**: complete the definition by clicking pieces into its blanks, with decoy pieces from other words; the part that names the word, the prepositions and the punctuation are already in place. Once right after the card, then again a few steps later without the picture.
 - **Use it**: pick the word that fills the blank in its example from four look-alike words.
-- **Review**: a graduated word comes back on its FSRS schedule as a rebuild or a fill-in; the rating is derived from how it went and can be changed.
+- **Review**: a graduated word comes back on its FSRS schedule, alternating between a rebuild followed by spelling the word back from its definition (letter tiles, one or two letters given) and a fill-in; the rating is derived from how it went and can be changed.
 
 Every step is done with the mouse; arrow and Enter keys are optional shortcuts. The rules (stages, transitions, mixing, ratings) are the shared contract in `docs/contracts/stream.md`, which the Android app implements too.
 
@@ -54,7 +54,7 @@ src/stream.ts               the stream: next step, transitions, derived ratings,
 src/explain.ts              definition blanks, pieces and the rebuild puzzle
 src/audio.ts                shared audio player (single files or a word-definition-example run)
 src/router.ts               hash routes: #/ (Today), #/stream, #/unit/:n (word list)
-src/components/             word card pieces, Rebuild, Fill, Search
+src/components/             word card pieces, Rebuild, Spell, Fill, Search
 src/pages/                  Today, Stream (steps, review result, done), UnitPage
 src/styles.css              shared tokens (light/dark) and layout
 ```

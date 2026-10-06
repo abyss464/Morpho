@@ -111,7 +111,8 @@ export function streamProgress(input: Progress, index: Index, now = Date.now()):
 export function deriveRating(outcome: Outcome, ms: number, task: 'rebuild' | 'fill'): Grade {
   if (outcome === 'failed') return Rating.Again;
   if (outcome === 'shaky') return Rating.Hard;
-  return ms < (task === 'rebuild' ? 10_000 : 4_000) ? Rating.Easy : Rating.Good;
+  // A rebuild review is the rebuild plus spelling the word: 10 s and 8 s.
+  return ms < (task === 'rebuild' ? 18_000 : 4_000) ? Rating.Easy : Rating.Good;
 }
 
 /** Applies a finished step and returns the new progress (contract §3). */

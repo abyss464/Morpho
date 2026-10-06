@@ -6,6 +6,7 @@ import type { Index } from '../api';
 import { Fill } from '../components/Fill';
 import { Definition, ExampleBlock, Head, Meta, Picture, readAloud, Say, WordCard } from '../components/parts';
 import { Rebuild } from '../components/Rebuild';
+import { Spell } from '../components/Spell';
 import { seeded, shuffle } from '../explain';
 import { isTyping, plural, useKeydown } from '../hooks';
 import { href } from '../router';
@@ -39,6 +40,21 @@ const HOW: Record<'rebuild' | 'fill', Record<Outcome, string>> = {
   rebuild: { clean: 'Rebuilt with no mistakes', shaky: 'Rebuilt after one wrong check', failed: 'Needed help or several tries' },
   fill: { clean: 'Filled in first time', shaky: 'Filled in after a wrong pick', failed: 'Filled in after a wrong pick' },
 };
+const SPELLED: Record<Outcome, string> = {
+  clean: 'Spelled with no mistakes',
+  shaky: 'Spelled after one wrong check',
+  failed: 'Needed help or several tries to spell it',
+};
+const RANK: Record<Outcome, number> = { clean: 0, shaky: 1, failed: 2 };
+const worse = (a: Outcome, b: Outcome) => (RANK[a] >= RANK[b] ? a : b);
+
+/** A finished review as its result card shows it; a rebuild review has two parts. */
+interface Reviewed {
+  w: WordFull;
+  outcome: Outcome;
+  task: 'rebuild' | 'fill';
+  parts?: { rebuild: Outcome; spell: Outcome };
+}
 
 /** The step's kind as the learner reads it, with its motif: new (square), learning or review (diamonds). */
 function Stage({ kind, unit, again, nth }: { kind: Current['kind']; unit?: number; again?: boolean; nth?: number }) {
@@ -87,9 +103,12 @@ export function Stream({ index }: { index: Index }) {
   const progress = useProgress();
   const cur = progress.current;
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const [result, setResult] = useState<{ w: WordFull; outcome: Outcome; task: 'rebuild' | 'fill' } | null>(null);
+  const [result, setResult] = useState<Reviewed | null>(null);
+  // A rebuild review continues with spelling the word: how the rebuild went and how long it took.
+  const [spelling, setSpelling] = useState<{ rebuild: Outcome; ms: number } | null>(null);
   const [cover, setCover] = useState(true);
   const started = useRef(Date.now());
+  const rebuildMs = useRef(0);
 
   // Keep a step on screen: resume the saved one, else choose the next.
   useEffect(() => {
@@ -112,6 +131,7 @@ export function Stream({ index }: { index: Index }) {
 
   useEffect(() => {
     setOutcome(null);
+    setSpelling(null);
     setCover(true);
     started.current = Date.now();
     if (loaded && cur?.kind === 'know') readAloud(loaded.w);
@@ -119,7 +139,7 @@ export function Stream({ index }: { index: Index }) {
   }, [loaded]);
 
   const advance = () => {
-    if (!cur) return;
+    if (!cur || cur.kind === 'review') return;
     if (cur.kind !== 'know' && !outcome) return;
     const next = complete(progress, cur, outcome ?? 'clean', Date.now() - started.current);
     next.current = nextStep(next, index);
@@ -127,12 +147,21 @@ export function Stream({ index }: { index: Index }) {
     window.scrollTo(0, 0);
   };
 
-  const reviewed = (o: Outcome) => {
+  const reviewed = (o: Outcome, ms: number, parts?: Reviewed['parts']) => {
     if (!cur || !loaded) return;
-    commit(complete(progress, cur, o, Date.now() - started.current));
-    setResult({ w: loaded.w, outcome: o, task: cur.task ?? 'rebuild' });
+    commit(complete(progress, cur, o, ms));
+    setResult({ w: loaded.w, outcome: o, task: cur.task ?? 'rebuild', parts });
     readAloud(loaded.w);
   };
+
+  /** The meaning is rebuilt: on to spelling the word from it. */
+  const startSpelling = () => {
+    if (!outcome) return;
+    setSpelling({ rebuild: outcome, ms: rebuildMs.current });
+    started.current = Date.now();
+    window.scrollTo(0, 0);
+  };
+  const reviewRebuilt = cur?.kind === 'review' && cur.task !== 'fill' && !!outcome && !spelling;
 
   const leaveResult = () => {
     setResult(null);
@@ -144,11 +173,12 @@ export function Stream({ index }: { index: Index }) {
     if (e.key !== 'Enter' && e.key !== 'ArrowRight') return;
     if (e.target instanceof Element && e.target.closest('button, a')) return;
     if (result) leaveResult();
+    else if (reviewRebuilt) startSpelling();
     else if (cur && (cur.kind === 'know' || outcome)) advance();
   });
 
   /* ---------- review result ---------- */
-  if (result) return <ReviewResult {...result} progress={progress} onContinue={leaveResult} />;
+  if (result) return <ReviewResult r={result} progress={progress} onContinue={leaveResult} />;
 
   /* ---------- done ---------- */
   if (!cur) return <Done index={index} progress={progress} />;
@@ -184,27 +214,58 @@ export function Stream({ index }: { index: Index }) {
   const review = cur.kind === 'review';
   const rebuild = cur.kind === 'explain1' || cur.kind === 'explain2' || (review && cur.task === 'rebuild');
   const showPicture = cur.kind === 'explain1' || cur.kind === 'use' || (review && !cover);
-  const solved = (o: Outcome) => (review ? reviewed(o) : setOutcome(o));
+  const solved = (o: Outcome) => {
+    if (review && !rebuild) reviewed(o, Date.now() - started.current);
+    else {
+      if (review) rebuildMs.current = Date.now() - started.current;
+      setOutcome(o);
+    }
+  };
+  const picture = (
+    <figure className="pic">
+      {showPicture ? (
+        <Picture w={w} eager />
+      ) : (
+        <div className="cover">
+          <span className="qm" aria-hidden="true">
+            ?
+          </span>
+          {review && (
+            <button type="button" className="btn" onClick={() => setCover(false)}>
+              Show picture
+            </button>
+          )}
+        </div>
+      )}
+    </figure>
+  );
+
+  /* ---------- review, second part: spell the word from its definition ---------- */
+  if (review && spelling) {
+    return (
+      <article className="card step" key={`${w.id}-spell`}>
+        {picture}
+        <div className="body">
+          <Stage kind="review" nth={progress.cards[cur.word]?.reps} />
+          <h1 className="ask-title">Which word means this?</h1>
+          <Spell
+            w={w}
+            onSolved={(o) =>
+              reviewed(worse(spelling.rebuild, o), spelling.ms + Date.now() - started.current, {
+                rebuild: spelling.rebuild,
+                spell: o,
+              })
+            }
+          />
+        </div>
+      </article>
+    );
+  }
 
   return (
     <>
       <article className="card step" key={`${w.id}-${cur.kind}`}>
-        <figure className="pic">
-          {showPicture ? (
-            <Picture w={w} eager />
-          ) : (
-            <div className="cover">
-              <span className="qm" aria-hidden="true">
-                ?
-              </span>
-              {review && (
-                <button type="button" className="btn" onClick={() => setCover(false)}>
-                  Show picture
-                </button>
-              )}
-            </div>
-          )}
-        </figure>
+        {picture}
         <div className="body">
           <Stage kind={cur.kind} nth={review ? progress.cards[cur.word]?.reps : undefined} />
           {rebuild ? (
@@ -237,34 +298,41 @@ export function Stream({ index }: { index: Index }) {
           hint={outcome ? undefined : 'Continue opens once it is done.'}
         />
       )}
+      {review && rebuild && (
+        <StepNav
+          enabled={!!outcome}
+          onContinue={startSpelling}
+          label="Now spell it"
+          hint={outcome ? undefined : 'Then you spell the word from its meaning.'}
+        />
+      )}
     </>
   );
 }
 
-function StepNav({ enabled, onContinue, hint }: { enabled: boolean; onContinue: () => void; hint?: string }) {
+function StepNav({
+  enabled,
+  onContinue,
+  hint,
+  label = 'Continue',
+}: {
+  enabled: boolean;
+  onContinue: () => void;
+  hint?: string;
+  label?: string;
+}) {
   return (
     <div className="nav">
       <span className="count">{hint}</span>
       <button type="button" className="btn primary big" disabled={!enabled} onClick={onContinue}>
-        Continue &rarr;
+        {label} &rarr;
       </button>
     </div>
   );
 }
 
-function ReviewResult({
-  w,
-  outcome,
-  task,
-  progress,
-  onContinue,
-}: {
-  w: WordFull;
-  outcome: Outcome;
-  task: 'rebuild' | 'fill';
-  progress: Progress;
-  onContinue: () => void;
-}) {
+function ReviewResult({ r, progress, onContinue }: { r: Reviewed; progress: Progress; onContinue: () => void }) {
+  const { w, outcome, task, parts } = r;
   const last = progress.lastReview;
   const [writing, setWriting] = useState(false);
   const [text, setText] = useState('');
@@ -282,7 +350,9 @@ function ReviewResult({
           <Head w={w} />
           <Meta w={w} />
           <div className={`result ${outcome}`}>
-            <span className="how">{HOW[task][outcome]}</span>
+            <span className="how">
+              {parts ? `${HOW.rebuild[parts.rebuild]} · ${SPELLED[parts.spell]}` : HOW[task][outcome]}
+            </span>
             <Definition w={w} />
           </div>
           <ExampleBlock w={w} />
