@@ -216,7 +216,7 @@ export function Review({ index }: { index: Index }) {
           )}
         </figure>
         <div className="body">
-          <Head w={w} />
+          <Head w={w} readAll={shown} />
           <Meta w={w} showPos={shown} />
           {!shown ? (
             <>

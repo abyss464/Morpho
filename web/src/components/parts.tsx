@@ -73,11 +73,11 @@ const SPEAKER = (
   </svg>
 );
 
-export function Say({ src, label, small }: { src: string; label: string; small?: boolean }) {
+export function Say({ src, label, small, then }: { src: string; label: string; small?: boolean; then?: string[] }) {
   const on = usePlaying(src);
   const click = (e: MouseEvent) => {
     e.stopPropagation();
-    play(src);
+    play(then?.length ? [src, ...then] : src);
   };
   return (
     <button type="button" className={small ? 'say sm' : 'say'} aria-label={label} title={label} data-playing={on} onClick={click}>
@@ -105,11 +105,29 @@ export function Picture({ w, eager }: { w: WordFull; eager?: boolean }) {
   );
 }
 
-export function Head({ w, as: Tag = 'h1', link, children }: { w: WordFull; as?: 'h1' | 'h2'; link?: string; children?: ReactNode }) {
+/** The headword's speaker reads the word, then (when they are on screen) its definition and example. */
+export function Head({
+  w,
+  as: Tag = 'h1',
+  link,
+  readAll = true,
+  children,
+}: {
+  w: WordFull;
+  as?: 'h1' | 'h2';
+  link?: string;
+  readAll?: boolean;
+  children?: ReactNode;
+}) {
+  const then = readAll ? [primarySense(w)?.audio, w.example?.audio].filter((a): a is string => !!a) : [];
   return (
     <div className="head">
       <Tag className="word">{link ? <a href={link}>{w.word}</a> : w.word}</Tag>
-      <Say src={w.audio} label={`Play "${w.word}"`} />
+      <Say
+        src={w.audio}
+        then={then}
+        label={then.length ? `Play "${w.word}", its definition and example` : `Play "${w.word}"`}
+      />
       {children}
     </div>
   );
