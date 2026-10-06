@@ -5,6 +5,7 @@ import { loadWords, unitOf, unitWordIds, useAsync } from '../api';
 import type { Index } from '../api';
 import { Fill } from '../components/Fill';
 import { Definition, ExampleBlock, Head, Meta, Picture, readAloud, Say, WordCard } from '../components/parts';
+import { stop } from '../audio';
 import { Rebuild } from '../components/Rebuild';
 import { Spell } from '../components/Spell';
 import { seeded, shuffle } from '../explain';
@@ -157,6 +158,8 @@ export function Stream({ index }: { index: Index }) {
   /** The meaning is rebuilt: on to spelling the word from it. */
   const startSpelling = () => {
     if (!outcome) return;
+    // The definition read out after the rebuild names the word.
+    stop();
     setSpelling({ rebuild: outcome, ms: rebuildMs.current });
     started.current = Date.now();
     window.scrollTo(0, 0);
