@@ -25,6 +25,7 @@ export function Today({ index }: { index: Index }) {
   const firstOpen = units.findIndex((u) => u.done < u.size);
   const shown = units.slice(Math.max(0, firstOpen - 2), Math.max(0, firstOpen - 2) + 8);
   const midStream = progress.day.steps > 0 || progress.current !== null;
+  const nothingLeft = !due && !fresh && Object.keys(progress.words).length === 0;
 
   return (
     <>
@@ -34,12 +35,12 @@ export function Today({ index }: { index: Index }) {
           <p>
             {due || fresh
               ? `${plural(due, 'review')} and ${plural(fresh, 'new word')}`
-              : 'Nothing left for today.'}
+              : 'All done for today.'}
             {due >= BACKLOG && ' · new words wait until reviews are cleared'}
           </p>
         </div>
         <a className="btn primary big" href={href.stream()}>
-          {midStream ? 'Continue' : 'Start'}
+          {nothingLeft ? "Today's summary" : midStream ? 'Continue' : 'Start'}
         </a>
       </section>
 
