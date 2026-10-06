@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Rating } from 'ts-fsrs';
 import type { Grade } from 'ts-fsrs';
-import { loadWords, unitOf, useAsync } from '../api';
+import { loadWords, unitOf, unitWordIds, useAsync } from '../api';
 import type { Index } from '../api';
 import { Fill } from '../components/Fill';
 import { Definition, ExampleBlock, Head, Meta, Picture, readAloud, Say, WordCard } from '../components/parts';
@@ -9,7 +9,7 @@ import { Rebuild } from '../components/Rebuild';
 import { seeded, shuffle } from '../explain';
 import { isTyping, plural, useKeydown } from '../hooks';
 import { href } from '../router';
-import { commit, formatInterval, saveNote, useProgress } from '../store';
+import { commit, formatInterval, localDate, saveNote, useProgress } from '../store';
 import type { Current, Progress } from '../store';
 import { complete, dueTomorrow, intervals, nextStep, overrideRating, streak, today } from '../stream';
 import type { Outcome } from '../stream';
@@ -318,10 +318,28 @@ function ReviewResult({ w, progress, onContinue }: { w: WordFull; progress: Prog
   );
 }
 
+/** Units whose last words graduated today, and whether the next one is still untouched. */
+function unitLine(p: Progress, index: Index): string | null {
+  const today = localDate();
+  const graduatedToday = Object.entries(p.cards)
+    .filter(([, c]) => c.reps === 1 && c.last_review && localDate(new Date(c.last_review)) === today)
+    .map(([id]) => Number(id));
+  const finished = [...new Set(graduatedToday.map((id) => unitOf(index, id)))]
+    .filter((u) => u > 0 && unitWordIds(index, u).every((id) => p.cards[id]))
+    .sort((a, b) => a - b);
+  const last = finished[finished.length - 1];
+  if (!last) return null;
+  const done = finished.length > 1 ? `Units ${finished.join(', ')} are finished` : `Unit ${last} is finished`;
+  if (last >= index.unitCount) return `${done}; that was the last unit.`;
+  const begun = unitWordIds(index, last + 1).some((id) => p.cards[id] || p.words[id]);
+  return begun ? `${done}.` : `${done}; Unit ${last + 1} starts tomorrow.`;
+}
+
 function Done({ index, progress }: { index: Index; progress: Progress }) {
   const p = today(progress);
   const tomorrow = dueTomorrow(p, index);
   const days = streak(p);
+  const units = unitLine(p, index);
   const more = () => commit({ ...p, day: { ...p.day, extra: p.day.extra + 5 } });
   return (
     <section className="notice done">
@@ -355,7 +373,10 @@ function Done({ index, progress }: { index: Index; progress: Progress }) {
           <span>reviews due, plus new words</span>
         </div>
       </div>
-      <p>{days > 0 ? `${plural(days, 'day')} in a row.` : 'Come back tomorrow to start a streak.'}</p>
+      <p>
+        {days > 0 ? `${plural(days, 'day')} in a row.` : 'Come back tomorrow to start a streak.'}
+        {units && ` ${units}`}
+      </p>
       <div className="actions">
         <a className="btn primary big" href={href.home()}>
           Done for today
