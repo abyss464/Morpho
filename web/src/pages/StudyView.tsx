@@ -1,13 +1,18 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { loadUnit, prefetchImage, unitWordIds, useAsync } from '../api';
 import type { Index } from '../api';
 import { readAloud, WordCard } from '../components/parts';
 import { isTyping, plural, useKeydown, useNow } from '../hooks';
 import { go, href } from '../router';
 import { dueIds, markStudied, strength, STRENGTH_LABEL, useProgress } from '../store';
+import { ExplainCard } from './Explain';
 import { UnitNotFound } from './UnitPage';
 
-export function StudyView({ index, unit, at }: { index: Index; unit: number; at: number }) {
+/**
+ * A unit is studied card by card. After each card comes its explain step, where the learner
+ * rebuilds the meaning from pieces; the next word opens only once that is done.
+ */
+export function StudyView({ index, unit, at, explain }: { index: Index; unit: number; at: number; explain: boolean }) {
   const valid = unit >= 1 && unit <= index.unitCount;
   const data = useAsync(() => (valid ? loadUnit(unit) : Promise.resolve([])), [unit, valid]);
   const progress = useProgress();
@@ -16,6 +21,8 @@ export function StudyView({ index, unit, at }: { index: Index; unit: number; at:
   const i = Math.min(Math.max(1, at), Math.max(1, n));
   const w = words[i - 1];
   const last = i === n;
+  const [solved, setSolved] = useState<Set<number>>(() => new Set());
+  const isSolved = w ? solved.has(w.id) : false;
 
   /** Moving on to the next card reads it aloud once; going back or jumping does not. */
   const step = (k: number, read = false) => {
@@ -28,6 +35,13 @@ export function StudyView({ index, unit, at }: { index: Index; unit: number; at:
     markStudied(words.map((x) => x.id));
     go(href.done(unit));
   };
+  const toExplain = () => go(href.explain(unit, i), true);
+  const toCard = () => go(href.study(unit, i), true);
+  const advance = () => {
+    if (!isSolved) return;
+    if (last) finish();
+    else step(i + 1, true);
+  };
 
   useEffect(() => {
     prefetchImage(words[i]);
@@ -35,8 +49,11 @@ export function StudyView({ index, unit, at }: { index: Index; unit: number; at:
 
   useKeydown((e) => {
     if (isTyping(e) || e.altKey || e.ctrlKey || e.metaKey || !n) return;
-    if (e.key === 'ArrowLeft') step(i - 1);
-    else if (e.key === 'ArrowRight') step(i + 1, true);
+    if (explain) {
+      if (e.key === 'ArrowLeft') toCard();
+      else if (e.key === 'ArrowRight') advance();
+    } else if (e.key === 'ArrowLeft') step(i - 1);
+    else if (e.key === 'ArrowRight') toExplain();
   });
 
   if (!valid) return <UnitNotFound unit={unit} index={index} />;
@@ -62,20 +79,36 @@ export function StudyView({ index, unit, at }: { index: Index; unit: number; at:
 
       {w && (
         <>
-          <WordCard key={w.id} w={w} variant="study" note={progress.notes[w.id]} />
+          {explain ? (
+            <ExplainCard
+              key={w.id}
+              w={w}
+              unitWords={words}
+              solved={isSolved}
+              onSolved={() => setSolved((prev) => new Set(prev).add(w.id))}
+            />
+          ) : (
+            <WordCard key={w.id} w={w} variant="study" note={progress.notes[w.id]} />
+          )}
           <div className="nav">
-            <button type="button" className="btn" disabled={i === 1} onClick={() => step(i - 1)}>
-              &larr; Previous
-            </button>
+            {explain ? (
+              <button type="button" className="btn" onClick={toCard}>
+                &larr; Back to the card
+              </button>
+            ) : (
+              <button type="button" className="btn" disabled={i === 1} onClick={() => step(i - 1)}>
+                &larr; Previous
+              </button>
+            )}
             <span className="count">
               {i} / {n}
             </span>
-            {last ? (
-              <button type="button" className="btn primary" onClick={finish}>
-                Finish unit &rarr;
+            {explain ? (
+              <button type="button" className="btn primary" disabled={!isSolved} onClick={advance}>
+                {last ? 'Finish unit' : 'Next word'} &rarr;
               </button>
             ) : (
-              <button type="button" className="btn primary" onClick={() => step(i + 1, true)}>
+              <button type="button" className="btn primary" onClick={toExplain}>
                 Next &rarr;
               </button>
             )}

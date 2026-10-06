@@ -47,7 +47,7 @@ function Page({ route, index }: { route: Route; index: Index }) {
     case 'unit':
       return <UnitPage index={index} unit={route.unit} focus={route.focus} />;
     case 'study':
-      return <StudyView index={index} unit={route.unit} at={route.index} />;
+      return <StudyView index={index} unit={route.unit} at={route.index} explain={route.explain} />;
     case 'done':
       return <UnitDone index={index} unit={route.unit} />;
     case 'review':
