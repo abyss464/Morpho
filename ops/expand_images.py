@@ -53,6 +53,10 @@ SCORE_WIDTH = 330
 UPLOAD_WIDTH = 960
 TIMEOUT = 15
 PER_WORD_RESULTS = 16
+# The engine's CLIP model; the pools' pictures are mostly scored against slot 1 already.
+MODEL_VER = "clip/1:ViT-B-32/laion2b_s34b_b79k"
+# Pixabay finds at least this many: enough to choose from without the slow libraries.
+PIXABAY_ENOUGH = 8
 UPLOADS_PER_WORD = 2
 MARGIN = 0.02
 
@@ -115,6 +119,8 @@ class Throttle:
 
 THROTTLES = {
     "pixabay.com": Throttle(0.65),
+    # Pixabay's limit is on its API; the picture files it links to are fetched freely.
+    "pixabay.com/get": Throttle(0.05),
     "commons.wikimedia.org": Throttle(0.5),
     "api.openverse.org": Throttle(1.0),
     "upload.wikimedia.org": Throttle(0.1),
@@ -124,7 +130,11 @@ DEFAULT_THROTTLE = Throttle(0.05)
 
 def request(url, attempts=5):
     """GET through the host's throttle, retrying rate limits; other errors raise."""
-    throttle = THROTTLES.get(urllib.parse.urlsplit(url).hostname, DEFAULT_THROTTLE)
+    parts = urllib.parse.urlsplit(url)
+    host = parts.hostname
+    if host == "pixabay.com" and not parts.path.startswith("/api"):
+        host = "pixabay.com/get"
+    throttle = THROTTLES.get(host, DEFAULT_THROTTLE)
     for attempt in range(attempts):
         throttle.wait()
         req = urllib.request.Request(url, headers={"User-Agent": UA})
@@ -249,7 +259,7 @@ def pixabay_key():
 
 def search_pixabay(q, key):
     url = "https://pixabay.com/api/?" + urllib.parse.urlencode(
-        {"key": key, "q": q[:100], "image_type": "photo", "safesearch": "true", "per_page": "10"})
+        {"key": key, "q": q[:100], "image_type": "photo", "safesearch": "true", "per_page": "20"})
     out = []
     for r in http_json(url).get("hits", []):
         if (r.get("imageWidth") or 0) < 400:
@@ -266,8 +276,9 @@ def gather(word, openverse, key):
     """Search results for one word, or None when a search failed outright (the
     word is then left for a later run rather than recorded as searched).
 
-    Pixabay, when a key is configured, is asked first because its limit is
-    generous; the keyless libraries fill in only what it leaves short."""
+    Pixabay, when a key is configured, is asked first with every query because
+    its limit is generous. The keyless libraries allow this machine only a few
+    requests a minute, so they are asked only for words Pixabay leaves short."""
     results, seen = [], set()
 
     def take(found):
@@ -276,18 +287,21 @@ def gather(word, openverse, key):
                 seen.add(r["thumb"])
                 results.append(r)
 
-    for q in word["queries"]:
-        try:
-            if key:
+    try:
+        if key:
+            for q in word["queries"]:
                 take(search_pixabay(q, key))
                 if len(results) >= PER_WORD_RESULTS:
                     break
+            if len(results) >= PIXABAY_ENOUGH:
+                return results[:PER_WORD_RESULTS]
+        for q in word["queries"]:
             take(search_commons(q))
             take(openverse.search(q))
-        except Exception:
-            return None
-        if len(results) >= PER_WORD_RESULTS:
-            break
+            if len(results) >= PER_WORD_RESULTS:
+                break
+    except Exception:
+        return None
     return results[:PER_WORD_RESULTS]
 
 
@@ -358,7 +372,8 @@ def load_words(examples, done):
             continue
         lemma = conn.execute("SELECT lemma FROM words WHERE word_id = ?", (wid,)).fetchone()[0]
         row = conn.execute(
-            "SELECT ec.text FROM example_selections es JOIN example_candidates ec ON ec.ex_cand_id = es.ex_cand_id"
+            "SELECT ec.text, ec.text_hash FROM example_selections es"
+            " JOIN example_candidates ec ON ec.ex_cand_id = es.ex_cand_id"
             " WHERE es.word_id = ? AND es.slot = 1", (wid,)).fetchone()
         if row is None or " ".join(row[0].split()) != " ".join(example.split()):
             pending += 1
@@ -367,7 +382,11 @@ def load_words(examples, done):
             "SELECT ic.file_hash FROM image_candidates ic JOIN media_files m ON m.file_hash = ic.file_hash"
             " WHERE ic.word_id = ? AND ic.status = 'available'", (wid,))]
         rel = {h: conn.execute("SELECT rel_path FROM media_files WHERE file_hash = ?", (h,)).fetchone()[0] for h in pool}
-        words.append({"word_id": wid, "lemma": lemma, "text": row[0], "pool": rel,
+        stored = dict(conn.execute(
+            "SELECT ic.file_hash, cs.similarity FROM image_candidates ic"
+            " JOIN clip_scores cs ON cs.file_hash = ic.file_hash AND cs.text_hash = ? AND cs.model_ver = ?"
+            " WHERE ic.word_id = ? AND ic.status = 'available'", (row[1], MODEL_VER, wid)))
+        words.append({"word_id": wid, "lemma": lemma, "text": row[0], "pool": rel, "stored": stored,
                       "queries": queries_for(row[0], lemma)})
     if pending:
         print(f"{pending} words skipped: slot 1 does not hold the authored example yet", flush=True)
@@ -397,14 +416,16 @@ def main():
         chunk = words[start: start + CHUNK]
         shutil.rmtree(STAGE, ignore_errors=True)
         os.makedirs(STAGE)
-        # Pass 1: the pools as they stand.
+        # Pass 1: the pools as they stand, from the engine's stored scores; only
+        # pictures it has not scored yet go through CLIP here.
         jobs = [{"key": w["word_id"], "text": w["text"],
-                 "images": [f"/app/data/{p}" for p in w["pool"].values()]} for w in chunk]
-        scored = clip_score(jobs, STAGE)
+                 "images": [f"/app/data/{p}" for h, p in w["pool"].items() if h not in w["stored"]]} for w in chunk]
+        jobs = [j for j in jobs if j["images"]]
+        scored = clip_score(jobs, STAGE) if jobs else {}
         under = []
         for w in chunk:
-            s = scored.get(str(w["word_id"]), {}).get("scores", {})
-            w["best"] = max(s.values()) if s else 0.0
+            s = list(w["stored"].values()) + list(scored.get(str(w["word_id"]), {}).get("scores", {}).values())
+            w["best"] = max(s) if s else 0.0
             if w["best"] < args.threshold:
                 under.append(w)
         # Pass 2: search, download, score the under-bar words' finds.
