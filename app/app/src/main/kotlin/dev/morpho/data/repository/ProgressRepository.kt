@@ -1,22 +1,15 @@
 package dev.morpho.data.repository
 
-import app.cash.sqldelight.coroutines.asFlow
-import app.cash.sqldelight.coroutines.mapToList
 import dev.morpho.data.db.user.Daily_stats
 import dev.morpho.data.db.user.Fsrs_cards
-import dev.morpho.data.db.user.Learning_progress
 import dev.morpho.data.db.user.UserDatabase
 import dev.morpho.domain.model.CardState
 import dev.morpho.domain.model.DailyStats
 import dev.morpho.domain.model.FsrsCard
-import dev.morpho.domain.model.LearnMode
-import dev.morpho.domain.model.LearningProgress
-import dev.morpho.domain.model.LearningStatus
 import dev.morpho.domain.model.ProgressDefaults
 import dev.morpho.domain.model.UserMetaKeys
+import dev.morpho.domain.progress.ProgressTracker
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
@@ -38,42 +31,12 @@ class ProgressRepository(private val db: UserDatabase) {
 
     // ------------------------------------------------------------- learning
 
-    fun observeProgress(): Flow<List<LearningProgress>> =
-        q.selectAll().asFlow().mapToList(Dispatchers.IO)
-            .map { rows -> rows.map { it.toDomain() } }
-
-    suspend fun allProgress(): List<LearningProgress> = withContext(Dispatchers.IO) {
-        q.selectAll().executeAsList().map { it.toDomain() }
-    }
-
-    suspend fun progressFor(wordIds: Collection<Long>): Map<Long, LearningProgress> {
-        if (wordIds.isEmpty()) return emptyMap()
-        return withContext(Dispatchers.IO) {
-            q.selectByIds(wordIds).executeAsList().associate { it.word_id to it.toDomain() }
-        }
-    }
-
-    suspend fun progressMap(): Map<Long, LearningProgress> =
-        allProgress().associateBy { it.wordId }
-
-    suspend fun learnedCount(): Int = withContext(Dispatchers.IO) {
-        q.countLearned().executeAsOne().toInt()
-    }
-
-    suspend fun upsertProgress(rows: Collection<LearningProgress>) {
-        if (rows.isEmpty()) return
-        withContext(Dispatchers.IO) {
-            db.transaction {
-                rows.forEach {
-                    q.upsert(
-                        word_id = it.wordId,
-                        current_mode = it.currentMode.level.toLong(),
-                        rounds_passed = it.roundsPassed.toLong(),
-                        status = it.status.dbValue,
-                    )
-                }
-            }
-        }
+    /**
+     * Words the learning-ladder engine left mid-ladder: status `learning` with at least
+     * one round passed. Read once, when the stream starts without a saved state.
+     */
+    suspend fun inFlightWordIds(): List<Long> = withContext(Dispatchers.IO) {
+        q.selectInFlight().executeAsList().map { it.word_id }
     }
 
     // ----------------------------------------------------------------- FSRS
@@ -82,39 +45,18 @@ class ProgressRepository(private val db: UserDatabase) {
         cards.selectAll().executeAsList().map { it.toDomain() }
     }
 
-    suspend fun card(wordId: Long): FsrsCard? = withContext(Dispatchers.IO) {
-        cards.selectById(wordId).executeAsOneOrNull()?.toDomain()
-    }
-
-    suspend fun dueCards(now: Instant): List<FsrsCard> = withContext(Dispatchers.IO) {
-        cards.selectDue(now.toString()).executeAsList().map { it.toDomain() }
-    }
-
-    suspend fun dueCount(now: Instant): Int = withContext(Dispatchers.IO) {
-        cards.countDue(now.toString()).executeAsOne().toInt()
-    }
-
-    suspend fun upsertCards(rows: Collection<FsrsCard>) {
-        if (rows.isEmpty()) return
-        withContext(Dispatchers.IO) {
-            db.transaction {
-                rows.forEach {
-                    cards.upsert(
-                        word_id = it.wordId,
-                        due = it.due.toString(),
-                        stability = it.stability,
-                        difficulty = it.difficulty,
-                        elapsed_days = it.elapsedDays.toLong(),
-                        scheduled_days = it.scheduledDays.toLong(),
-                        reps = it.reps.toLong(),
-                        lapses = it.lapses.toLong(),
-                        state = it.state.code.toLong(),
-                        last_review = it.lastReview?.toString(),
-                    )
-                }
-            }
-        }
-    }
+    private fun writeCard(card: FsrsCard) = cards.upsert(
+        word_id = card.wordId,
+        due = card.due.toString(),
+        stability = card.stability,
+        difficulty = card.difficulty,
+        elapsed_days = card.elapsedDays.toLong(),
+        scheduled_days = card.scheduledDays.toLong(),
+        reps = card.reps.toLong(),
+        lapses = card.lapses.toLong(),
+        state = card.state.code.toLong(),
+        last_review = card.lastReview?.toString(),
+    )
 
     // ----------------------------------------------------------- daily stats
 
@@ -126,14 +68,46 @@ class ProgressRepository(private val db: UserDatabase) {
         stats.selectRecent(limit.toLong()).executeAsList().map { it.toDomain() }
     }
 
-    suspend fun upsertStats(row: DailyStats) = withContext(Dispatchers.IO) {
-        stats.upsert(
-            date = row.date.format(DATE),
-            new_learned = row.newLearned.toLong(),
-            reviewed = row.reviewed.toLong(),
-            correct_count = row.correctCount.toLong(),
-            answer_count = row.answerCount.toLong(),
-        )
+    suspend fun upsertStats(row: DailyStats) = withContext(Dispatchers.IO) { writeStats(row) }
+
+    private fun writeStats(row: DailyStats) = stats.upsert(
+        date = row.date.format(DATE),
+        new_learned = row.newLearned.toLong(),
+        reviewed = row.reviewed.toLong(),
+        correct_count = row.correctCount.toLong(),
+        answer_count = row.answerCount.toLong(),
+    )
+
+    // ------------------------------------------------------------ stream step
+
+    /**
+     * Writes one finished stream step in a single transaction: the cards it [changed], the
+     * counts it adds to [delta]'s day, and the [metaRows] that hold the stream state.
+     * A delta of all zeros leaves `daily_stats` alone.
+     */
+    suspend fun recordStep(
+        changed: Collection<FsrsCard>,
+        delta: DailyStats,
+        metaRows: Map<String, String>,
+    ) = withContext(Dispatchers.IO) {
+        db.transaction {
+            changed.forEach(::writeCard)
+            val counts = delta.newLearned + delta.reviewed + delta.correctCount + delta.answerCount
+            if (counts > 0) {
+                val existing = stats.selectByDate(delta.date.format(DATE)).executeAsOneOrNull()?.toDomain()
+                writeStats(
+                    ProgressTracker.mergeSession(
+                        existing = existing,
+                        date = delta.date,
+                        newLearned = delta.newLearned,
+                        reviewed = delta.reviewed,
+                        correctAnswers = delta.correctCount,
+                        totalAnswers = delta.answerCount,
+                    ),
+                )
+            }
+            metaRows.forEach { (key, value) -> meta.upsert(key, value) }
+        }
     }
 
     // ------------------------------------------------------------------ meta
@@ -187,13 +161,6 @@ class ProgressRepository(private val db: UserDatabase) {
 }
 
 // ------------------------------------------------------------------ mapping
-
-private fun Learning_progress.toDomain() = LearningProgress(
-    wordId = word_id,
-    currentMode = LearnMode.fromLevel(current_mode.toInt()),
-    roundsPassed = rounds_passed.toInt(),
-    status = LearningStatus.fromDb(status),
-)
 
 private fun Fsrs_cards.toDomain() = FsrsCard(
     wordId = word_id,

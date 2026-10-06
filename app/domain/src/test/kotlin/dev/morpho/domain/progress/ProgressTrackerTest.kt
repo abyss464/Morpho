@@ -1,90 +1,14 @@
 package dev.morpho.domain.progress
 
 import dev.morpho.domain.model.DailyStats
-import dev.morpho.domain.model.LearningProgress
-import dev.morpho.domain.model.LearningStatus
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class ProgressTrackerTest {
 
     private val today = LocalDate.of(2026, 5, 20)
-
-    @Test
-    fun `denominator comes from the release, numerator from user progress`() {
-        val shipped = (1L..100L).toSet()
-        val progress = listOf(
-            LearningProgress(1, roundsPassed = 3, status = LearningStatus.LEARNED),
-            LearningProgress(2, roundsPassed = 3, status = LearningStatus.LEARNED),
-            LearningProgress(3, roundsPassed = 1, status = LearningStatus.LEARNING),
-            LearningProgress(4, roundsPassed = 0, status = LearningStatus.LEARNING),
-        )
-        val overall = ProgressTracker.overall(shipped, progress)
-        assertEquals(100, overall.totalWords)
-        assertEquals(2, overall.learnedWords)
-        assertEquals(1, overall.inFlightWords)
-        assertEquals(98, overall.remainingWords)
-        assertEquals(0.02f, overall.fraction)
-    }
-
-    @Test
-    fun `progress rows for words the release dropped stop counting but are not an error`() {
-        val shipped = setOf(1L, 2L)
-        val progress = listOf(
-            LearningProgress(1, status = LearningStatus.LEARNED),
-            LearningProgress(999, status = LearningStatus.LEARNED), // retired word
-        )
-        val overall = ProgressTracker.overall(shipped, progress)
-        assertEquals(2, overall.totalWords)
-        assertEquals(1, overall.learnedWords)
-    }
-
-    @Test
-    fun `a bigger release rescales the ring without touching progress`() {
-        val progress = listOf(LearningProgress(1, status = LearningStatus.LEARNED))
-        val before = ProgressTracker.overall((1L..10L).toSet(), progress)
-        val after = ProgressTracker.overall((1L..20L).toSet(), progress)
-        assertEquals(0.1f, before.fraction)
-        assertEquals(0.05f, after.fraction)
-        assertEquals(before.learnedWords, after.learnedWords)
-    }
-
-    @Test
-    fun `today's card combines daily stats, goal and due reviews`() {
-        val stats = DailyStats(
-            today,
-            newLearned = 20,
-            reviewed = 8,
-            correctCount = 21,
-            answerCount = 28,
-        )
-        val progress = ProgressTracker.today(stats, dailyGoal = 50, dueReviewCount = 12)
-        assertEquals(30, progress.remainingNew)
-        assertEquals(0.4f, progress.fraction)
-        assertEquals(0.75, progress.correctRate!!, 1e-9)
-        assertTrue(progress.hasWork)
-        assertTrue(!progress.goalMet)
-
-        val done = ProgressTracker.today(
-            DailyStats(today, newLearned = 50, reviewed = 12),
-            dailyGoal = 50,
-            dueReviewCount = 0,
-        )
-        assertTrue(done.goalMet)
-        assertTrue(!done.hasWork)
-        assertEquals(1f, done.fraction)
-    }
-
-    @Test
-    fun `a missing daily row reads as a fresh day`() {
-        val progress = ProgressTracker.today(null, dailyGoal = 30, dueReviewCount = 0)
-        assertEquals(0, progress.newLearned)
-        assertEquals(30, progress.remainingNew)
-        assertNull(progress.correctRate)
-    }
 
     @Test
     fun `streak counts consecutive active days ending today`() {

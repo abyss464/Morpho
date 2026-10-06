@@ -1,6 +1,5 @@
 package dev.morpho.data.repository
 
-import android.util.Log
 import dev.morpho.data.db.content.ContentDatabase
 import dev.morpho.data.db.content.Distractors
 import dev.morpho.data.db.content.Examples
@@ -113,9 +112,9 @@ class ContentRepository(private val db: ContentDatabase) {
 
             words.associate { row ->
                 val wordExamples = examples[row.word_id].orEmpty().map(Examples::toDomain)
-                val mode1ImageFile = wordExamples.firstOrNull { it.displayOrder == 1 }?.imageFile.orEmpty()
+                val cardImageFile = wordExamples.minByOrNull { it.displayOrder }?.imageFile.orEmpty()
                 row.word_id to WordBundle(
-                    word = row.toDomain().copy(imageFile = mode1ImageFile),
+                    word = row.toDomain().copy(imageFile = cardImageFile),
                     senses = senses[row.word_id].orEmpty().map(Senses::toDomain),
                     examples = wordExamples,
                     distractorIds = distractors[row.word_id].orEmpty()
@@ -124,23 +123,6 @@ class ContentRepository(private val db: ContentDatabase) {
                 )
             }
         }
-    }
-
-    /**
-     * Loads a question's word plus the three distractor words in a single pass, which
-     * is what the quiz screens actually need: the answer bundle and the distractors'
-     * image + primary definition.
-     */
-    suspend fun questionBundles(wordId: Long): QuestionContent? {
-        val answer = bundle(wordId) ?: return null
-        val optionIds = listOf(wordId) + answer.distractorIds
-        val all = bundles(optionIds)
-        val missing = optionIds.filterNot { all.containsKey(it) }
-        if (missing.isNotEmpty()) {
-            Log.e(TAG, "distractor closure violated for word $wordId: missing $missing")
-            return null
-        }
-        return QuestionContent(answer = answer, options = optionIds.mapNotNull { all[it] })
     }
 
     /**
@@ -159,7 +141,7 @@ class ContentRepository(private val db: ContentDatabase) {
                 add("word ${it.word_id} rank ${it.rank} points at unshipped word ${it.distractor_word_id}")
             }
             db.examplesQueries.selectWordsWithoutFirstExample().executeAsList().forEach {
-                add("word $it has no display_order 1 example, so mode 1 cannot ask it")
+                add("word $it has no display_order 1 example, so its card and use step have no sentence")
             }
             db.examplesQueries.selectExamplesWithBadHighlight().executeAsList().forEach {
                 add("example ${it.example_id} (word ${it.word_id}) has an out-of-range highlight")
@@ -173,17 +155,7 @@ class ContentRepository(private val db: ContentDatabase) {
             }
         }
     }
-
-    companion object {
-        private const val TAG = "ContentRepository"
-    }
 }
-
-data class QuestionContent(
-    val answer: WordBundle,
-    /** The answer first, then its three distractors in rank order. */
-    val options: List<WordBundle>,
-)
 
 // ------------------------------------------------------------------ mapping
 

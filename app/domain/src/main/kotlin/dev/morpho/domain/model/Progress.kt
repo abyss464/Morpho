@@ -10,48 +10,6 @@ import java.time.LocalDate
  * groups are re-cut per release (README, "组的短暂性" / groups are ephemeral).
  */
 
-enum class LearningStatus {
-    LEARNING,
-    LEARNED,
-    ;
-
-    val dbValue: String get() = name.lowercase()
-
-    companion object {
-        fun fromDb(value: String): LearningStatus = when (value) {
-            "learning" -> LEARNING
-            "learned" -> LEARNED
-            else -> error("unknown learning status: $value")
-        }
-    }
-}
-
-/** Learning mode, 1..3 (see README "学习模式"). */
-enum class LearnMode(val level: Int) {
-    SENTENCE_IMAGE(1),
-    WORD_IMAGE_DEF(2),
-    WORD_TEXT_DEF(3),
-    ;
-
-    fun promoted(): LearnMode = when (this) {
-        SENTENCE_IMAGE -> WORD_IMAGE_DEF
-        WORD_IMAGE_DEF -> WORD_TEXT_DEF
-        WORD_TEXT_DEF -> WORD_TEXT_DEF
-    }
-
-    companion object {
-        fun fromLevel(level: Int): LearnMode =
-            entries.firstOrNull { it.level == level } ?: SENTENCE_IMAGE
-    }
-}
-
-data class LearningProgress(
-    val wordId: Long,
-    val currentMode: LearnMode = LearnMode.SENTENCE_IMAGE,
-    val roundsPassed: Int = 0,
-    val status: LearningStatus = LearningStatus.LEARNING,
-)
-
 /** FSRS v5 card state enum, persisted in `fsrs_cards.state`. */
 enum class CardState(val code: Int) {
     NEW(0),
@@ -153,11 +111,10 @@ enum class ThemeMode {
     }
 }
 
+/** One day of the activity chart: how many graded steps were answered. */
 data class DailyActivity(
     val date: LocalDate,
-    val wordsStudied: Int,
-    val newLearned: Int,
-    val reviewed: Int,
+    val answers: Int,
 )
 
 data class HeatmapCell(
@@ -187,22 +144,17 @@ object UserMetaKeys {
     const val STREAK_DAYS = "streak_days"
     const val ACTIVITY_CHART_STYLE = "activity_chart_style"
     const val THEME_MODE = "theme_mode"
+
+    /** The stream's state as JSON: word stages, today's counters and the step on screen. */
+    const val STREAM_STATE = "stream_state"
+
+    /** The learner's own explanations, per word, as JSON. */
+    const val STREAM_NOTES = "stream_notes"
 }
 
 object ProgressDefaults {
-    const val DAILY_GOAL = 50
-
-    /**
-     * Cap on one review sitting, as a multiple of the daily new-word goal.
-     *
-     * FSRS hands back everything that is due, and against a 4,253-word release that is
-     * eventually hundreds of cards in a single morning — a queue nobody finishes and a
-     * "1 / 863" counter that reads as a punishment. Reviews are naturally a few times the
-     * new-word rate, so the goal is the right thing to scale against: raise the goal and
-     * the review sitting grows with it. Anything left over stays due and is offered again
-     * the moment the session ends, so nothing is dropped, only deferred.
-     */
-    const val REVIEW_SESSION_MULTIPLIER = 4
+    /** New words a day (docs/contracts/stream.md §5, N). */
+    const val DAILY_GOAL = 20
 
     /**
      * user.db schema version.

@@ -194,7 +194,6 @@ val MorphoDarkColorScheme = darkColorScheme(
 @androidx.compose.runtime.Immutable
 data class MorphoAccents(
     val correct: Color,
-    val onCorrect: Color,
     val correctContainer: Color,
     val wrong: Color,
     val wrongContainer: Color,
@@ -202,7 +201,6 @@ data class MorphoAccents(
     val highlight: Color,
     val onHighlight: Color,
     val ringTrack: Color,
-    val modePipInactive: Color,
     val shimmer: Color,
     /** The icon's resting square: not started. */
     val motifBase: Color,
@@ -216,7 +214,6 @@ data class MorphoAccents(
 
 val LightAccents = MorphoAccents(
     correct = MorphoPalette.Verdigris40,
-    onCorrect = MorphoPalette.Parchment98,
     correctContainer = MorphoPalette.Verdigris90,
     wrong = MorphoPalette.Oxblood40,
     wrongContainer = MorphoPalette.Oxblood90,
@@ -224,7 +221,6 @@ val LightAccents = MorphoAccents(
     highlight = MorphoPalette.Copper90,
     onHighlight = MorphoPalette.Copper25,
     ringTrack = MorphoPalette.Parchment80,
-    modePipInactive = MorphoPalette.Parchment70,
     shimmer = Color(0x33FFFFFF),
     motifBase = MorphoPalette.Mist40,
     motifActive = MorphoPalette.Copper45,
@@ -234,7 +230,6 @@ val LightAccents = MorphoAccents(
 
 val DarkAccents = MorphoAccents(
     correct = MorphoPalette.Verdigris60,
-    onCorrect = MorphoPalette.Verdigris20,
     correctContainer = MorphoPalette.Verdigris30,
     wrong = MorphoPalette.Oxblood60,
     wrongContainer = MorphoPalette.Oxblood30,
@@ -242,7 +237,6 @@ val DarkAccents = MorphoAccents(
     highlight = MorphoPalette.Copper30,
     onHighlight = MorphoPalette.Copper90,
     ringTrack = MorphoPalette.Ink30,
-    modePipInactive = MorphoPalette.Ink40,
     shimmer = Color(0x1FFFFFFF),
     motifBase = MorphoPalette.Mist50,
     motifActive = MorphoPalette.Copper50,

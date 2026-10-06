@@ -104,7 +104,7 @@ data class WordGroup(
 )
 
 /**
- * A word with everything a quiz question or the detail sheet needs, loaded in one go.
+ * A word with everything a stream step needs, loaded in one go.
  *
  * The release build is dependency-closed over distractor edges, so [distractorIds]
  * always resolves to three fully-provisioned shipped words — the app carries no
@@ -121,15 +121,12 @@ data class WordBundle(
             ?: senses.firstOrNull()
             ?: error("word ${word.wordId} has no senses")
 
-    /** display_order 1 is the mode-1 sentence; 2-3 live on the detail sheet. */
-    val mode1Example: Example?
+    /** The example with the lowest display order: the sentence on the word card and in the use step. */
+    val cardExample: Example?
         get() = examples.minByOrNull { it.displayOrder }
-
-    val detailExamples: List<Example>
-        get() = examples.sortedBy { it.displayOrder }
 }
 
-/** Minimal per-word plan row, used by session building without loading full bundles. */
+/** Minimal per-word plan row: the release learning order without loading full bundles. */
 data class PlanWord(
     val wordId: Long,
     val groupId: Long,

@@ -12,25 +12,18 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.morpho.di.AppContainer
-import dev.morpho.di.SessionKind
 import dev.morpho.di.StartupReport
 import dev.morpho.ui.designsystem.component.MorphoLoader
 import dev.morpho.ui.designsystem.motion.rememberSharedAxis
-import dev.morpho.ui.home.HomeScreen
-import dev.morpho.ui.learn.LearnScreen
-import dev.morpho.ui.review.ReviewScreen
 import dev.morpho.ui.settings.SettingsScreen
-import dev.morpho.ui.summary.SessionSummaryScreen
+import dev.morpho.ui.stream.StreamScreen
+import dev.morpho.ui.today.TodayScreen
 
-/** Navigation graph. Single activity, one Compose NavHost. */
+/** Navigation graph. Single activity, one Compose NavHost: Today, the stream, settings. */
 object MorphoRoutes {
-    const val HOME = "home"
-    const val LEARN = "learn"
-    const val REVIEW = "review"
+    const val TODAY = "today"
+    const val STREAM = "stream"
     const val SETTINGS = "settings"
-    const val SUMMARY = "summary/{kind}"
-
-    fun summary(kind: SessionKind) = "summary/${kind.name}"
 }
 
 @Composable
@@ -55,61 +48,24 @@ fun MorphoApp(
 
         NavHost(
             navController = navController,
-            startDestination = MorphoRoutes.HOME,
+            startDestination = MorphoRoutes.TODAY,
             enterTransition = { axis.enter(forward = true) },
             exitTransition = { axis.exit(forward = true) },
             popEnterTransition = { axis.enter(forward = false) },
             popExitTransition = { axis.exit(forward = false) },
         ) {
-            composable(MorphoRoutes.HOME) {
-                HomeScreen(
+            composable(MorphoRoutes.TODAY) {
+                TodayScreen(
                     container = container,
-                    startup = startup,
-                    onStartLearning = { navController.navigate(MorphoRoutes.LEARN) },
-                    onStartReview = { navController.navigate(MorphoRoutes.REVIEW) },
+                    onOpenStream = { navController.navigate(MorphoRoutes.STREAM) },
                     onOpenSettings = { navController.navigate(MorphoRoutes.SETTINGS) },
                 )
             }
 
-            composable(MorphoRoutes.LEARN) {
-                LearnScreen(
+            composable(MorphoRoutes.STREAM) {
+                StreamScreen(
                     container = container,
-                    onFinished = {
-                        navController.navigate(MorphoRoutes.summary(SessionKind.LEARNING)) {
-                            popUpTo(MorphoRoutes.HOME)
-                        }
-                    },
-                    onExit = { navController.popBackStack() },
-                )
-            }
-
-            composable(MorphoRoutes.REVIEW) {
-                ReviewScreen(
-                    container = container,
-                    onFinished = {
-                        navController.navigate(MorphoRoutes.summary(SessionKind.REVIEW)) {
-                            popUpTo(MorphoRoutes.HOME)
-                        }
-                    },
-                    onExit = { navController.popBackStack() },
-                )
-            }
-
-            composable(MorphoRoutes.SUMMARY) { entry ->
-                val kind = entry.arguments?.getString("kind")
-                    ?.let { runCatching { SessionKind.valueOf(it) }.getOrNull() }
-                    ?: SessionKind.LEARNING
-                SessionSummaryScreen(
-                    container = container,
-                    kind = kind,
-                    onBackHome = {
-                        navController.popBackStack(MorphoRoutes.HOME, inclusive = false)
-                    },
-                    onKeepGoing = {
-                        navController.navigate(MorphoRoutes.LEARN) {
-                            popUpTo(MorphoRoutes.HOME)
-                        }
-                    },
+                    onExit = { navController.popBackStack(MorphoRoutes.TODAY, inclusive = false) },
                 )
             }
 

@@ -11,34 +11,25 @@ import androidx.compose.ui.unit.sp
 import dev.morpho.R
 
 /**
- * Typography layer (docs/contracts/app-design.md, "Brand").
+ * Typography layer (docs/contracts/stream.md §8, docs/contracts/app-design.md "Brand").
  *
- * **EB Garamond** is the icon's own face — the "M" wordmark in
- * `ic_launcher_foreground.xml` is drawn from its outlines — so it carries every
- * headline, title and display number and makes the app read as one object with its
- * launcher icon. It is reserved for UI chrome: screen titles, stat/hero numerals,
- * the home greeting and other decorative brand moments.
+ * Three faces, each with one job:
  *
- * Backlog #34 (owner-confirmed, on-device read): EB Garamond is too thin at reading
- * sizes for sustained legibility. Content the learner actually reads — definitions,
- * example sentences, quiz option text, etymology prose — stays on the sans stack, so
- * `readingFontFamily` points at the UI face rather than the brand face.
+ *  * **EB Garamond** is the icon's own face — the "M" wordmark in
+ *    `ic_launcher_foreground.xml` is drawn from its outlines. It carries display text:
+ *    the wordmark, screen titles, the headword, word options and figures.
+ *  * **Source Serif 4** carries what the learner reads as English: definitions, example
+ *    sentences and the definition pieces of the explain step. It is a text serif drawn
+ *    for body sizes, so it stays legible where Garamond turns thin.
+ *  * The **system sans** carries interface text: labels, buttons, counts, IPA.
  *
- * Small functional chrome (labels, body copy, IPA, spell boxes) stays sans too: at
- * 11-16sp a text face loses to a UI face on legibility, and letter-by-letter
- * spelling needs unambiguous shapes.
- *
- * The bundled file is the variable roman (`wght` 400-800); Compose's resource `Font`
- * defaults `variationSettings` to the requested weight, so each declared weight is a
- * real instance rather than a synthetic bold.
+ * EB Garamond is bundled as a variable font on the `wght` axis. Source Serif 4 is bundled
+ * as two static instances, regular (400) and semibold (600), so its weight holds on every
+ * platform version whether or not a variation setting reaches the typeface.
  */
 object MorphoFonts {
 
-    /**
-     * EB Garamond, the icon's face. Swapping the whole brand face is this one
-     * declaration and nothing else. UI-chrome-only — see the "Backlog #34" note
-     * above; content styles use [uiFontFamily] via [readingFontFamily].
-     */
+    /** EB Garamond, the icon's face: display text only. */
     val displayFontFamily: FontFamily = FontFamily(
         Font(R.font.eb_garamond, FontWeight.Normal),
         Font(R.font.eb_garamond, FontWeight.Medium),
@@ -46,15 +37,13 @@ object MorphoFonts {
         Font(R.font.eb_garamond, FontWeight.Bold),
     )
 
-    val uiFontFamily: FontFamily = FontFamily.SansSerif
+    /** Source Serif 4: definitions and sentences. */
+    val readingFontFamily: FontFamily = FontFamily(
+        Font(R.font.source_serif_4_regular, FontWeight.Normal),
+        Font(R.font.source_serif_4_semibold, FontWeight.SemiBold),
+    )
 
-    /**
-     * Definitions and example sentences: sans (#34). EB Garamond reads too thin at
-     * body sizes for sustained reading, so content text sits on the UI face even
-     * though it's set with reading-tuned size/line-height in
-     * [MorphoReadingTypography].
-     */
-    val readingFontFamily: FontFamily = uiFontFamily
+    val uiFontFamily: FontFamily = FontFamily.SansSerif
 }
 
 private val lineHeightStyle = LineHeightStyle(
@@ -64,7 +53,7 @@ private val lineHeightStyle = LineHeightStyle(
 
 /**
  * M3 defaults re-cut: display / headline / title onto the Garamond brand face, body
- * and label onto the UI face. `displaySmall` stays reserved for the word headline.
+ * and label onto the UI face. `displaySmall` sets the wordmark on Today.
  *
  * Garamond's x-height is small, so the serif tiers carry a touch more size and line
  * height than the M3 default and drop the tightened tracking that a sans needs.
@@ -120,7 +109,8 @@ val MorphoTypography = Typography().run {
 }
 
 /**
- * Small caps-ish section label: the scholarly running head above each home section.
+ * Small caps-ish section label: the running head above each Today section and the step
+ * label in the stream.
  * Sans, tracked out, uppercase applied by the caller.
  */
 val MorphoSectionLabel = TextStyle(
@@ -132,58 +122,50 @@ val MorphoSectionLabel = TextStyle(
 )
 
 /**
- * Reading styles: everything the user is meant to *read as English*, plus the
- * phonetic style (sans, alpha applied by the caller at 0.7 per the contract).
- *
- * Sans throughout (#34) — see [MorphoFonts.readingFontFamily].
+ * Reading styles: what the learner reads as English in Source Serif 4, the headword and
+ * word options in Garamond, and the phonetic in sans (alpha applied by the caller).
+ * Sizes follow the phone design boards of the stream.
  */
 @Immutable
 data class MorphoReadingTypography(
-    /** Definitions: bodyLarge at 1.5 line height. */
+    /** The definition on a word card. */
     val definition: TextStyle = TextStyle(
         fontFamily = MorphoFonts.readingFontFamily,
-        fontSize = 16.sp,
-        lineHeight = 24.sp, // 1.5x
+        fontSize = 19.sp,
+        lineHeight = 28.sp,
         fontWeight = FontWeight.Normal,
         lineHeightStyle = lineHeightStyle,
     ),
-    /** One-line definition caption under a mode-2 image cell. */
-    val definitionCaption: TextStyle = TextStyle(
-        fontFamily = MorphoFonts.readingFontFamily,
-        fontSize = 13.sp,
-        lineHeight = 18.sp,
-        fontWeight = FontWeight.Normal,
-        lineHeightStyle = lineHeightStyle,
-    ),
-    /** Mode-3 option cards: a touch larger. */
-    val definitionOption: TextStyle = TextStyle(
+    /** A definition set smaller: the review result, a wrong option's meaning. */
+    val definitionCompact: TextStyle = TextStyle(
         fontFamily = MorphoFonts.readingFontFamily,
         fontSize = 17.sp,
-        lineHeight = 26.sp,
+        lineHeight = 25.sp,
         fontWeight = FontWeight.Normal,
         lineHeightStyle = lineHeightStyle,
     ),
-    /** Example sentences on the sentence card. */
+    /** The example sentence under a definition. */
     val sentence: TextStyle = TextStyle(
         fontFamily = MorphoFonts.readingFontFamily,
-        fontSize = 22.sp,
-        lineHeight = 34.sp,
+        fontSize = 16.sp,
+        lineHeight = 25.sp,
         fontWeight = FontWeight.Normal,
         lineHeightStyle = lineHeightStyle,
     ),
-    /** Example sentences in the detail sheet. */
-    val sentenceCompact: TextStyle = TextStyle(
+    /** The example sentence with its gap, on the use step. */
+    val gapSentence: TextStyle = TextStyle(
         fontFamily = MorphoFonts.readingFontFamily,
-        fontSize = 17.sp,
-        lineHeight = 27.sp,
+        fontSize = 24.sp,
+        lineHeight = 36.sp,
+        fontWeight = FontWeight.Normal,
         lineHeightStyle = lineHeightStyle,
     ),
-    /** Etymology prose. */
-    val etymology: TextStyle = TextStyle(
+    /** One definition piece in the explain step's tray and bank. */
+    val piece: TextStyle = TextStyle(
         fontFamily = MorphoFonts.readingFontFamily,
-        fontSize = 15.sp,
-        lineHeight = 23.sp,
-        lineHeightStyle = lineHeightStyle,
+        fontSize = 17.sp,
+        lineHeight = 22.sp,
+        fontWeight = FontWeight.Normal,
     ),
     /** IPA — sans, never serif; render at alpha 0.7. */
     val phonetic: TextStyle = TextStyle(
@@ -192,36 +174,35 @@ data class MorphoReadingTypography(
         lineHeight = 20.sp,
         fontWeight = FontWeight.Normal,
     ),
-    /** The word itself on the header and detail sheet. */
+    /** The headword on a word card. */
     val wordHeadline: TextStyle = TextStyle(
-        fontFamily = MorphoFonts.uiFontFamily,
-        fontSize = 36.sp,
+        fontFamily = MorphoFonts.displayFontFamily,
+        fontSize = 40.sp,
         lineHeight = 44.sp,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = (-0.5).sp,
+        fontWeight = FontWeight.Medium,
     ),
-    /** Word rendered inside a quiz option cell. */
+    /** A step's question: "What does … mean?", "Which word fits?". */
+    val prompt: TextStyle = TextStyle(
+        fontFamily = MorphoFonts.displayFontFamily,
+        fontSize = 28.sp,
+        lineHeight = 32.sp,
+        fontWeight = FontWeight.Medium,
+    ),
+    /** A word as a fill-in option. */
     val wordOption: TextStyle = TextStyle(
-        fontFamily = MorphoFonts.uiFontFamily,
+        fontFamily = MorphoFonts.displayFontFamily,
         fontSize = 22.sp,
         lineHeight = 28.sp,
         fontWeight = FontWeight.Medium,
     ),
-    /** Letter boxes in the spell input. */
-    val spellLetter: TextStyle = TextStyle(
-        fontFamily = MorphoFonts.uiFontFamily,
-        fontSize = 22.sp,
-        lineHeight = 26.sp,
-        fontWeight = FontWeight.SemiBold,
-    ),
-    /** Large numerals on stat tiles and the progress ring. Serif — a figure is display. */
+    /** Figures on the done screen's tiles. Serif — a figure is display. */
     val statNumber: TextStyle = TextStyle(
         fontFamily = MorphoFonts.displayFontFamily,
         fontSize = 32.sp,
         lineHeight = 36.sp,
         fontWeight = FontWeight.SemiBold,
     ),
-    /** The one headline figure of a screen: words learned so far, on home. */
+    /** The one headline figure of a screen: words met so far, on Today. */
     val heroNumber: TextStyle = TextStyle(
         fontFamily = MorphoFonts.displayFontFamily,
         fontSize = 52.sp,

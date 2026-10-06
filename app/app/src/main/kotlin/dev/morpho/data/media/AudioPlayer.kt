@@ -22,12 +22,7 @@ import java.io.IOException
 import java.io.InputStream
 
 /**
- * Content-audio playback over Media3.
- *
- * Two players, exactly as README Part 6 specifies: a **primary** that speaks now and a
- * **preload slot** that prepares the next question's audio while the current one is on
- * screen. Media files are small Opus/WAV blobs, so preloading is effectively free and
- * the next question never opens with a stall.
+ * Content-audio playback over Media3: one clip, or a word card's clips as one run.
  *
  * Audio is read through [ContentStore], never through a file path, so PAD and fatApk
  * both work without the player knowing which it is talking to.
@@ -52,9 +47,6 @@ class AudioPlayer(
             .apply { setAudioAttributes(attributes, /* handleAudioFocus = */ true) }
 
     private val primary: ExoPlayer = newPlayer(context)
-    private val preload: ExoPlayer = newPlayer(context)
-
-    private var preloadedName: String? = null
 
     private val _nowPlaying = MutableStateFlow<String?>(null)
 
@@ -92,16 +84,21 @@ class AudioPlayer(
         }.onFailure { Log.e(TAG, "playback failed for $name", it) }
     }
 
-    /** Prepares [name] on the spare player so the next `play` starts instantly. */
-    fun preload(name: String?) {
-        if (name.isNullOrBlank() || name == preloadedName) return
-        if (!contentStore.exists(name)) return
+    /**
+     * Plays [names] back to back as one run, replacing whatever was sounding: a word card
+     * reads its word, then its definition, then its example. Missing or blank names are
+     * skipped. [nowPlaying] reports the first file for the whole run, so the control that
+     * started it stays lit until the last clip ends.
+     */
+    fun playSequence(names: List<String?>) {
+        val files = names.filterNotNull().filter { it.isNotBlank() && contentStore.exists(it) }
+        if (files.isEmpty()) return
         runCatching {
-            preload.setMediaItem(MediaItem.fromUri(ContentStore.handle(name)))
-            preload.prepare()
-            preload.playWhenReady = false
-            preloadedName = name
-        }.onFailure { Log.w(TAG, "preload failed for $name", it) }
+            primary.setMediaItems(files.map { MediaItem.fromUri(ContentStore.handle(it)) })
+            primary.prepare()
+            primary.playWhenReady = true
+            _nowPlaying.value = files.first()
+        }.onFailure { Log.e(TAG, "playback failed for $files", it) }
     }
 
     fun stop() {
@@ -114,7 +111,6 @@ class AudioPlayer(
 
     fun release() {
         runCatching { primary.release() }
-        runCatching { preload.release() }
     }
 
     companion object {

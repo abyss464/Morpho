@@ -99,71 +99,6 @@ fun MorphoMark(
 
 enum class MarkKind { SQUARE, DIAMOND }
 
-// --------------------------------------------------------------- progress row
-
-/** How many marks a full-width progress row uses. One mark ≈ one twelfth of the goal. */
-const val MOTIF_MARK_COUNT = 12
-
-/**
- * A progress indicator drawn in the icon's own marks.
- *
- * Completed steps are solid diamonds, the step in flight is the copper diamond — the
- * one thing on the row the eye lands on — and everything still ahead is a resting
- * mist-blue square. A row that has not started yet is all squares; a finished one is
- * all diamonds.
- *
- * The gap between marks is derived from the measured width, so the row always spans its
- * parent instead of trailing off centre.
- */
-@Composable
-fun MotifProgressRow(
-    fraction: Float,
-    modifier: Modifier = Modifier,
-    markCount: Int = MOTIF_MARK_COUNT,
-    cell: Dp = 14.dp,
-    contentDescription: String? = null,
-) {
-    val accents = MorphoTheme.accents
-    val safeFraction = fraction.coerceIn(0f, 1f)
-    val done = (safeFraction * markCount).toInt().coerceIn(0, markCount)
-    // The frontier only exists while there is something left to do.
-    val activeIndex = if (done < markCount) done else -1
-    val restingColor = accents.motifBase
-    val doneColor = accents.motifMastered
-    val activeColor = accents.motifActive
-
-    Canvas(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(cell)
-            .then(
-                if (contentDescription == null) {
-                    Modifier
-                } else {
-                    Modifier.clearAndSetSemantics { this.contentDescription = contentDescription }
-                },
-            ),
-    ) {
-        val cellPx = cell.toPx()
-        val gap = if (markCount > 1) {
-            ((size.width - cellPx * markCount) / (markCount - 1)).coerceAtLeast(0f)
-        } else {
-            0f
-        }
-        val centerY = size.height / 2f
-
-        repeat(markCount) { index ->
-            val centerX = index * (cellPx + gap) + cellPx / 2f
-            val center = Offset(centerX, centerY)
-            when {
-                index == activeIndex -> drawMotifDiamond(center, cellPx, activeColor)
-                index < done -> drawMotifDiamond(center, cellPx, doneColor)
-                else -> drawMotifSquare(center, cellPx, restingColor)
-            }
-        }
-    }
-}
-
 /**
  * A slim rail for a long arc — the whole vocabulary, not one day. Milestones ride on
  * the rail as diamonds: copper once passed, an outline while still ahead.
@@ -311,9 +246,6 @@ private fun MotifPreview() {
     PreviewBox {
         Column(verticalArrangement = Arrangement.spacedBy(MorphoTheme.spacing.lg)) {
             SectionHeading("Today")
-            MotifProgressRow(fraction = 0f)
-            MotifProgressRow(fraction = 0.4f)
-            MotifProgressRow(fraction = 1f)
             MotifMilestoneRail(fraction = 0.49f)
             MotifOrnament()
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {

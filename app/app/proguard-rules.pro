@@ -4,16 +4,17 @@
 # exists because a library reaches for a class name at runtime.
 
 # --- kotlinx.serialization ---------------------------------------------------
-# The plugin generates serializers as nested objects reached by name.
+# The plugin generates serializers as nested objects reached by name; the stream state
+# and notes are stored through them.
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.**
--keepclassmembers class dev.morpho.data.seed.** {
+-keepclassmembers class dev.morpho.data.stream.** {
     *** Companion;
 }
--keepclasseswithmembers class dev.morpho.data.seed.** {
+-keepclasseswithmembers class dev.morpho.data.stream.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
--keep,includedescriptorclasses class dev.morpho.data.seed.**$$serializer { *; }
+-keep,includedescriptorclasses class dev.morpho.data.stream.**$$serializer { *; }
 
 # --- Media3 / ExoPlayer ------------------------------------------------------
 # Renderers and extractors are instantiated reflectively by name.

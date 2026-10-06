@@ -1,7 +1,5 @@
 package dev.morpho.ui.designsystem.component
 
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
@@ -14,11 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -27,9 +24,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -54,31 +49,16 @@ import kotlin.math.roundToInt
 val LocalGlossIndex = staticCompositionLocalOf { GlossIndex.EMPTY }
 
 /**
- * How a glossed token gives up its Chinese.
- *
- * The distinction exists for one reason: a quiz option is a single answer button, and a
- * tap landing on a word inside it must never be ambiguous about whether it selected the
- * option. So option text takes [LongPress] — the tap keeps its one meaning, and the
- * gloss lives on a gesture the answer flow does not use. Everywhere the text is not
- * itself an answer (detail-sheet definitions, example sentences) [Tap] is right, because
- * a hint you have to discover by long-pressing is a hint nobody finds.
- */
-enum class GlossTrigger { Tap, LongPress }
-
-/**
  * English text whose [gloss_anchors][LocalGlossIndex] tokens are subtly marked and
- * reveal a Chinese gloss on demand.
+ * reveal a Chinese gloss when tapped.
  *
  * The tint plus underline is deliberately quiet — the reader should be able to run
  * straight past it, because the product's whole premise is that the English carries the
  * meaning and Chinese is a grounding modality of last resort, no different from the
  * picture. Nothing appears on screen until it is asked for.
  *
- * @param onPlainTap what a tap that missed every anchor should do — play the sentence,
- *   select the option, or nothing at all.
- * @param pressInteractionSource the enclosing card's interaction source. Text with a
- *   gesture detector on it swallows the pointer, so without this the card would stop
- *   showing its press animation wherever the words are.
+ * @param underline a span drawn with a 2dp rule in [underlineColor] beneath it — the
+ *   headword inside an example sentence.
  */
 @Composable
 fun GlossedText(
@@ -86,95 +66,51 @@ fun GlossedText(
     style: TextStyle,
     color: Color,
     modifier: Modifier = Modifier,
-    trigger: GlossTrigger = GlossTrigger.Tap,
-    enabled: Boolean = true,
-    onPlainTap: (() -> Unit)? = null,
-    pressInteractionSource: MutableInteractionSource? = null,
-    maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Clip,
-    textAlign: TextAlign? = null,
+    underline: IntRange = IntRange.EMPTY,
+    underlineColor: Color = Color.Unspecified,
 ) {
     val index = LocalGlossIndex.current
     val anchorTint = MaterialTheme.colorScheme.tertiary
     val matches = remember(text, index) { index.scan(text.text) }
-    val annotated = remember(text, matches, anchorTint) {
-        if (matches.isEmpty()) text else text.withAnchorMarks(matches, anchorTint)
-    }
 
-    // Nothing to reveal and nothing to intercept: fall back to a plain Text so the
-    // overwhelming majority of definitions cost exactly what they did before.
-    if (matches.isEmpty() && onPlainTap == null) {
-        Text(
-            text = annotated,
-            style = style,
-            color = color,
-            modifier = modifier,
-            maxLines = maxLines,
-            overflow = overflow,
-            textAlign = textAlign,
-        )
+    // Nothing to reveal or draw: a plain Text, so most definitions cost nothing extra.
+    if (matches.isEmpty() && underline.isEmpty()) {
+        Text(text = text, style = style, color = color, modifier = modifier)
         return
     }
 
+    val annotated = remember(text, matches, anchorTint) {
+        if (matches.isEmpty()) text else text.withAnchorMarks(matches, anchorTint)
+    }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     var shown by remember { mutableStateOf<ShownGloss?>(null) }
-
-    // Callers build this lambda inline (`onPlainTap = { onSelect(index) }`), so its
-    // identity changes on every recomposition — and recompositions come thick and fast
-    // during the answer reveal. Keying the gesture detector on it would restart the
-    // detector mid-press and swallow the long press that was already underway.
-    val plainTap by rememberUpdatedState(onPlainTap)
-
-    fun anchorAt(position: Offset): ShownGloss? {
-        val result = layout ?: return null
-        if (matches.isEmpty()) return null
-        val offset = result.getOffsetForPosition(position)
-        val match = matches.firstOrNull { offset in it } ?: return null
-        return ShownGloss(match, result.boundsOf(match))
-    }
+    val rule = with(androidx.compose.ui.platform.LocalDensity.current) { UNDERLINE_WIDTH.toPx() }
 
     Box(modifier) {
         Text(
             text = annotated,
             style = style,
             color = color,
-            maxLines = maxLines,
-            overflow = overflow,
-            textAlign = textAlign,
             onTextLayout = { layout = it },
-            modifier = Modifier.pointerInput(matches, trigger, enabled) {
-                detectTapGestures(
-                    onPress = { position ->
-                        val source = pressInteractionSource
-                        if (source == null || !enabled) {
-                            tryAwaitRelease()
-                        } else {
-                            val press = PressInteraction.Press(position)
-                            source.emit(press)
-                            val released = tryAwaitRelease()
-                            source.emit(
-                                if (released) {
-                                    PressInteraction.Release(press)
-                                } else {
-                                    PressInteraction.Cancel(press)
-                                },
-                            )
-                        }
-                    },
-                    onLongPress = if (trigger == GlossTrigger.LongPress) {
-                        { position -> anchorAt(position)?.let { shown = it } }
-                    } else {
-                        null
-                    },
-                    onTap = { position ->
-                        val hit = if (trigger == GlossTrigger.Tap) anchorAt(position) else null
-                        when {
-                            hit != null -> shown = hit
-                            enabled -> plainTap?.invoke()
-                        }
-                    },
-                )
-            },
+            modifier = Modifier
+                .drawBehind {
+                    val result = layout ?: return@drawBehind
+                    result.lineBoxesOf(underline).forEach { box ->
+                        drawRect(
+                            color = underlineColor,
+                            topLeft = androidx.compose.ui.geometry.Offset(box.left, box.bottom + rule),
+                            size = androidx.compose.ui.geometry.Size(box.width, rule),
+                        )
+                    }
+                }
+                .pointerInput(matches) {
+                    if (matches.isEmpty()) return@pointerInput
+                    detectTapGestures { position ->
+                        val result = layout ?: return@detectTapGestures
+                        val offset = result.getOffsetForPosition(position)
+                        matches.firstOrNull { offset in it }?.let { shown = ShownGloss(it, result.boundsOf(it)) }
+                    }
+                },
         )
 
         shown?.let { gloss ->
@@ -183,33 +119,22 @@ fun GlossedText(
     }
 }
 
-/** [String] overload for the common case of unstyled text. */
-@Composable
-fun GlossedText(
-    text: String,
-    style: TextStyle,
-    color: Color,
-    modifier: Modifier = Modifier,
-    trigger: GlossTrigger = GlossTrigger.Tap,
-    enabled: Boolean = true,
-    onPlainTap: (() -> Unit)? = null,
-    pressInteractionSource: MutableInteractionSource? = null,
-    maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Clip,
-    textAlign: TextAlign? = null,
-) = GlossedText(
-    text = remember(text) { AnnotatedString(text) },
-    style = style,
-    color = color,
-    modifier = modifier,
-    trigger = trigger,
-    enabled = enabled,
-    onPlainTap = onPlainTap,
-    pressInteractionSource = pressInteractionSource,
-    maxLines = maxLines,
-    overflow = overflow,
-    textAlign = textAlign,
-)
+/**
+ * One box per line that [range] covers, from its first to its last character on that
+ * line; each box's bottom is that line's baseline.
+ */
+private fun TextLayoutResult.lineBoxesOf(range: IntRange): List<Rect> {
+    if (range.isEmpty()) return emptyList()
+    val last = layoutInput.text.length - 1
+    if (last < 0) return emptyList()
+    return (range.first.coerceIn(0, last)..range.last.coerceIn(0, last))
+        .groupBy { getLineForOffset(it) }
+        .map { (line, offsets) ->
+            val first = getBoundingBox(offsets.first())
+            val end = getBoundingBox(offsets.last())
+            Rect(first.left, first.top, end.right, getLineBaseline(line))
+        }
+}
 
 /** The token the user asked about, plus where it sits inside its text block. */
 private data class ShownGloss(val match: GlossMatch, val bounds: Rect)
@@ -294,7 +219,7 @@ private class GlossPositionProvider(
 
 /**
  * Marks each anchor with a tint and a hairline underline, on top of whatever styling
- * the caller already applied (the mode-1 highlight pill, for one).
+ * the caller already applied (the bold headword, for one).
  */
 private fun AnnotatedString.withAnchorMarks(
     matches: List<GlossMatch>,
@@ -323,12 +248,13 @@ private fun TextLayoutResult.boundsOf(match: GlossMatch): Rect {
 }
 
 private val GLOSS_POPOVER_GAP: Dp = 6.dp
+private val UNDERLINE_WIDTH: Dp = 2.dp
 private val GLOSS_POPOVER_MAX_WIDTH: Dp = 220.dp
 
 // ------------------------------------------------------------------ previews
 
 /** A stand-in index so previews show the affordance without opening release.db. */
-internal val previewGlossIndex = GlossIndex.of(
+private val previewGlossIndex = GlossIndex.of(
     listOf(
         dev.morpho.domain.content.GlossAnchor(1, "pasture", "牧场"),
         dev.morpho.domain.content.GlossAnchor(2, "intricate", "错综复杂的"),
@@ -346,20 +272,13 @@ private fun GlossedTextPreview() {
                     .spacedBy(MorphoTheme.spacing.md),
             ) {
                 GlossedText(
-                    text = "an intricate network of paths crossing the open pasture",
+                    text = AnnotatedString("an intricate network of paths crossing the open pasture"),
                     style = MorphoTheme.reading.definition,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 GlossedText(
-                    text = "a plan meant to thwart a rival before it can begin",
-                    style = MorphoTheme.reading.definitionOption,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    trigger = GlossTrigger.LongPress,
-                    onPlainTap = {},
-                )
-                GlossedText(
-                    text = "nothing here is anchored, so this renders as plain English",
-                    style = MorphoTheme.reading.definition,
+                    text = AnnotatedString("nothing here is anchored, so this renders as plain English"),
+                    style = MorphoTheme.reading.sentence,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

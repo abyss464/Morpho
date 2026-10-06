@@ -6,11 +6,8 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.Easing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.keyframes
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -81,12 +78,6 @@ fun Modifier.pressScale(pressed: Boolean, reducedMotion: Boolean, scale: Float =
             scaleY = s
         }
     }
-
-/** Spring used for the correct-answer ring and check badge. */
-fun <T> correctSpring(): SpringSpec<T> = spring(
-    dampingRatio = Spring.DampingRatioMediumBouncy,
-    stiffness = Spring.StiffnessMediumLow,
-)
 
 /**
  * Horizontal shake, +/-8dp over 300 ms. Keyframed so the motion reads as a rejection

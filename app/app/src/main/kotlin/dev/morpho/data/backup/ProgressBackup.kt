@@ -199,7 +199,6 @@ class ProgressBackup(
 
                 val summary = if (ProgressBackupValidator.REQUIRED_TABLES.all { it in tables }) {
                     BackupSummary(
-                        wordsTracked = db.count("SELECT count(*) FROM learning_progress"),
                         cardsScheduled = db.count("SELECT count(*) FROM fsrs_cards"),
                         daysRecorded = db.count("SELECT count(*) FROM daily_stats"),
                     )
@@ -246,7 +245,7 @@ data class StagedBackup(
 
 /** What the confirm dialog tells the user they are about to overwrite their progress with. */
 data class BackupSummary(
-    val wordsTracked: Int,
+    /** Words in review: one FSRS card each. */
     val cardsScheduled: Int,
     val daysRecorded: Int,
 )

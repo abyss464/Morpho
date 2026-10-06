@@ -152,7 +152,6 @@ private fun ImportConfirmDialog(
                     Text(
                         stringResource(
                             R.string.backup_import_contents,
-                            summary.wordsTracked,
                             summary.cardsScheduled,
                             summary.daysRecorded,
                         ),
@@ -501,7 +500,7 @@ private fun SettingsPreview() {
 private fun ImportConfirmDialogPreview() {
     PreviewBox {
         ImportConfirmDialog(
-            summary = BackupSummary(wordsTracked = 812, cardsScheduled = 640, daysRecorded = 47),
+            summary = BackupSummary(cardsScheduled = 640, daysRecorded = 47),
             onConfirm = {},
             onDismiss = {},
         )

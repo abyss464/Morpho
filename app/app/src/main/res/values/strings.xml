@@ -6,86 +6,115 @@
 <resources>
     <string name="app_name">Morpho</string>
 
-    <!-- Navigation / common -->
+    <!-- Common -->
     <string name="action_start">Start</string>
     <string name="action_continue">Continue</string>
-    <string name="action_got_it">Got it</string>
-    <string name="action_next">Next</string>
-    <string name="action_done">Done</string>
-    <string name="action_check">Check</string>
-    <string name="action_skip">Skip</string>
-    <string name="action_close">Close</string>
     <string name="action_back">Back</string>
+    <string name="action_save">Save</string>
+    <string name="action_pause">Pause</string>
     <string name="action_settings">Settings</string>
-    <string name="action_end_session">End session</string>
-    <string name="action_replay_audio">Play again</string>
-    <string name="action_show_details">Word details</string>
-    <string name="action_retry">Try again</string>
 
-    <!-- Home -->
-    <string name="home_title">Morpho</string>
-    <string name="home_ring_caption">of %1$s learned</string>
-    <string name="home_today_title">Today</string>
-    <string name="home_today_new">%1$d new words</string>
-    <string name="home_today_reviews">%1$d reviews due</string>
-    <string name="home_today_all_done">Everything is done for today.</string>
-    <string name="home_today_goal_progress">%1$d of %2$d new words</string>
-    <string name="home_start_learning">Start learning</string>
-    <string name="home_start_review">Start review</string>
-    <string name="home_stat_learned">learned</string>
-    <string name="home_stat_in_progress">in progress</string>
-    <string name="home_stat_remaining">remaining</string>
-    <string name="home_streak">day streak</string>
-    <string name="home_empty">No content installed yet.</string>
-    <string name="home_greeting_morning">Good morning</string>
-    <string name="home_greeting_afternoon">Good afternoon</string>
-    <string name="home_greeting_evening">Good evening</string>
-    <string name="home_section_this_week">This week</string>
-    <string name="home_section_journey">Journey</string>
-    <string name="home_reviews_due">Reviews due</string>
-    <string name="home_new_words">New words</string>
-    <string name="home_journey_of">of %1$s words</string>
-    <string name="home_journey_complete">%1$d%% complete</string>
-    <string name="home_journey_days_left">~%1$d days left</string>
-    <string name="home_journey_done">Complete</string>
-    <string name="home_stat_words_today">words today</string>
-    <string name="home_stat_accuracy">accuracy</string>
-    <string name="home_all_done">All done for today</string>
+    <!-- Today -->
+    <string name="today_greeting_morning">Good morning</string>
+    <string name="today_greeting_afternoon">Good afternoon</string>
+    <string name="today_greeting_evening">Good evening</string>
+    <plurals name="streak_days">
+        <item quantity="one">day</item>
+        <item quantity="other">days</item>
+    </plurals>
+    <string name="today_title">Today</string>
+    <string name="today_line">%1$s and %2$s</string>
+    <plurals name="today_reviews">
+        <item quantity="one">%1$d review</item>
+        <item quantity="other">%1$d reviews</item>
+    </plurals>
+    <plurals name="today_new_words">
+        <item quantity="one">%1$d new word</item>
+        <item quantity="other">%1$d new words</item>
+    </plurals>
+    <string name="today_backlog">" · new words wait until reviews are cleared"</string>
+    <string name="today_all_done">All done for today.</string>
+    <string name="today_summary">Today\'s summary</string>
+    <string name="today_section_journey">Journey</string>
+    <string name="today_journey_of">of %1$s words</string>
+    <string name="today_journey_complete">%1$d%% met</string>
+    <string name="today_journey_days_left">~%1$d days left</string>
+    <string name="today_journey_done">Complete</string>
+    <string name="today_section_this_week">This week</string>
+    <string name="today_section_units">Units · progress</string>
+    <string name="today_units_finished">Finished %1$d / %2$d</string>
+    <string name="today_unit">Unit %1$d</string>
+    <string name="today_unit_tally">%1$d/%2$d</string>
+    <string name="today_unit_done">done</string>
 
-    <!-- Learn -->
-    <string name="learn_title">Learning</string>
-    <string name="learn_round">Round %1$d of %2$d</string>
-    <string name="learn_group">Group %1$d</string>
-    <string name="learn_mode_1_prompt">Which picture fits the sentence?</string>
-    <string name="learn_mode_2_prompt">Which picture and meaning fit this word?</string>
-    <string name="learn_mode_3_prompt">Which meaning fits this word?</string>
-    <string name="learn_wrong_hint">Not this one. Read the meaning, then pick again.</string>
-    <string name="learn_must_retry">Choose the right one to continue.</string>
-    <string name="learn_promoted">Level up</string>
-    <string name="learn_word_learned">Learned</string>
-    <string name="learn_group_complete">Group complete</string>
-    <string name="learn_exit_confirm">End this session? Your progress is already saved.</string>
-    <string name="learn_goal_reached_title">Today\'s goal reached</string>
-    <string name="learn_goal_reached_body">You have finished today\'s new words. Learn one more group, or stop here and come back tomorrow.</string>
-    <string name="learn_goal_reached_continue">One more group</string>
-    <string name="learn_nothing_left">No new words left to learn.</string>
+    <!-- Stream -->
+    <string name="stream_progress">%1$d / %2$d</string>
+    <string name="stream_stage_new">New word · Unit %1$d</string>
+    <string name="stream_stage_again">Look again</string>
+    <string name="stream_stage_explain">Explain it</string>
+    <string name="stream_stage_use">Use it</string>
+    <string name="stream_stage_review">Review · %1$s time</string>
+    <string name="stream_explain_title">What does %1$s mean?</string>
+    <string name="stream_tray_empty">Your explanation is built here.</string>
+    <string name="stream_rebuild_hint">Tap the pieces in order. Some belong to other words.</string>
+    <string name="stream_rebuild_wrong">Not quite. Tap the red pieces to take them back.</string>
+    <string name="stream_rebuild_solved">That\'s the meaning.</string>
+    <string name="stream_start_over">Start over</string>
+    <string name="stream_show_next_piece">Show the next piece</string>
+    <string name="stream_fill_title">Which word fits?</string>
+    <string name="stream_fill_hint">The wrong words look alike on purpose.</string>
+    <string name="stream_fill_wrong">Not that one. Pick again.</string>
+    <string name="stream_fill_solved">That\'s the word.</string>
+    <string name="stream_show_picture">Show picture</string>
+    <string name="stream_verdict_rebuild_clean">Rebuilt with no mistakes</string>
+    <string name="stream_verdict_rebuild_shaky">Rebuilt after one slip</string>
+    <string name="stream_verdict_rebuild_failed">Rebuilt with help</string>
+    <string name="stream_verdict_fill_clean">Picked first time</string>
+    <string name="stream_verdict_fill_failed">Picked after a miss</string>
+    <string name="stream_next_review">next review in %1$s</string>
+    <string name="stream_rating_hint">Rated from how you did. Tap another to change it.</string>
+    <string name="grade_again">Again</string>
+    <string name="grade_hard">Hard</string>
+    <string name="grade_good">Good</string>
+    <string name="grade_easy">Easy</string>
+    <plurals name="interval_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <plurals name="interval_months">
+        <item quantity="one">%1$d month</item>
+        <item quantity="other">%1$d months</item>
+    </plurals>
+    <string name="interval_years">%1$s years</string>
+    <string name="stream_note_title">In your own words</string>
+    <string name="stream_note_add">Say it in your own words (optional)</string>
+    <string name="stream_note_rewrite">Rewrite it in your own words</string>
+    <string name="stream_note_placeholder">Optional</string>
 
-    <!-- Review -->
-    <string name="review_title">Review</string>
-    <string name="review_prompt">Which picture and meaning fit this word?</string>
-    <string name="review_progress">%1$d of %2$d</string>
-    <string name="review_none_due">Nothing is due for review.</string>
-
-    <!-- Session summary -->
-    <string name="summary_title">Session complete</string>
-    <string name="summary_learning_headline">Nice work</string>
-    <string name="summary_review_headline">Review done</string>
-    <string name="summary_new_words">new words</string>
-    <string name="summary_reviewed">reviewed</string>
-    <string name="summary_accuracy">first-try accuracy</string>
-    <string name="summary_streak_kept">Streak kept: %1$d days</string>
-    <string name="summary_back_home">Back to home</string>
-    <string name="summary_keep_going">Keep going</string>
+    <!-- Stream: done -->
+    <string name="stream_done_eyebrow">Today\'s stream is done</string>
+    <string name="stream_done_headline">%1$s, %2$s.</string>
+    <plurals name="steps">
+        <item quantity="one">%1$d step</item>
+        <item quantity="other">%1$d steps</item>
+    </plurals>
+    <plurals name="words">
+        <item quantity="one">%1$d word</item>
+        <item quantity="other">%1$d words</item>
+    </plurals>
+    <string name="stream_done_reviewed">Reviewed</string>
+    <string name="stream_done_reviewed_detail">%1$d with no mistakes</string>
+    <string name="stream_done_met">Met</string>
+    <string name="stream_done_met_detail">%1$d explained and used first time</string>
+    <string name="stream_done_tomorrow">Tomorrow</string>
+    <plurals name="stream_done_tomorrow_detail">
+        <item quantity="one">reviews due, plus %1$d new word</item>
+        <item quantity="other">reviews due, plus %1$d new words</item>
+    </plurals>
+    <string name="stream_done_streak">day streak</string>
+    <string name="stream_done_no_streak">Come back tomorrow to start a streak.</string>
+    <string name="stream_done_for_today">Done for today</string>
+    <string name="stream_meet_more">Meet 5 more words</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
@@ -127,7 +156,7 @@
     <!-- Backup: import confirmation -->
     <string name="backup_import_title">Replace your progress?</string>
     <string name="backup_import_body">This file replaces everything on this device: every word you have learned, every review date, and your settings. It cannot be undone.</string>
-    <string name="backup_import_contents">The file holds %1$d words in progress, %2$d scheduled reviews and %3$d days of history.</string>
+    <string name="backup_import_contents">The file holds %1$d words in review and %2$d days of history.</string>
     <string name="backup_import_restart_note">Morpho restarts once the file is in place.</string>
     <string name="backup_import_confirm">Replace</string>
     <string name="backup_import_cancel">Keep my progress</string>
@@ -141,9 +170,12 @@
     <string name="backup_import_failed">Could not replace your progress. Nothing was changed.</string>
 
     <!-- Accessibility -->
-    <string name="cd_play_word">Play the pronunciation of %1$s</string>
-    <string name="cd_play_definition">Play this definition</string>
-    <string name="cd_play_sentence">Play the example sentence</string>
-    <string name="cd_option">Option %1$d of %2$d</string>
-    <string name="cd_progress_ring">%1$d of %2$d words learned</string>
+    <string name="cd_play_word">Play "%1$s"</string>
+    <string name="cd_play_card">Play the word, definition and example</string>
+    <string name="cd_picture">Picture for the example sentence of "%1$s"</string>
+    <string name="cd_stream_progress">Today\'s stream</string>
+    <string name="cd_tray">Your explanation</string>
+    <string name="cd_bank">Pieces</string>
+    <string name="cd_piece_remove">%1$s, remove</string>
+    <string name="cd_unit_progress">Unit %1$d, %2$d of %3$d words in review</string>
 </resources>

@@ -1,0 +1,46 @@
+---
+file: app/app/src/main/kotlin/dev/morpho/data/repository/ContentRepository.kt
+---
+
+# Content Database
+
+A read-only access layer for release.db, mapping database rows to domain models. The content database does not change during runtime; all methods are ordinary suspend reads, with no data flow listening and no cache invalidation needed. The learning order and the gloss index are cached because every stream load needs them.
+
+## planWords() -> plan word list
+Returns the learning plan slice for all words in release.db, containing word ID, group ID, and learning order. The result is cached.
+
+## shippedWordIds() -> set of word IDs
+All word IDs shipped in the current release.
+
+## wordCount() -> integer
+Total number of word items in release.db.
+
+## glossIndex() -> definition index
+Loads the entire gloss_anchors table as a lookup index. The result is cached for the process lifetime—the content database is immutable, and item-by-item queries would be too expensive.
+
+## isEmpty() -> boolean
+Whether release.db contains no word items.
+
+## contentVersion() -> version string or null
+Reads the content version number from the meta table.
+
+## metaValue(key) -> value or null
+Reads an arbitrary item from the meta table by key.
+
+## group(groupId) -> word group or null
+Loads a word group by group ID.
+
+## word(wordId) -> word or null
+Loads a word item by word ID.
+
+## words(wordIds) -> word list
+Batch loads multiple word items. An empty input collection returns an empty list.
+
+## bundle(wordId) -> word bundle or null
+Loads a word along with its definitions, examples, and three bound distractor word IDs; the word's picture is its first example's image. The release build guarantees the distractor word closure is complete.
+
+## bundles(wordIds) -> mapping from word ID to word bundle
+Batch version—each table is queried only once, rather than once per word.
+
+## assertIntegrity() -> violation description list
+Full integrity scan for debug builds. Returns a human-readable violation list; an empty list means the release data is intact. Checks include: uniqueness of definition main marks, distractor word count, dangling distractor word references, missing first example, example highlight range out of bounds, conflicts between definition anchors and already-published words, and learning order uniqueness.

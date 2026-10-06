@@ -5,11 +5,7 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import dev.morpho.data.db.content.ContentDatabase
 import dev.morpho.data.repository.ContentRepository
-import dev.morpho.domain.learning.LearningEngine
-import dev.morpho.domain.learning.OptionAssembler
-import dev.morpho.domain.learning.SessionConfig
 import dev.morpho.domain.model.ContentMetaKeys
-import dev.morpho.domain.model.LearnMode
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import kotlin.test.AfterTest
@@ -170,55 +166,6 @@ class ReleaseDatabaseTest {
         // contains it. Checked against the shipped lemmas themselves, which are the
         // strings most likely to nest inside one another.
         assertTrue(index.scan("favourites").isEmpty(), "'rites' leaked out of 'favourites'")
-    }
-
-    // ---------------------------------------------------------- session at scale
-
-    @Test
-    fun `a full day's session builds and every question resolves its four options`() = runBlocking {
-        val config = SessionConfig(sessionSeed = 20_260_826L)
-        val plan = LearningEngine.buildSession(
-            plan = repo.planWords(),
-            progress = emptyMap(),
-            dueReviewIds = emptyList(),
-            newWordQuota = config.dailyGoal,
-            config = config,
-        )
-        assertTrue(plan.units.size >= 2, "a 50-word day should cut into more than one unit")
-        assertEquals(config.dailyGoal, plan.newWordCount)
-
-        var state = LearningEngine.startSession(plan, emptyMap(), config)
-        var questions = 0
-        val modesSeen = mutableMapOf<Long, MutableSet<LearnMode>>()
-
-        while (!state.finished && state.currentQuestion != null) {
-            val question = state.currentQuestion!!
-            modesSeen.getOrPut(question.wordId) { mutableSetOf() } += question.mode
-
-            val content = repo.questionBundles(question.wordId)
-            assertNotNull(content, "no content for word ${question.wordId}")
-            assertEquals(4, content.options.size)
-            assertEquals(
-                4,
-                OptionAssembler.assemble(
-                    answerWordId = question.wordId,
-                    distractorIds = content.answer.distractorIds,
-                    seed = question.optionSeed(config.sessionSeed),
-                ).toSet().size,
-                "duplicate option ids on word ${question.wordId}",
-            )
-            if (question.mode == LearnMode.SENTENCE_IMAGE) {
-                assertNotNull(content.answer.mode1Example, "mode 1 needs a sentence")
-            }
-
-            state = LearningEngine.submitAnswer(state, correct = true).state
-            questions++
-            assertTrue(questions < 1_000, "session did not terminate")
-        }
-
-        assertEquals(config.dailyGoal, state.learnedThisSession.size)
-        assertEquals(config.dailyGoal * config.roundsRequired, questions)
-        assertTrue(modesSeen.values.all { it.size == 3 }, "some words never reached mode 3")
     }
 
     /**

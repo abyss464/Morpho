@@ -11,6 +11,5 @@ data class Easings(
     val standard: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f),
     val standardDecelerate: Easing = CubicBezierEasing(0f, 0f, 0f, 1f),
     val standardAccelerate: Easing = CubicBezierEasing(0.3f, 0f, 1f, 1f),
-    val emphasized: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f),
     val linear: Easing = LinearEasing,
 )

@@ -42,7 +42,7 @@ fun MorphoLoader(modifier: Modifier = Modifier) {
     val easing = MorphoTheme.easings.standard
 
     // One full pulse - fade/scale up then back down - per mark.
-    val pulseDurationMs = durations.correct * 2
+    val pulseDurationMs = durations.pulse * 2
     // Delay between one mark starting its pulse and the next, so the wave flows.
     val staggerMs = durations.press
 

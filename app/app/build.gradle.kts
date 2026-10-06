@@ -180,7 +180,6 @@ dependencies {
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.datasource)
     implementation(libs.coil.compose)
-    implementation(libs.lottie.compose)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)

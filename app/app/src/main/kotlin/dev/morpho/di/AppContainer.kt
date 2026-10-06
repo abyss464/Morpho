@@ -17,9 +17,10 @@ import dev.morpho.data.repository.ProgressRepository
 import dev.morpho.data.repository.SettingsRepository
 import dev.morpho.data.sound.SfxEvent
 import dev.morpho.data.sound.SoundManager
+import dev.morpho.data.stream.StreamStore
 import dev.morpho.domain.content.GlossIndex
 import dev.morpho.domain.review.FsrsScheduler
-import dev.morpho.domain.review.ReviewScheduler
+import dev.morpho.domain.stream.StreamEngine
 import dev.morpho.ui.designsystem.component.ContentImageRenderer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -48,6 +49,8 @@ class AppContainer(private val context: Context) {
     val settingsRepository: SettingsRepository by lazy {
         SettingsRepository(progressRepository)
     }
+
+    val streamStore: StreamStore by lazy { StreamStore(progressRepository, contentRepository) }
 
     val progressBackup: ProgressBackup by lazy {
         ProgressBackup(context, databaseProvider)
@@ -81,10 +84,7 @@ class AppContainer(private val context: Context) {
 
     val fsrs: FsrsScheduler by lazy { FsrsScheduler() }
 
-    val reviewScheduler: ReviewScheduler by lazy { ReviewScheduler(fsrs) }
-
-    /** Results of the last finished session, read by the summary screen. */
-    val sessionResults: SessionResultHolder = SessionResultHolder()
+    val streamEngine: StreamEngine by lazy { StreamEngine(fsrs) }
 
     // --- lifecycle ----------------------------------------------------------
 
@@ -150,31 +150,3 @@ data class StartupReport(
     val glossIndex: GlossIndex = GlossIndex.EMPTY,
     val integrityViolations: List<String>,
 )
-
-/** Tiny in-memory hand-off between the session screens and the summary screen. */
-class SessionResultHolder {
-    @Volatile
-    var last: SessionResult? = null
-        private set
-
-    fun publish(result: SessionResult) {
-        last = result
-    }
-
-    fun consume(): SessionResult? = last
-}
-
-data class SessionResult(
-    val kind: SessionKind,
-    val newLearned: Int,
-    val reviewed: Int,
-    val correctFirstTry: Int,
-    val totalFirstTry: Int,
-    val streakDays: Int,
-    val goalMet: Boolean,
-) {
-    val accuracy: Float?
-        get() = if (totalFirstTry == 0) null else correctFirstTry.toFloat() / totalFirstTry
-}
-
-enum class SessionKind { LEARNING, REVIEW }
