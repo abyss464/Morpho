@@ -25,12 +25,15 @@ const BREAK_BEFORE = new Set([
 const SOFT_BREAK = new Set(['of', 'in', 'on', 'at', 'for', 'from', 'by', 'with', 'about', 'into', 'to', 'over', 'under']);
 const JOINERS = new Set(['or', 'and']);
 const MIN_WORDS = 2;
-const MAX_WORDS = 7;
+/** Longest piece, in words: easy pieces follow whole clauses, hard pieces are cut finer. */
+export type Difficulty = 'easy' | 'hard';
+const MAX_WORDS: Record<Difficulty, number> = { easy: 7, hard: 4 };
 // The opening clause splits right after its verb: "A system is" | "a group of ...".
 const COPULA = new Set(['is', 'are', 'means', 'mean']);
 
 /** Splits a definition into 3-6 clause-sized pieces that read naturally on their own. */
-export function chunk(text: string): string[] {
+export function chunk(text: string, difficulty: Difficulty = 'easy'): string[] {
+  const max = MAX_WORDS[difficulty];
   const words = text.trim().split(/\s+/);
   const raw: string[][] = [];
   let cur: string[] = [];
@@ -57,7 +60,7 @@ export function chunk(text: string): string[] {
   const split: string[][] = [];
   for (const piece of raw) {
     let rest = piece;
-    while (rest.length > MAX_WORDS) {
+    while (rest.length > max) {
       const mid = Math.floor(rest.length / 2);
       // Prefer splitting before "or"/"and", then before a preposition, nearest the middle.
       const near = (set: Set<string>) => {
@@ -96,7 +99,7 @@ export function chunk(text: string): string[] {
 }
 
 /** A small deterministic generator, so a word's puzzle looks the same every time it is opened. */
-function seeded(seed: number): () => number {
+export function seeded(seed: number): () => number {
   let s = seed >>> 0 || 1;
   return () => {
     s ^= s << 13;
@@ -106,7 +109,7 @@ function seeded(seed: number): () => number {
   };
 }
 
-function shuffle<T>(items: T[], rand: () => number): T[] {
+export function shuffle<T>(items: T[], rand: () => number): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i -= 1) {
     const j = Math.floor(rand() * (i + 1));
@@ -115,25 +118,29 @@ function shuffle<T>(items: T[], rand: () => number): T[] {
   return out;
 }
 
-/** Builds the puzzle for one word; decoys come from the other words of the same unit. */
-export function buildPuzzle(w: WordFull, unitWords: WordFull[]): Puzzle | null {
+/**
+ * Builds the puzzle for one word. Decoys are pieces of the pool words' definitions: easy
+ * puzzles draw from the words being learned alongside, hard ones from every word met.
+ */
+export function buildPuzzle(w: WordFull, pool: WordFull[], difficulty: Difficulty = 'easy'): Puzzle | null {
   const sense = primarySense(w);
   if (!sense) return null;
-  const parts = chunk(sense.def);
+  const parts = chunk(sense.def, difficulty);
   const rand = seeded(w.id);
   const own = new Set(parts.map((p) => p.toLowerCase()));
-  const pool = unitWords
+  const candidates = pool
     .filter((x) => x.id !== w.id)
     .flatMap((x) => {
       const p = primarySense(x);
       if (!p) return [];
       const head = x.word.toLowerCase();
       // Opening pieces ("A tax is") and pieces naming their own word would give the decoy away.
-      return chunk(p.def)
+      return chunk(p.def, difficulty)
         .slice(1)
         .filter((c) => !c.toLowerCase().includes(head) && !own.has(c.toLowerCase()));
     });
-  const decoys = shuffle(pool, rand).slice(0, parts.length >= 5 ? 3 : 2);
+  const count = (difficulty === 'hard' ? 3 : 2) + (parts.length >= 5 ? 1 : 0);
+  const decoys = shuffle(candidates, rand).slice(0, count);
   const pieces = [...parts, ...decoys].map((text, id) => ({ id, text }));
   return { pieces: shuffle(pieces, rand), answer: parts.map((_, id) => id) };
 }

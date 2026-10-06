@@ -22,7 +22,7 @@ export const primarySense = (w: WordFull): Sense | undefined => w.senses.find((s
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-function wordPattern(word: string): RegExp | null {
+export function wordPattern(word: string): RegExp | null {
   const w = word.trim().toLowerCase();
   if (!w) return null;
   if (/\s/.test(w)) return new RegExp(`\\b${w.split(/\s+/).map(esc).join('\\s+')}\\b`, 'gi');
@@ -226,9 +226,12 @@ export function WordCard({
   id,
   flash,
   onOpen,
+  stage,
 }: {
   w: WordFull;
   variant: 'study' | 'entry';
+  /** The stream's step label, shown above the word. */
+  stage?: ReactNode;
   note?: Note | null;
   link?: string;
   num?: string;
@@ -249,6 +252,7 @@ export function WordCard({
         <Picture w={w} eager={!entry} />
       </figure>
       <div className="body">
+        {stage}
         <Head w={w} as={entry ? 'h2' : 'h1'} link={link}>
           {num && <span className="num">{num}</span>}
         </Head>

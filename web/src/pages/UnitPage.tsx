@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { loadUnit, unitWordIds, useAsync } from '../api';
 import type { Index } from '../api';
 import { WordCard } from '../components/parts';
-import { go, href } from '../router';
+import { href } from '../router';
 import { useProgress } from '../store';
 
 export function UnitNotFound({ unit, index }: { unit: number; index: Index }) {
@@ -11,7 +11,7 @@ export function UnitNotFound({ unit, index }: { unit: number; index: Index }) {
       <h1>There is no Unit {unit}.</h1>
       <p>This release has {index.unitCount} units.</p>
       <a className="btn primary" href={href.home()}>
-        All units
+        Back to today
       </a>
     </section>
   );
@@ -37,14 +37,14 @@ export function UnitPage({ index, unit, focus }: { index: Index; unit: number; f
 
   const ids = unitWordIds(index, unit);
   const first = (unit - 1) * index.unitSize + 1;
-  const studied = ids.filter((id) => progress.cards[id]).length;
+  const met = ids.filter((id) => progress.cards[id] || progress.words[id]).length;
   const prev = unit > 1 ? unit - 1 : null;
   const next = unit < index.unitCount ? unit + 1 : null;
 
   return (
     <>
       <div className="crumbs">
-        <a href={href.home()}>&larr; All units</a>
+        <a href={href.home()}>&larr; Today</a>
         <span className="actions">
           {prev && <a href={href.unit(prev)}>Unit {prev}</a>}
           {next && <a href={href.unit(next)}>Unit {next} &rarr;</a>}
@@ -55,13 +55,8 @@ export function UnitPage({ index, unit, focus }: { index: Index; unit: number; f
         <div>
           <h1>Unit {unit}</h1>
           <p>
-            Words {first}&ndash;{first + ids.length - 1} &middot; {studied} of {ids.length} studied
+            Words {first}&ndash;{first + ids.length - 1} &middot; {met} of {ids.length} met
           </p>
-        </div>
-        <div className="actions">
-          <a className="btn primary" href={href.study(unit, 1)}>
-            Study
-          </a>
         </div>
       </header>
 
@@ -81,10 +76,8 @@ export function UnitPage({ index, unit, focus }: { index: Index; unit: number; f
               w={w}
               variant="entry"
               num={`${i + 1} / ${data.data.length}`}
-              link={href.study(unit, i + 1)}
               note={progress.notes[w.id]}
               flash={flash === w.id}
-              onOpen={() => go(href.study(unit, i + 1))}
             />
           ))}
         </div>
@@ -99,8 +92,8 @@ export function UnitPage({ index, unit, focus }: { index: Index; unit: number; f
           ) : (
             <span />
           )}
-          <a className="btn primary" href={href.study(unit, 1)}>
-            Study Unit {unit}
+          <a className="btn primary" href={href.home()}>
+            Back to today
           </a>
           {next ? (
             <a className="btn" href={href.unit(next)}>

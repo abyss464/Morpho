@@ -1,6 +1,15 @@
 # Morpho web
 
-A local web app that teaches the whole released vocabulary in the "4000 Essential English Words" model, all in English: every word is shown as picture, word, phonetic, audio, part of speech, a one-sentence English definition and one example sentence with the word highlighted. Review shows only the word; the learner writes their own explanation from memory, reveals the card to compare, and rates themselves (Again / Hard / Good / Easy, scheduled with FSRS via `ts-fsrs`).
+A local web app that teaches the whole released vocabulary in the "4000 Essential English Words" model, all in English: every word comes with a picture, phonetic, audio, part of speech, a one-sentence English definition and an example sentence.
+
+There is one way in. Today shows how many reviews and new words are waiting; Continue opens the **stream**, which mixes reviews and new words into one sequence of steps:
+
+- **New word**: the full card, read aloud (word, definition, example).
+- **Explain it**: rebuild the definition by clicking its pieces in order, with decoy pieces from other words; once right after the card, then again a few steps later without the picture.
+- **Use it**: pick the word that fills the blank in its example from four look-alike words.
+- **Review**: a graduated word comes back on its FSRS schedule as a rebuild or a fill-in; the rating is derived from how it went and can be changed.
+
+Every step is done with the mouse; arrow and Enter keys are optional shortcuts. The rules (stages, transitions, mixing, ratings) are the shared contract in `docs/contracts/stream.md`, which the Android app implements too.
 
 ## Run
 
@@ -19,8 +28,8 @@ The app reads a release bundle produced by `morphod export`, read-only, straight
 
 - Bundle: the lexicographically last `data/releases/export-*/` that contains `release.db`. Set `MORPHO_RELEASE` to a bundle name (`export-20260901T122321560Z`) or a path to use another one.
 - The bundle is re-resolved on every API request, so a newly cut release shows up on the next page load without restarting the server.
-- `release.db` is opened with Node's built-in `node:sqlite` (Node 22.5+; Node 24 here). Only `words`, `senses`, `examples` (the `display_order = 1` sentence and its matched picture) and `meta` are read.
-- Media is served from the bundle itself, not copied: `/media/img/{hash}.webp` and `/media/audio/{hash}.ogg`, with `Cache-Control: public, max-age=31536000, immutable` and byte-range support.
+- `release.db` is opened with Node's built-in `node:sqlite` (Node 22.5+). It reads `words`, `senses`, `examples` (the `display_order = 1` sentence and its matched picture), `distractors` and `meta`.
+- Media is served from the bundle itself: `/media/img/{hash}.webp` and `/media/audio/{hash}.ogg`, cached immutably, with byte-range support.
 
 Endpoints, provided by the Vite plugin in `server/release.ts`:
 
@@ -30,27 +39,22 @@ Endpoints, provided by the Vite plugin in `server/release.ts`:
 | `/api/unit/:n` | full data for unit `n` (20 consecutive words in `learning_order`) |
 | `/api/words?ids=1,2,3` | full data for up to 200 word ids |
 
-Units are 20 consecutive words of the release's `learning_order`, targets and auxiliaries together.
-
 ## Progress
 
-Stored in the browser's `localStorage` under `morpho-web-v1`, keyed by `word_id` (stable across releases):
-
-- `cards`: an FSRS card per studied word. Finishing a unit in the study view creates cards for its words, due immediately.
-- `notes`: the latest explanation the learner wrote for each word, shown under that word's entry and in its study card.
-
-Unit progress is derived from which of a unit's words have cards, so it follows the words if a later release regroups them.
+Stored in the browser's `localStorage` under `morpho-web-v2`, keyed by `word_id` (stable across releases): each word's stage and next step, FSRS cards for graduated words, today's counters, a per-day step history, the daily new-word setting, the step on screen (so a paused stream resumes on it) and the learner's own notes. Progress from the earlier unit-and-review version (`morpho-web-v1`) carries over: its studied words continue in review.
 
 ## Layout
 
 ```
-server/release.ts    Vite plugin: release resolution, SQLite reads, JSON API, media serving
-src/types.ts         JSON shapes shared by server and client
-src/api.ts           fetch + cache for index, units and words
-src/store.ts         localStorage progress, FSRS scheduling
-src/audio.ts         single shared audio player (plays only on click)
-src/router.ts        hash routes: #/, #/unit/:n, #/unit/:n/study/:i, #/unit/:n/done, #/review
-src/components/parts.tsx   word card pieces (picture, head, definition, example, explanation)
-src/pages/           Home, UnitPage, StudyView (+ unit done), Review
-src/styles.css       tokens (light/dark), card, segmented rating, pill switch, chip deck
+server/release.ts           Vite plugin: release resolution, SQLite reads, JSON API, media serving
+src/types.ts                JSON shapes shared by server and client
+src/api.ts                  fetch + cache for index, units and words
+src/store.ts                localStorage progress
+src/stream.ts               the stream: next step, transitions, derived ratings, FSRS
+src/explain.ts              definition pieces and the rebuild puzzle
+src/audio.ts                shared audio player (single files or a word-definition-example run)
+src/router.ts               hash routes: #/ (Today), #/stream, #/unit/:n (word list)
+src/components/             word card pieces, Rebuild, Fill, Search
+src/pages/                  Today, Stream (steps, review result, done), UnitPage
+src/styles.css              shared tokens (light/dark) and layout
 ```

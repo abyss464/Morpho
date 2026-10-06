@@ -1,41 +1,50 @@
 import { useEffect } from 'react';
 import { loadIndex, useAsync } from './api';
 import type { Index } from './api';
-import { useNow } from './hooks';
-import { Home } from './pages/Home';
-import { Review } from './pages/Review';
-import { StudyView, UnitDone } from './pages/StudyView';
+import { Stream } from './pages/Stream';
+import { Today } from './pages/Today';
 import { UnitPage } from './pages/UnitPage';
 import { href, parse, useHash } from './router';
 import type { Route } from './router';
-import { dueIds, useProgress } from './store';
+import { useProgress } from './store';
+import { streak, streamProgress } from './stream';
 
 function TopBar({ route, index }: { route: Route; index: Index | null }) {
   const progress = useProgress();
-  const now = useNow(30000);
-  const due = index ? dueIds(progress, now).filter((id) => index.pos.has(id)).length : 0;
-  const reviewing = route.name === 'review';
+  if (route.name === 'stream' && index) {
+    const { done, total } = streamProgress(progress, index);
+    return (
+      <header className="bar">
+        <a className="brand" href={href.home()}>
+          <b>Morpho</b>
+        </a>
+        <div className="meter">
+          <span>Today</span>
+          <div className="bar-track" role="progressbar" aria-label="Today's stream" aria-valuenow={done} aria-valuemax={total}>
+            <i style={{ width: `${(done / Math.max(1, total)) * 100}%` }} />
+          </div>
+          <span className="count">
+            {done} / {total}
+          </span>
+          <a className="btn pill" href={href.home()}>
+            Pause
+          </a>
+        </div>
+      </header>
+    );
+  }
+  const days = streak(progress);
   return (
     <header className="bar">
       <a className="brand" href={href.home()}>
         <b>Morpho</b>
-        <small>
-          Graduate exam English{index ? ` · ${index.words.length.toLocaleString('en-US')} words` : ''}
-        </small>
+        <small>Graduate exam English{index ? ` · ${index.words.length.toLocaleString('en-US')} words` : ''}</small>
       </a>
-      <nav className="modes" aria-label="Mode">
-        <a href={href.home()} aria-current={reviewing ? undefined : 'page'}>
-          Learn
-        </a>
-        <a href={href.review()} aria-current={reviewing ? 'page' : undefined}>
-          Review
-          {due > 0 && (
-            <span className="n" aria-label={`${due} due`}>
-              {due}
-            </span>
-          )}
-        </a>
-      </nav>
+      {days > 0 && (
+        <span className="streak">
+          <b>{days}</b> day streak
+        </span>
+      )}
     </header>
   );
 }
@@ -43,15 +52,11 @@ function TopBar({ route, index }: { route: Route; index: Index | null }) {
 function Page({ route, index }: { route: Route; index: Index }) {
   switch (route.name) {
     case 'home':
-      return <Home index={index} />;
+      return <Today index={index} />;
+    case 'stream':
+      return <Stream index={index} />;
     case 'unit':
       return <UnitPage index={index} unit={route.unit} focus={route.focus} />;
-    case 'study':
-      return <StudyView index={index} unit={route.unit} at={route.index} explain={route.explain} />;
-    case 'done':
-      return <UnitDone index={index} unit={route.unit} />;
-    case 'review':
-      return <Review index={index} />;
   }
 }
 

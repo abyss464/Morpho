@@ -1,35 +1,23 @@
 import { useSyncExternalStore } from 'react';
 
-export type Route =
-  | { name: 'home' }
-  | { name: 'unit'; unit: number; focus: number | null }
-  | { name: 'study'; unit: number; index: number; explain: boolean }
-  | { name: 'done'; unit: number }
-  | { name: 'review' };
+export type Route = { name: 'home' } | { name: 'stream' } | { name: 'unit'; unit: number; focus: number | null };
 
 export function parse(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#/, '').split('?');
   const parts = path.split('/').filter(Boolean);
   const params = new URLSearchParams(query);
-  if (parts[0] === 'review') return { name: 'review' };
+  if (parts[0] === 'stream') return { name: 'stream' };
   if (parts[0] === 'unit' && /^\d+$/.test(parts[1] ?? '')) {
-    const unit = Number(parts[1]);
-    if (parts[2] === 'study')
-      return { name: 'study', unit, index: Math.max(1, Number(parts[3]) || 1), explain: parts[4] === 'explain' };
-    if (parts[2] === 'done') return { name: 'done', unit };
     const w = params.get('w');
-    return { name: 'unit', unit, focus: w && /^\d+$/.test(w) ? Number(w) : null };
+    return { name: 'unit', unit: Number(parts[1]), focus: w && /^\d+$/.test(w) ? Number(w) : null };
   }
   return { name: 'home' };
 }
 
 export const href = {
   home: () => '#/',
+  stream: () => '#/stream',
   unit: (n: number, focus?: number) => `#/unit/${n}${focus ? `?w=${focus}` : ''}`,
-  study: (n: number, i: number) => `#/unit/${n}/study/${i}`,
-  explain: (n: number, i: number) => `#/unit/${n}/study/${i}/explain`,
-  done: (n: number) => `#/unit/${n}/done`,
-  review: () => '#/review',
 };
 
 export function go(h: string, replace = false): void {

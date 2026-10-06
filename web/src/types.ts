@@ -28,6 +28,8 @@ export interface WordFull {
   senses: Sense[];
   /** The display_order = 1 example; its picture was matched to this sentence. */
   example: Example | null;
+  /** Three look-alike words bound to this one for "which word fits" tasks, by rank. */
+  distractors: number[];
 }
 
 export interface ReleaseIndex {

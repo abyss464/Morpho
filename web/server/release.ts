@@ -89,6 +89,16 @@ function loadRelease(dir: string, stamp: string): Loaded {
       )
       .all() as unknown as ExampleRow[];
 
+    const distractors = db
+      .prepare('SELECT word_id, distractor_word_id FROM distractors ORDER BY word_id, rank')
+      .all() as unknown as { word_id: number; distractor_word_id: number }[];
+    const distractorsBy = new Map<number, number[]>();
+    for (const r of distractors) {
+      const list = distractorsBy.get(r.word_id) ?? [];
+      list.push(r.distractor_word_id);
+      distractorsBy.set(r.word_id, list);
+    }
+
     const sensesBy = new Map<number, Sense[]>();
     for (const r of senses) {
       const list = sensesBy.get(r.word_id) ?? [];
@@ -114,6 +124,7 @@ function loadRelease(dir: string, stamp: string): Loaded {
       audio: w.word_audio_file,
       senses: sensesBy.get(w.word_id) ?? [],
       example: exampleBy.get(w.word_id) ?? null,
+      distractors: distractorsBy.get(w.word_id) ?? [],
     }));
 
     return {
