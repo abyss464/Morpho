@@ -4,8 +4,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,7 +40,7 @@ import dev.morpho.domain.stream.Spelling
 import dev.morpho.domain.stream.wordPattern
 import dev.morpho.ui.designsystem.component.GlossedText
 import dev.morpho.ui.designsystem.motion.floatAnimatable
-import dev.morpho.ui.designsystem.motion.pressScale
+import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.motion.runShake
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
@@ -184,6 +181,7 @@ private fun LetterCell(
     Box(
         modifier = Modifier
             .size(width = MorphoTheme.sizes.letterWidth, height = MorphoTheme.sizes.letterHeight)
+            .then(if (onClick != null) Modifier.pressMotion() else Modifier)
             .clip(MorphoTheme.radii.shapeSm)
             .background(fill)
             .drawBehind {
@@ -239,17 +237,15 @@ fun LetterTiles(state: SpellState, onPlace: (Int) -> Unit, modifier: Modifier = 
     ) {
         state.puzzle.tiles.forEach { tile ->
             val used = state.used(tile.id)
-            val interaction = remember { MutableInteractionSource() }
-            val pressed by interaction.collectIsPressedAsState()
             val colors = MaterialTheme.colorScheme
             Box(
                 modifier = Modifier
                     .size(MorphoTheme.spacing.minTouchTarget)
-                    .pressScale(pressed && !used, MorphoTheme.reducedMotion)
+                    .pressMotion(!used)
                     .clip(MorphoTheme.radii.shapeSm)
                     .background(if (used) colors.surfaceContainerHigh else colors.surfaceContainerLow)
                     .border(BorderStroke(1.dp, if (used) Color.Transparent else MorphoTheme.accents.ringTrack), MorphoTheme.radii.shapeSm)
-                    .clickable(enabled = !used, interactionSource = interaction, indication = null) { onPlace(tile.id) }
+                    .clickable(enabled = !used) { onPlace(tile.id) }
                     .then(
                         if (used) {
                             Modifier.clearAndSetSemantics { }
@@ -280,15 +276,9 @@ fun SpellActions(
 ) {
     if (state.solved) return
     FlowRow(modifier = modifier.fillMaxWidth()) {
-        TextButton(onClick = onShowNextLetter) {
-            Text(stringResource(R.string.stream_show_next_letter), style = MaterialTheme.typography.bodyMedium)
-        }
-        TextButton(onClick = onShowWord) {
-            Text(stringResource(R.string.stream_show_word), style = MaterialTheme.typography.bodyMedium)
-        }
-        TextButton(onClick = onStartOver, enabled = state.filled.any { it != null }) {
-            Text(stringResource(R.string.stream_start_over), style = MaterialTheme.typography.bodyMedium)
-        }
+        LinkButton(stringResource(R.string.stream_show_next_letter), onShowNextLetter)
+        LinkButton(stringResource(R.string.stream_show_word), onShowWord)
+        LinkButton(stringResource(R.string.stream_start_over), onStartOver, enabled = state.filled.any { it != null })
     }
 }
 

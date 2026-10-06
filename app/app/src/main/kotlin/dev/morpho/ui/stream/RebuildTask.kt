@@ -4,8 +4,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import dev.morpho.R
 import dev.morpho.domain.stream.Segment
 import dev.morpho.ui.designsystem.motion.floatAnimatable
-import dev.morpho.ui.designsystem.motion.pressScale
+import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.motion.runShake
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
@@ -227,8 +225,8 @@ fun RebuildActions(
 }
 
 @Composable
-private fun LinkButton(text: String, onClick: () -> Unit, enabled: Boolean = true) {
-    TextButton(onClick = onClick, enabled = enabled) {
+internal fun LinkButton(text: String, onClick: () -> Unit, enabled: Boolean = true) {
+    TextButton(onClick = onClick, enabled = enabled, modifier = Modifier.pressMotion(enabled)) {
         Text(text = text, style = MaterialTheme.typography.bodyMedium)
     }
 }
@@ -244,8 +242,6 @@ private fun PieceChip(
 ) {
     val accents = MorphoTheme.accents
     val colors = MaterialTheme.colorScheme
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     val (background, border, content) = when (look) {
         PieceLook.PLAIN -> Triple(colors.surfaceContainerLow, colors.outlineVariant, colors.onSurface)
         PieceLook.WRONG -> Triple(accents.wrongContainer, accents.wrong, accents.wrong)
@@ -255,16 +251,11 @@ private fun PieceChip(
     Box(
         modifier = modifier
             .heightIn(min = MorphoTheme.spacing.minTouchTarget)
-            .pressScale(pressed && enabled, MorphoTheme.reducedMotion)
+            .pressMotion(enabled)
             .clip(MorphoTheme.radii.shapeSm)
             .background(background)
             .border(BorderStroke(1.dp, border), MorphoTheme.radii.shapeSm)
-            .clickable(
-                enabled = enabled,
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick,
-            )
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = MorphoTheme.spacing.sm, vertical = MorphoTheme.spacing.xs)
             .then(
                 if (look == PieceLook.USED) {

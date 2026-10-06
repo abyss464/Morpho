@@ -24,9 +24,10 @@ import androidx.compose.ui.unit.dp
 import dev.morpho.R
 import dev.morpho.ui.designsystem.component.MarkKind
 import dev.morpho.ui.designsystem.component.MorphoMark
+import dev.morpho.ui.designsystem.component.PrimaryButton
 import dev.morpho.ui.designsystem.component.ScreenPreviewBox
-import dev.morpho.ui.designsystem.component.StreakBadge
 import dev.morpho.ui.designsystem.component.ScreenPreviews
+import dev.morpho.ui.designsystem.component.StreakBadge
 import dev.morpho.ui.designsystem.theme.MorphoSectionLabel
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
@@ -114,8 +115,8 @@ internal fun DoneView(
             modifier = Modifier.padding(horizontal = spacing.screenGutter, vertical = spacing.sm),
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
-            PrimaryAction(stringResource(R.string.stream_done_for_today), onDone)
-            PrimaryAction(stringResource(R.string.stream_meet_more), onMeetMore, outlined = true)
+            PrimaryButton(stringResource(R.string.stream_done_for_today), onDone)
+            PrimaryButton(stringResource(R.string.stream_meet_more), onMeetMore, outlined = true)
         }
     }
 }

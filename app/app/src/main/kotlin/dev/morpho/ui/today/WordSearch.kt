@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import dev.morpho.R
 import dev.morpho.data.repository.IndexedWord
 import dev.morpho.data.stream.StreamSnapshot
+import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
 /** A look-up result: the word and the unit it sits in. */
@@ -170,6 +171,7 @@ fun WordSearch(index: List<IndexedWord>, onPick: (Long) -> Unit, modifier: Modif
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = spacing.minTouchTarget)
+                            .pressMotion()
                             .clickable { pick(hit) }
                             .padding(horizontal = spacing.sm),
                         verticalAlignment = Alignment.CenterVertically,

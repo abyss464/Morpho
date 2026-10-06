@@ -43,13 +43,13 @@ import dev.morpho.data.backup.BackupVerdict
 import dev.morpho.data.backup.ProgressBackup
 import dev.morpho.data.repository.MorphoSettings
 import dev.morpho.data.repository.SettingsRepository
-import dev.morpho.data.sound.SfxEvent
 import dev.morpho.di.AppContainer
 import dev.morpho.di.StartupReport
 import dev.morpho.domain.model.ActivityChartStyle
 import dev.morpho.domain.model.ThemeMode
 import dev.morpho.ui.designsystem.component.PreviewBox
 import dev.morpho.ui.designsystem.component.ThemePreviews
+import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
 /**
@@ -84,10 +84,13 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        container.playSfx(SfxEvent.TAP)
-                        onBack()
-                    }) {
+                    IconButton(
+                        onClick = {
+                            container.tap()
+                            onBack()
+                        },
+                        modifier = Modifier.pressMotion(),
+                    ) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = stringResource(R.string.action_back),
@@ -113,10 +116,12 @@ fun SettingsScreen(
             onHapticsChange = viewModel::setHapticsEnabled,
             onReducedMotionChange = viewModel::setReducedMotion,
             onExport = {
+                viewModel.onTap()
                 viewModel.dismissMessage()
                 exportLauncher.launch(viewModel.suggestedExportName())
             },
             onImport = {
+                viewModel.onTap()
                 viewModel.dismissMessage()
                 importLauncher.launch(arrayOf("*/*"))
             },
@@ -167,7 +172,7 @@ private fun ImportConfirmDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            TextButton(onClick = onConfirm, modifier = Modifier.pressMotion()) {
                 Text(
                     stringResource(R.string.backup_import_confirm),
                     color = MaterialTheme.colorScheme.error,
@@ -175,7 +180,7 @@ private fun ImportConfirmDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, modifier = Modifier.pressMotion()) {
                 Text(stringResource(R.string.backup_import_cancel))
             }
         },
@@ -405,7 +410,7 @@ private fun SettingRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = MorphoTheme.spacing.minTouchTarget)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.pressMotion().clickable(onClick = onClick) else Modifier)
             .padding(vertical = MorphoTheme.spacing.xs),
         verticalArrangement = Arrangement.spacedBy(MorphoTheme.spacing.xxs / 2),
     ) {
@@ -465,6 +470,7 @@ private fun ChoiceChip(
     FilterChip(
         selected = selected,
         onClick = onClick,
+        modifier = Modifier.pressMotion(),
         label = { Text(label) },
         colors = FilterChipDefaults.filterChipColors(
             selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,

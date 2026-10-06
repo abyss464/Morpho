@@ -33,37 +33,48 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     private val _backup = MutableStateFlow(BackupUiState())
     val backup: StateFlow<BackupUiState> = _backup.asStateFlow()
 
+    /** A tick for each step the slider passes, not for every pixel it moves. */
     fun setDailyGoal(value: Int) {
         val snapped = (value / SettingsRepository.DAILY_GOAL_STEP) *
             SettingsRepository.DAILY_GOAL_STEP
+        if (snapped != settings.value.dailyGoal) container.tap()
         viewModelScope.launch { repo.setDailyGoal(snapped) }
     }
 
     fun setSoundEnabled(value: Boolean) {
         container.soundManager.enabled = value
         viewModelScope.launch { repo.setSoundEnabled(value) }
+        container.hapticsManager.perform(HapticPattern.TAP)
         if (value) container.playSfx(SfxEvent.CORRECT)
     }
 
+    /** Plays the tap at the new volume each time the slider crosses a tenth. */
     fun setSfxVolume(value: Float) {
+        val crossed = (value * VOLUME_STEPS).toInt() != (settings.value.sfxVolume * VOLUME_STEPS).toInt()
         container.soundManager.volume = value
         viewModelScope.launch { repo.setSfxVolume(value) }
-        container.playSfx(SfxEvent.TAP)
+        if (crossed) container.tap()
     }
 
     fun setHapticsEnabled(value: Boolean) {
         container.hapticsManager.enabled = value
         viewModelScope.launch { repo.setHapticsEnabled(value) }
+        container.playSfx(SfxEvent.TAP)
         if (value) container.hapticsManager.perform(HapticPattern.PROMOTE)
     }
 
     fun setReducedMotion(value: Boolean?) {
+        container.tap()
         viewModelScope.launch { repo.setReducedMotion(value) }
     }
 
     fun setActivityChartStyle(value: ActivityChartStyle) {
+        container.tap()
         viewModelScope.launch { repo.setActivityChartStyle(value) }
     }
+
+    /** Feedback for a press that opens something (the file pickers, a dialog's buttons). */
+    fun onTap() = container.tap()
 
     /**
      * Repaints the whole app the moment it lands: `MainActivity` collects the same
@@ -71,7 +82,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
      */
     fun setThemeMode(value: ThemeMode) {
         viewModelScope.launch { repo.setThemeMode(value) }
-        container.playSfx(SfxEvent.TAP)
+        container.tap()
     }
 
     // ---------------------------------------------------------------- backup
@@ -109,6 +120,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun cancelImport() {
         val staged = _backup.value.pending ?: return
+        container.tap()
         _backup.value = BackupUiState()
         viewModelScope.launch { container.progressBackup.discard(staged) }
     }
@@ -119,6 +131,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
      */
     fun confirmImport() {
         val staged = _backup.value.pending ?: return
+        container.tap()
         _backup.value = BackupUiState(busy = true)
         viewModelScope.launch {
             if (!container.progressBackup.applyAndRestart(staged)) {
@@ -132,6 +145,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     companion object {
+        private const val VOLUME_STEPS = 10
+
         fun factory(container: AppContainer) = viewModelFactory {
             initializer { SettingsViewModel(container) }
         }

@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -243,40 +241,6 @@ fun StatusText(text: String, tone: Tone, modifier: Modifier = Modifier) {
     )
 }
 
-/** The full-width pill at the foot of every step; dims while the step is unsolved. */
-@Composable
-fun PrimaryAction(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    outlined: Boolean = false,
-) {
-    val primary = MaterialTheme.colorScheme.primary
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        shape = MorphoTheme.radii.shapeFull,
-        colors = if (outlined) {
-            ButtonDefaults.outlinedButtonColors(contentColor = primary)
-        } else {
-            ButtonDefaults.buttonColors(
-                disabledContainerColor = primary.copy(alpha = DISABLED_ALPHA),
-                disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
-            )
-        },
-        border = if (outlined) {
-            androidx.compose.foundation.BorderStroke(1.dp, MorphoTheme.accents.motifBase)
-        } else {
-            null
-        },
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = MorphoTheme.sizes.primaryButton),
-    ) {
-        Text(text = text, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
-    }
-}
 
 /** Fills the space it is given with the sunken ground and a centred mark: a covered picture. */
 @Composable
@@ -301,7 +265,6 @@ fun CoveredPicture(modifier: Modifier = Modifier, content: @Composable () -> Uni
     }
 }
 
-private const val DISABLED_ALPHA = 0.4f
 
 private val POS = mapOf(
     "noun" to "n.",

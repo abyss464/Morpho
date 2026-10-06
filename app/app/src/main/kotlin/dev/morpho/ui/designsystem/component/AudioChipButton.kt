@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
 /**
@@ -69,6 +70,7 @@ fun AudioChipButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier
+            .pressMotion(enabled)
             .sizeIn(
                 minWidth = MorphoTheme.spacing.minTouchTarget,
                 minHeight = MorphoTheme.spacing.minTouchTarget,

@@ -7,6 +7,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -16,9 +17,17 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
@@ -67,17 +76,47 @@ fun rememberSharedAxis(): SharedAxis {
     }
 }
 
-/** Press feedback: scale 1 -> 0.97; opacity instead when motion is reduced. */
-fun Modifier.pressScale(pressed: Boolean, reducedMotion: Boolean, scale: Float = 0.97f): Modifier =
-    graphicsLayer {
-        if (reducedMotion) {
-            alpha = if (pressed) 0.75f else 1f
-        } else {
-            val s = if (pressed) scale else 1f
-            scaleX = s
-            scaleY = s
+/**
+ * Press feedback for anything tappable: scales to 0.97 over the press duration while a
+ * finger is down, and back; dims instead when motion is reduced.
+ *
+ * It watches the pointer itself rather than an interaction source, because `clickable`
+ * inside a scrolling container holds its press back until it knows the touch is not a
+ * scroll — a quick tap then never shows as pressed. Watching on the initial pass, without
+ * consuming, leaves the element's own click and ripple untouched, and a touch that turns
+ * into a scroll releases the press.
+ */
+@Composable
+fun Modifier.pressMotion(enabled: Boolean = true): Modifier {
+    var pressed by remember { mutableStateOf(false) }
+    val reducedMotion = MorphoTheme.reducedMotion
+    val shown = pressed && enabled
+    val scale by animateFloatAsState(
+        targetValue = if (shown && !reducedMotion) PRESSED_SCALE else 1f,
+        animationSpec = tween(MorphoTheme.durations.press, easing = MorphoTheme.easings.standard),
+        label = "press",
+    )
+    return this
+        .graphicsLayer {
+            if (reducedMotion) {
+                alpha = if (shown) PRESSED_ALPHA else 1f
+            } else {
+                scaleX = scale
+                scaleY = scale
+            }
         }
-    }
+        .pointerInput(enabled) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                pressed = true
+                waitForUpOrCancellation(pass = PointerEventPass.Initial)
+                pressed = false
+            }
+        }
+}
+
+private const val PRESSED_SCALE = 0.97f
+private const val PRESSED_ALPHA = 0.75f
 
 /**
  * Horizontal shake, +/-8dp over 300 ms. Keyframed so the motion reads as a rejection

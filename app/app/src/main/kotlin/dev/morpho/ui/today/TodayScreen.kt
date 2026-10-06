@@ -19,7 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
@@ -39,16 +38,17 @@ import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.morpho.R
-import dev.morpho.data.sound.SfxEvent
 import dev.morpho.di.AppContainer
 import dev.morpho.domain.model.ActivityChartStyle
 import dev.morpho.domain.model.DailyActivity
 import dev.morpho.domain.model.GreetingPeriod
 import dev.morpho.domain.progress.OverallProgress
 import dev.morpho.ui.designsystem.component.MotifOrnament
+import dev.morpho.ui.designsystem.component.PrimaryButton
 import dev.morpho.ui.designsystem.component.ScreenPreviewBox
 import dev.morpho.ui.designsystem.component.SectionHeading
 import dev.morpho.ui.designsystem.component.ScreenPreviews
+import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 import java.time.LocalDate
 
@@ -74,19 +74,19 @@ fun TodayScreen(
         state = state,
         modifier = modifier.fillMaxSize(),
         onOpenStream = {
-            container.playSfx(SfxEvent.TAP)
+            container.tap()
             onOpenStream()
         },
         onOpenSettings = {
-            container.playSfx(SfxEvent.TAP)
+            container.tap()
             onOpenSettings()
         },
         onToggleChartStyle = { style ->
-            container.playSfx(SfxEvent.TAP)
+            container.tap()
             viewModel.setActivityChartStyle(style)
         },
         onOpenWord = { id ->
-            container.playSfx(SfxEvent.TAP)
+            container.tap()
             onOpenWord(id)
         },
     )
@@ -138,7 +138,9 @@ private fun TodayContent(
                                 },
                             )
                         },
-                        modifier = Modifier.size(spacing.minTouchTarget),
+                        modifier = Modifier
+                            .size(spacing.minTouchTarget)
+                            .pressMotion(),
                     ) {
                         Icon(
                             imageVector = when (state.activityChartStyle) {
@@ -195,25 +197,17 @@ private fun TodayCard(state: TodayUiState, onOpenStream: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Button(
+            PrimaryButton(
+                text = stringResource(
+                    when (state.entry) {
+                        TodayEntry.START -> R.string.action_start
+                        TodayEntry.CONTINUE -> R.string.action_continue
+                        TodayEntry.SUMMARY -> R.string.today_summary
+                    },
+                ),
                 onClick = onOpenStream,
                 enabled = !state.loading,
-                shape = MorphoTheme.radii.shapeFull,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = MorphoTheme.sizes.primaryButton),
-            ) {
-                Text(
-                    text = stringResource(
-                        when (state.entry) {
-                            TodayEntry.START -> R.string.action_start
-                            TodayEntry.CONTINUE -> R.string.action_continue
-                            TodayEntry.SUMMARY -> R.string.today_summary
-                        },
-                    ),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-            }
+            )
         }
     }
 }

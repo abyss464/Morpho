@@ -447,7 +447,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
     private fun update(rebuild: RebuildState, next: List<Int?>, usedHint: Boolean = rebuild.hinted) {
         val placed = rebuild.copy(filled = next, checked = false)
         if (null in next) {
-            container.playSfx(SfxEvent.TAP)
+            container.tap()
             setTask(placed)
             return
         }
@@ -457,7 +457,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
             return
         }
         // A tray solved with help gets a plain tap, not the correct chime.
-        if (usedHint) container.playSfx(SfxEvent.TAP) else feedback(correct = true)
+        if (usedHint) container.tap() else feedback(correct = true)
         val outcome = when {
             usedHint || rebuild.misses >= 2 -> Outcome.FAILED
             rebuild.misses == 1 -> Outcome.SHAKY
@@ -511,7 +511,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
     private fun updateSpell(spell: SpellState, next: List<Int?>, usedHint: Boolean = spell.hinted) {
         val placed = spell.copy(filled = next, checked = false)
         if (null in next) {
-            container.playSfx(SfxEvent.TAP)
+            container.tap()
             setTask(placed)
             return
         }
@@ -520,7 +520,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
             setTask(placed.copy(checked = true, misses = spell.misses + 1))
             return
         }
-        if (usedHint) container.playSfx(SfxEvent.TAP) else feedback(correct = true)
+        if (usedHint) container.tap() else feedback(correct = true)
         val outcome = when {
             usedHint || spell.misses >= 2 -> Outcome.FAILED
             spell.misses == 1 -> Outcome.SHAKY
@@ -533,7 +533,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
     /** "Now spell it": the rebuild review goes on to spelling the word from its meaning. */
     private fun startSpelling(view: StepView) {
         val rebuilt = view.outcome ?: return
-        container.playSfx(SfxEvent.TAP)
+        container.tap()
         container.audioPlayer.stop()
         startedAt = SystemClock.elapsedRealtime()
         setView(
@@ -597,7 +597,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
 
     fun onShowPicture() {
         val view = _state.value.view ?: return
-        container.playSfx(SfxEvent.TAP)
+        container.tap()
         setView(view.copy(pictureShown = true))
     }
 
@@ -607,7 +607,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         if (busy) return
         val view = _state.value.view ?: return
         if (view.verdict != null) {
-            container.playSfx(SfxEvent.TAP)
+            container.tap()
             busy = true
             viewModelScope.launch {
                 showNext()
@@ -633,7 +633,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
             container.playSfx(SfxEvent.PROMOTE)
             container.hapticsManager.perform(HapticPattern.PROMOTE)
         } else {
-            container.playSfx(SfxEvent.TAP)
+            container.tap()
         }
         showNext()
     }
@@ -655,7 +655,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         val verdict = view.verdict ?: return
         if (verdict.grade == grade) return
         val snap = snapshot ?: return
-        container.playSfx(SfxEvent.TAP)
+        container.tap()
         val result = engine.override(snap.state, grade, Instant.now())
         snapshot = snap.copy(state = result.state, cards = snap.cards.withCards(result.cards))
         setView(view.copy(verdict = verdict.copy(grade = grade)))
@@ -668,7 +668,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
     fun onSaveNote(text: String) {
         val view = _state.value.view ?: return
         if (text.isBlank()) return
-        container.playSfx(SfxEvent.TAP)
+        container.tap()
         viewModelScope.launch {
             notes = store.saveNote(view.word.word.wordId, text, Instant.now())
             setView(view.copy(note = notes[view.word.word.wordId]))
@@ -678,7 +678,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
     /** "Meet 5 more words": raises today's new-word allowance and goes back into the stream. */
     fun onMeetMore() {
         val snap = snapshot ?: return
-        container.playSfx(SfxEvent.TAP)
+        container.tap()
         val stream = engine.today(snap.state, LocalDate.now())
         val raised = stream.copy(day = stream.day.copy(extra = stream.day.extra + MORE_WORDS))
         snapshot = snap.copy(state = raised)
@@ -697,10 +697,23 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         )
     }
 
-    fun onPlayWord(word: WordBundle) = container.audioPlayer.play(word.word.wordAudioFile)
+    /** The speaker on a word card or result: word, definition and example. */
+    fun onPlayCard(word: WordBundle) {
+        container.tap()
+        readAloud(word)
+    }
+
+    /** The speaker beside a rebuild review's question: the word alone. */
+    fun onPlayWord(word: WordBundle) {
+        container.tap()
+        container.audioPlayer.play(word.word.wordAudioFile)
+    }
+
+    /** Feedback for a press that only changes what is on screen. */
+    fun onTap() = container.tap()
 
     fun onPause() {
-        container.playSfx(SfxEvent.TAP)
+        container.tap()
         container.audioPlayer.stop()
     }
 

@@ -39,6 +39,7 @@ import dev.morpho.R
 import dev.morpho.domain.review.Grade
 import dev.morpho.domain.stream.Outcome
 import dev.morpho.domain.stream.ReviewTask
+import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
 /**
@@ -61,7 +62,7 @@ internal fun ReviewResultContent(
         WordTitle(
             word = word,
             playing = nowPlaying == word.word.wordAudioFile,
-            onPlay = { viewModel.readAloud(word) },
+            onPlay = { viewModel.onPlayCard(word) },
             playLabel = stringResource(R.string.cd_play_card),
         )
         Verdict(task = view.step.task ?: ReviewTask.REBUILD, outcome = verdict.outcome, parts = verdict.parts) {
@@ -96,7 +97,7 @@ internal fun ReviewResultContent(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        NoteEditor(hasNote = view.note != null, onSave = viewModel::onSaveNote)
+        NoteEditor(hasNote = view.note != null, onOpen = viewModel::onTap, onSave = viewModel::onSaveNote)
     }
 }
 
@@ -176,6 +177,7 @@ private fun RatingControl(verdict: ReviewVerdict, onRate: (Grade) -> Unit) {
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = MorphoTheme.spacing.minTouchTarget)
+                    .pressMotion()
                     .background(fill)
                     .selectable(selected = selected, role = Role.RadioButton, onClick = { onRate(grade) })
                     .padding(vertical = MorphoTheme.spacing.xs),
@@ -201,11 +203,19 @@ private fun RatingControl(verdict: ReviewVerdict, onRate: (Grade) -> Unit) {
 
 /** "Say it in your own words": a link that opens a field and a Save button. */
 @Composable
-private fun NoteEditor(hasNote: Boolean, onSave: (String) -> Unit) {
+private fun NoteEditor(hasNote: Boolean, onOpen: () -> Unit, onSave: (String) -> Unit) {
     var writing by rememberSaveable { mutableStateOf(false) }
     var text by rememberSaveable { mutableStateOf("") }
     if (!writing) {
-        TextButton(onClick = { writing = true }, modifier = Modifier.fillMaxWidth()) {
+        TextButton(
+            onClick = {
+                onOpen()
+                writing = true
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .pressMotion(),
+        ) {
             Text(
                 text = stringResource(if (hasNote) R.string.stream_note_rewrite else R.string.stream_note_add),
                 style = MaterialTheme.typography.bodySmall,
@@ -234,8 +244,10 @@ private fun NoteEditor(hasNote: Boolean, onSave: (String) -> Unit) {
         )
         TextButton(
             onClick = save,
+            modifier = Modifier
+                .align(Alignment.End)
+                .pressMotion(text.isNotBlank()),
             enabled = text.isNotBlank(),
-            modifier = Modifier.align(Alignment.End),
         ) {
             Text(stringResource(R.string.action_save))
         }

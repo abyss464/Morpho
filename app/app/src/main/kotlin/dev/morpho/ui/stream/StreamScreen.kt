@@ -48,6 +48,8 @@ import dev.morpho.domain.stream.StepKind
 import dev.morpho.ui.designsystem.component.AudioChipButton
 import dev.morpho.ui.designsystem.component.GlossedText
 import dev.morpho.ui.designsystem.component.MorphoLoader
+import dev.morpho.ui.designsystem.component.PrimaryButton
+import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.motion.rememberSharedAxis
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
@@ -120,7 +122,7 @@ private fun StreamBar(done: Int, total: Int, onPause: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
-        IconButton(onClick = onPause) {
+        IconButton(onClick = onPause, modifier = Modifier.pressMotion()) {
             Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.action_pause))
         }
         val fraction = if (total == 0) 0f else done.toFloat() / total
@@ -192,7 +194,7 @@ private fun StepFrame(view: StepView, nowPlaying: String?, viewModel: StreamView
             }
             val action = Modifier.padding(horizontal = spacing.screenGutter, vertical = spacing.sm)
             when {
-                verdict != null -> PrimaryAction(stringResource(R.string.action_continue), viewModel::onContinue, action)
+                verdict != null -> PrimaryButton(stringResource(R.string.action_continue), viewModel::onContinue, action)
                 // A rebuild review goes on to spelling the word once its rebuild is right.
                 view.step.kind == StepKind.REVIEW && view.task is RebuildState -> Column(action) {
                     if (view.outcome == null) {
@@ -203,14 +205,14 @@ private fun StepFrame(view: StepView, nowPlaying: String?, viewModel: StreamView
                             modifier = Modifier.padding(bottom = spacing.xs),
                         )
                     }
-                    PrimaryAction(
+                    PrimaryButton(
                         text = stringResource(R.string.stream_spell_now),
                         onClick = viewModel::onContinue,
                         enabled = view.outcome != null,
                     )
                 }
                 view.step.kind == StepKind.REVIEW -> Spacer(Modifier.height(spacing.sm))
-                else -> PrimaryAction(
+                else -> PrimaryButton(
                     text = stringResource(R.string.action_continue),
                     onClick = viewModel::onContinue,
                     enabled = view.step.kind == StepKind.KNOW || view.outcome != null,
@@ -265,7 +267,7 @@ private fun KnowContent(view: StepView, nowPlaying: String?, viewModel: StreamVi
         },
         note = view.note,
         playing = nowPlaying == view.word.word.wordAudioFile,
-        onPlay = { viewModel.readAloud(view.word) },
+        onPlay = { viewModel.onPlayCard(view.word) },
     )
 }
 
@@ -282,9 +284,7 @@ private fun TaskContent(view: StepView, nowPlaying: String?, viewModel: StreamVi
                 WordPicture(word, Modifier.fillMaxWidth().height(MorphoTheme.sizes.coverHeight))
             } else {
                 CoveredPicture(Modifier.fillMaxWidth().height(MorphoTheme.sizes.coverHeight)) {
-                    TextButton(onClick = viewModel::onShowPicture) {
-                        Text(stringResource(R.string.stream_show_picture))
-                    }
+                    LinkButton(stringResource(R.string.stream_show_picture), viewModel::onShowPicture)
                 }
             }
         }

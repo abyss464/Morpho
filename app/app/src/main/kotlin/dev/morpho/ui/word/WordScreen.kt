@@ -28,12 +28,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.morpho.R
-import dev.morpho.data.sound.SfxEvent
 import dev.morpho.data.stream.StreamSnapshot
 import dev.morpho.data.stream.WordNote
 import dev.morpho.di.AppContainer
 import dev.morpho.domain.model.WordBundle
 import dev.morpho.ui.designsystem.component.MorphoLoader
+import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 import dev.morpho.ui.stream.StageMark
 import dev.morpho.ui.stream.WordCard
@@ -70,6 +70,7 @@ class WordViewModel(private val container: AppContainer, private val wordId: Lon
     }
 
     fun readAloud(word: WordBundle) {
+        container.tap()
         container.audioPlayer.playSequence(
             listOf(word.word.wordAudioFile, word.primarySense.defAudioFile, word.cardExample?.exAudioFile),
         )
@@ -107,10 +108,12 @@ fun WordScreen(
     ) {
         IconButton(
             onClick = {
-                container.playSfx(SfxEvent.TAP)
+                container.tap()
                 onBack()
             },
-            modifier = Modifier.padding(start = MorphoTheme.spacing.xxs),
+            modifier = Modifier
+                .padding(start = MorphoTheme.spacing.xxs)
+                .pressMotion(),
         ) {
             Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back))
         }

@@ -8,6 +8,7 @@ import dev.morpho.data.backup.ProgressBackup
 import dev.morpho.data.content.ContentStore
 import dev.morpho.data.content.AssetContentStore
 import dev.morpho.data.db.DatabaseProvider
+import dev.morpho.data.haptics.HapticPattern
 import dev.morpho.data.haptics.HapticsManager
 import dev.morpho.data.media.AudioPlayer
 import dev.morpho.data.media.CoilContentImageRenderer
@@ -131,6 +132,15 @@ class AppContainer(private val context: Context) {
     }
 
     fun playSfx(event: SfxEvent) = soundManager.play(event)
+
+    /**
+     * Feedback for an ordinary press: the soft tap sound and the lightest tick, each
+     * behind its own settings toggle. Answers, checks and graduations have their own.
+     */
+    fun tap() {
+        soundManager.play(SfxEvent.TAP)
+        hapticsManager.perform(HapticPattern.TAP)
+    }
 
     fun shutdown() {
         audioPlayer.release()

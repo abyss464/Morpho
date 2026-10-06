@@ -24,6 +24,7 @@ import dev.morpho.ui.designsystem.component.PreviewBox
 import dev.morpho.ui.designsystem.component.StreakBadge
 import dev.morpho.ui.designsystem.component.ThemePreviews
 import dev.morpho.ui.designsystem.theme.MorphoSectionLabel
+import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
 /**
@@ -74,7 +75,7 @@ fun GreetingHeader(
                     label = pluralStringResource(R.plurals.streak_days, streakDays),
                 )
             }
-            IconButton(onClick = onOpenSettings) {
+            IconButton(onClick = onOpenSettings, modifier = Modifier.pressMotion()) {
                 Icon(
                     Icons.Rounded.Settings,
                     contentDescription = stringResource(R.string.action_settings),

@@ -3,8 +3,6 @@ package dev.morpho.ui.stream
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +35,7 @@ import dev.morpho.R
 import dev.morpho.domain.model.WordBundle
 import dev.morpho.ui.designsystem.component.GlossedText
 import dev.morpho.ui.designsystem.motion.floatAnimatable
-import dev.morpho.ui.designsystem.motion.pressScale
+import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.motion.runShake
 import dev.morpho.ui.designsystem.theme.MorphoTheme
 
@@ -125,8 +123,6 @@ private fun WordOption(
     val accents = MorphoTheme.accents
     val colors = MaterialTheme.colorScheme
     val reducedMotion = MorphoTheme.reducedMotion
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     val amplitude = with(LocalDensity.current) { tokens.sizes.shakeAmplitude.toPx() }
     val shake = remember { floatAnimatable() }
     LaunchedEffect(wrong) {
@@ -141,18 +137,11 @@ private fun WordOption(
         modifier = modifier
             .heightIn(min = tokens.sizes.wordOption)
             .graphicsLayer { translationX = shake.value }
-            .pressScale(pressed && enabled, reducedMotion)
+            .pressMotion(enabled)
             .clip(tokens.radii.shapeSm)
             .background(background)
             .border(BorderStroke(1.dp, border), tokens.radii.shapeSm)
-            .selectable(
-                selected = right,
-                enabled = enabled,
-                role = Role.RadioButton,
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick,
-            )
+            .selectable(selected = right, enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
         contentAlignment = Alignment.Center,
     ) {
