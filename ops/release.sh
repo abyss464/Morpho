@@ -140,14 +140,15 @@ SENSES="$(sqlite3 "$RELEASE_DB" "SELECT COUNT(*) FROM senses")"
 EXAMPLES="$(sqlite3 "$RELEASE_DB" "SELECT COUNT(*) FROM examples")"
 DISTRACTORS="$(sqlite3 "$RELEASE_DB" "SELECT COUNT(*) FROM distractors")"
 GLOSS_ANCHORS="$(sqlite3 "$RELEASE_DB" "SELECT COUNT(*) FROM gloss_anchors")"
-GROUPS="$(sqlite3 "$RELEASE_DB" "SELECT COUNT(*) FROM groups")"
+# Not GROUPS: bash keeps that name for the user's group ids and ignores assignments to it.
+GROUP_COUNT="$(sqlite3 "$RELEASE_DB" "SELECT COUNT(*) FROM groups")"
 
 KT_WORDS="$(kt_num "$WORDS")"
 KT_SENSES="$(kt_num "$SENSES")"
 KT_EXAMPLES="$(kt_num "$EXAMPLES")"
 KT_DISTRACTORS="$(kt_num "$DISTRACTORS")"
 KT_GLOSS_ANCHORS="$(kt_num "$GLOSS_ANCHORS")"
-KT_GROUPS="$(kt_num "$GROUPS")"
+KT_GROUPS="$(kt_num "$GROUP_COUNT")"
 
 # Patch content_version string.
 sed -i -E "s/\"[0-9]{4}\.[0-9]{2}\.[0-9]{2}\+[0-9a-f]+\"/\"${CONTENT_VERSION}\"/" "$TEST_FILE"
@@ -171,7 +172,7 @@ sed -i -E "s/assertEquals\([0-9_]+, index\.size\)/assertEquals(${KT_GLOSS_ANCHOR
 sed -i -E "s/assertEquals\([0-9_]+, checked\)/assertEquals(${KT_EXAMPLES}, checked)/" "$TEST_FILE"
 
 echo "    version=$CONTENT_VERSION words=$WORDS senses=$SENSES examples=$EXAMPLES"
-echo "    distractors=$DISTRACTORS gloss_anchors=$GLOSS_ANCHORS groups=$GROUPS"
+echo "    distractors=$DISTRACTORS gloss_anchors=$GLOSS_ANCHORS groups=$GROUP_COUNT"
 
 # ------------------------------------------------------------------ 8. specbook refresh
 
