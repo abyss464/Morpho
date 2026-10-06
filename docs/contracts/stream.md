@@ -35,8 +35,9 @@ learner taps pieces into the blanks. Decoy pieces from other words are mixed in.
 - A tapped piece fills the first open blank. Filling the last blank checks the answer. Wrong
   pieces turn red and go back to the bank when tapped, reopening their blank. "Start over"
   empties every blank.
-- After one failed check, "Show the next piece" appears: it puts the right piece into the first
-  blank that is open or wrong.
+- Two ways out are always there: "Show the next piece" puts the right piece into the first
+  blank that is open or wrong; "Show the answer" fills every blank. Either makes the step
+  **failed**.
 - `explain1` comes **immediately** after `know`, shows the picture, uses easy pieces and
   decoys drawn from the words currently in the learning window.
 - `explain2` comes later (§5), shows no picture, uses hard pieces and decoys drawn from all

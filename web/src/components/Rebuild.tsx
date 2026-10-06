@@ -12,8 +12,8 @@ const norm = (s: string) => s.trim().toLowerCase();
  * Rebuild the meaning: the definition stands with its blanks open, the part that names the word,
  * its prepositions and punctuation already in place; the learner taps pieces into the blanks in
  * order, decoys mixed in. Filling the last blank checks it; wrong pieces turn red and go back with
- * a tap; after a failed check a hint fills the first wrong or open blank. Reports clean, shaky or
- * failed once.
+ * a tap. At any time a hint fills the first wrong or open blank, or the whole answer is shown;
+ * either counts as failed. Reports clean, shaky or failed once.
  */
 export function Rebuild({
   w,
@@ -139,9 +139,14 @@ export function Rebuild({
             Start over
           </button>
         )}
-        {!solved && misses > 0 && (
+        {!solved && (
           <button type="button" className="link" onClick={hint}>
             Show the next piece
+          </button>
+        )}
+        {!solved && (
+          <button type="button" className="link" onClick={() => update(puzzle.answer, true)}>
+            Show the answer
           </button>
         )}
       </div>
