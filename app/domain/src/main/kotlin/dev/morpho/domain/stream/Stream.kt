@@ -83,7 +83,8 @@ class StreamEngine(private val fsrs: FsrsScheduler) {
         const val WINDOW = 5
         const val SPACING = 3
         const val BACKLOG = 50
-        const val REBUILD_EASY_MS = 10_000L
+        /** A rebuild review is the rebuild plus spelling the word: 10 s and 8 s. */
+        const val REBUILD_EASY_MS = 18_000L
         const val FILL_EASY_MS = 4_000L
     }
 
