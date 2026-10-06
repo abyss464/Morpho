@@ -89,10 +89,11 @@ mkdir -p "$MEDIA_TARGET/img" "$MEDIA_TARGET/audio"
 rsync -a "$EXPORT_DIR/img/" "$MEDIA_TARGET/img/"
 rsync -a "$EXPORT_DIR/audio/" "$MEDIA_TARGET/audio/"
 
-# Build the set of files that should exist according to manifest.
+# Build the set of media files that should exist according to manifest (the manifest
+# also lists release.db itself, which is copied separately).
 MANIFEST="$EXPORT_DIR/manifest.json"
 MANIFEST_LIST="$(mktemp)"
-jq -r '.files[].path' "$MANIFEST" | sort > "$MANIFEST_LIST"
+jq -r '.files[].path' "$MANIFEST" | grep -E '^(img|audio)/' | sort > "$MANIFEST_LIST"
 
 # Build sorted list of files currently on disk (relative to MEDIA_TARGET).
 DISK_LIST="$(mktemp)"
