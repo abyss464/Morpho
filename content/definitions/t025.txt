@@ -1,0 +1,89 @@
+5686 | n | * | An abstraction is a general idea rather than a real, physical thing. | Freedom is an abstraction, but it matters to everyone.
+5689 | adv | * | Additionally means also, or as an extra thing. | The hotel is cheap; additionally, it is close to the beach.
+5690 | adj | * | Administrative means to do with the work of managing an organization. | She does administrative work in a hospital.
+5692 | n | * | An affiliation is a connection with a group or an organization. | He has no affiliation with any political party.
+5693 | n | * | Aggression is angry or violent behavior toward someone. | The dog showed aggression toward strangers.
+5694 | n | * | An allocation is an amount of something, such as money, that is given for a particular purpose. | Each school gets an allocation of money for books.
+5696 | n | * | Animation is the process of making films in which drawings or models seem to move; animation is also energy and excitement. | My son wants to work in animation.
+5697 | adv | * | You use apparently when you say what seems to be true, or what you have heard. | Apparently, the shop is closed on Sundays.
+5700 | adj | * | Atomic means to do with atoms, or using the energy from atoms. | Atomic power can be dangerous.
+5701 | n | * | The attainment of something is the act of reaching or getting it. | The attainment of her goal made her very happy.
+5702 | n | * | If you have an aversion to someone or something, you dislike them very much. | I have an aversion to spiders.
+5707 | adj | * | Bodily means to do with the human body. | He did not suffer any bodily harm.
+5710 | n | * | A bristle is a short, stiff hair, like the hairs on a brush. | The bristles of my toothbrush are soft.
+5710 | v | - | If you bristle, you show that you are angry or offended.
+5713 | n | * | A cavity is a hole or an empty space inside something, for example in a tooth. | The dentist found a cavity in my tooth.
+5714 | n | * | The center of something is the middle of it; a center is also a building where people go for a particular activity. | There is a fountain in the center of the square.
+5716 | adj | * | A charitable organization helps people who are poor or in need; a charitable person is kind to others. | She gives money to charitable groups.
+5720 | n | * | A citrus is a fruit such as an orange or a lemon. | Oranges and lemons are citrus fruits.
+5721 | n | * | A clam is a sea animal that lives inside a hard shell with two parts. | We ate clam soup at the beach.
+5730 | n | * | A congregation is the group of people who are in a church for a religious service. | The priest spoke to the congregation.
+5735 | n | * | Creativity is the ability to invent new things or to have new ideas. | The teacher encourages creativity in her students.
+5736 | n | * | The creator of something is the person who made or invented it. | The creator of the game is only twenty years old.
+5737 | adj | * | Something credible can be believed. | The witness told a credible story.
+5739 | n | * | Darkness is the state of having no light. | The room was in complete darkness.
+5742 | adj | * | Something deceptive makes you believe something that is not true. | The calm sea is deceptive; it is very dangerous.
+5744 | adj | * | Something defective has a fault and does not work as it should. | The shop replaced the defective phone.
+5749 | n | * | Depression is a mental illness in which you feel very sad for a long time; a depression is also a time when a country's economy is very weak. | He suffered from depression after his wife died.
+5752 | adj | * | Discrete things are separate from each other. | The process has three discrete stages.
+5755 | adj | * | Something distinctive is special and easy to recognize. | The bird has a distinctive red head.
+5756 | n | * | A distortion is a change that makes something look, sound or seem different from what it really is. | The report was a distortion of the facts.
+5757 | n | * | Distribution is the act of giving or delivering things to people or places; the distribution of something is the way it is shared. | The distribution of food to the villages took three days.
+5758 | n | * | A donation is something, such as money, that you give to help a person or an organization. | They made a donation to the hospital.
+5761 | n | * | Embarrassment is the feeling of being shy, ashamed or stupid in front of other people. | His face turned red with embarrassment.
+5762 | adv | * | Emotionally means in a way that is to do with feelings. | She was emotionally tired after the long day.
+5767 | v | * | If you enumerate things, you name them one by one. | She enumerated the reasons for her decision.
+5773 | adv | * | Exceptionally means much more than usual. | She is exceptionally clever.
+5774 | n | * | Exertion is great physical or mental effort. | He was tired after the exertion of the climb.
+5777 | adv | * | Extraordinarily means extremely, much more than usual. | The weather was extraordinarily hot.
+5779 | n | * | Fervor is a very strong feeling of enthusiasm or belief. | They sang with religious fervor.
+5780 | n | * | Fidelity is loyalty to a person, to a belief, or to your husband or wife. | Fidelity is important in a marriage.
+5781 | adj | * | A forceful person says what they think strongly and with confidence. | She made a forceful speech.
+5783 | adv | * | Formerly means in the past, before now. | The hotel was formerly a castle.
+5785 | adv | * | Generally means usually, or in most cases. | I generally get up at seven.
+5802 | n | * | Indifference is a lack of interest in something or a lack of care about it. | He showed complete indifference to the news.
+5806 | v | * | If you inquire about something, you ask for information about it. | I called to inquire about the price.
+5807 | adj | * | Something insignificant is small and not important. | The difference is insignificant.
+5808 | adj | * | Something insufficient is not enough. | There was insufficient food for everyone.
+5811 | adv | * | If you do something intentionally, you do it on purpose. | He broke the window intentionally.
+5818 | n | * | Your livelihood is the work that gives you the money you need to live. | Fishing is the livelihood of the whole village.
+5819 | n | * | Livestock are animals such as cows, sheep and pigs that are kept on a farm. | The farmer sells his livestock at the market.
+5820 | adv | * | Logically means in a way that follows reason and good sense. | Try to think logically.
+5830 | adv | * | Obviously means in a way that is easy to see or understand. | He was obviously tired.
+5835 | adj | * | Optimal means the best possible. | The optimal time to plant seeds is spring.
+5836 | adj | * | Something outdated is old and no longer useful or modern. | The computers in this office are outdated.
+5837 | v | * | If you overstate something, you say that it is bigger or more important than it really is. | Do not overstate the danger.
+5838 | adj | * | A palpable feeling is so strong that people can almost touch it. | The tension in the room was palpable.
+5844 | adj | * | Philosophical means to do with philosophy; a philosophical person accepts bad things without getting angry or sad. | They had a philosophical discussion about the meaning of life.
+5845 | adv | * | Physically means in a way that is to do with the body. | He is physically strong.
+5846 | n | * | The placement of something is the act of putting it in a certain place; a placement is also a job that gives you experience. | The placement of the furniture makes the room look bigger.
+5847 | n | * | A predictor is something that shows what will happen in the future. | Good grades are a predictor of success at university.
+5849 | adv | * | Previously means before now, or at an earlier time. | She previously worked as a teacher.
+5854 | adj | * | Psychological means to do with the mind and feelings. | Stress can cause psychological problems.
+5859 | n | * | Readiness is the state of being ready or willing to do something. | The army is in a state of readiness.
+5861 | adj | * | Something repetitive is done again and again in the same way, and is often boring. | Factory work is very repetitive.
+5862 | v | * | If you replicate something, you copy it or do it again in the same way. | Other scientists could not replicate the results.
+5863 | n | * | Representation is the act of speaking or acting for someone; a representation of something is a picture or a model of it. | Women need more representation in parliament.
+5864 | adj | * | A respectable person behaves well and is approved of by society. | He comes from a respectable family.
+5865 | n | * | A restriction is a rule that limits what you can do. | There are restrictions on smoking in public places.
+5866 | adj | * | Something restrictive limits what people can do. | The rules are too restrictive.
+5867 | n | * | Retribution is punishment for something bad that someone has done. | The killer feared retribution from the victim's family.
+5868 | n | * | Rhetoric is speech or writing that tries to persuade people, often with impressive words that are not sincere. | The speech was full of empty rhetoric.
+5869 | v | * | If you ridicule someone, you laugh at them and make them look stupid. | The other children ridicule him because of his clothes.
+5874 | n | * | Separation is the state of being apart from someone or something; a separation is also a time when a married couple lives apart. | The separation from her family was very hard.
+5880 | adv | * | Solely means only, and not involving anyone or anything else. | You are solely responsible for this mistake.
+5884 | adv | * | Strangely means in an unusual or surprising way. | He was behaving strangely.
+5890 | n | * | Tenderness is a gentle and loving way of behaving; tenderness is also pain that you feel when a part of your body is touched. | She looked at her baby with great tenderness.
+5892 | adj | * | Something therapeutic helps to cure an illness or makes you feel better. | Swimming is therapeutic for people with back pain.
+5895 | n | * | Transit is the movement of people or things from one place to another. | My bags were lost in transit.
+5898 | adv | * | Typically means usually, or in a way that is normal for someone or something. | The journey typically takes two hours.
+5900 | adj | * | Something unbelievable is so good, bad or surprising that it is hard to believe. | The view from the top was unbelievable.
+5903 | adj | * | Something undesirable is not wanted because it is bad or harmful. | The drug has some undesirable effects.
+5907 | v | * | If you urge someone to do something, you try hard to persuade them to do it. | My parents urge me to study harder.
+5907 | n | - | An urge is a strong wish to do something.
+5913 | n | * | A variable is something that can change. | The weather is a variable that farmers can not control.
+5913 | adj | - | Something variable changes often.
+5915 | adj | * | Various means of several different kinds. | The shop sells various kinds of bread.
+5923 | adj | * | Vigorous activity is strong and full of energy. | Vigorous exercise is good for the heart.
+5925 | adj | * | Something visible can be seen. | The mountain is visible from my window.
+5936 | n | * | A hermit is a person who lives alone, away from other people. | The hermit lived in a cave for twenty years.

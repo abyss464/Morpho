@@ -1,0 +1,58 @@
+5941 | adj | * | Enslaved people are forced to work as slaves and have no freedom. | The enslaved workers had no rights.
+5949 | adj | * | Something unalterable can not be changed. | His decision is unalterable.
+5957 | adj | * | Something emergent is new and is starting to develop or become known. | The country has an emergent film industry.
+5977 | n | * | An exclamation is a word or a short sentence that you say suddenly and loudly, for example because you are surprised or angry. | She gave an exclamation of surprise.
+5981 | n | * | Heredity is the process by which parents pass qualities such as the color of their eyes to their children. | Your height depends partly on heredity.
+5993 | n | * | Companionship is the pleasant feeling of being with someone you like. | Old people often need companionship.
+5996 | adj | * | If you are empowered, you have the power or the confidence to control your own life. | Education made the women feel empowered.
+6000 | adv | * | Unpleasantly means in a way that is not nice or not pleasant. | The room was unpleasantly hot.
+6016 | n | * | An offence is a crime; if you take offence, you feel hurt because someone was rude to you. | Driving without a licence is an offence.
+6018 | adj | * | Something illogical does not follow reason or good sense. | It is illogical to buy a car if you can not drive.
+6019 | adj | * | A hereditary quality or disease is passed from parents to their children. | The disease is hereditary.
+6030 | adj | * | Poetical means to do with poetry, or beautiful in the way that poetry is. | He has a poetical way of describing nature.
+6037 | adj | * | A dependable person or thing can be trusted to do what is needed. | She is a dependable friend.
+6040 | adj | * | A woody plant has a hard stem like wood; a woody area has a lot of trees. | Trees and bushes are woody plants.
+6044 | n | * | A confederate is a person who helps someone in a secret plan, especially a crime. | The thief had a confederate who watched the door.
+6056 | n | * | An endearment is a word or a name that you use to show love, such as "darling". | "Honey" is a common endearment.
+6075 | v | * | If you acquiesce, you agree to something without arguing, even if you do not like it. | He usually acquiesces to his wife's wishes.
+6076 | n | * | Assent is agreement or approval. | The king gave his assent to the new law.
+6076 | v | - | If you assent to something, you agree to it.
+6083 | n | * | Prudence is the quality of being wise and of avoiding risks. | She handles money with prudence.
+6089 | v | * | If you feign a feeling or an illness, you pretend that you have it. | He feigns illness so that he can stay at home.
+6090 | adv | * | If you do something manually, you do it with your hands and not with a machine. | The workers sort the letters manually.
+6104 | n | * | Acclamation is loud and enthusiastic approval from a crowd. | The new leader was greeted with acclamation.
+6108 | v | * | If you peruse something, you read it through, often slowly. | She sat down to peruse the menu.
+6117 | adv | * | Supremely means extremely, to a very high degree. | He was supremely confident before the race.
+6118 | adj | * | A contemplative person spends a lot of time thinking deeply in silence. | He sat in contemplative silence.
+6122 | adj | * | Conclusive evidence proves that something is true. | There is no conclusive proof that he stole the money.
+6203 | adj | * | Something addictive makes people want more and more of it, so that they can not stop. | Smoking is very addictive.
+6230 | n | * | An artifact is an object that was made by people long ago, such as a tool or a pot. | The museum has artifacts from ancient Egypt.
+6234 | adj | * | A diatomic molecule is made of two atoms. | Oxygen gas is diatomic.
+6238 | n | * | An injection is the act of putting a drug into your body with a needle. | The nurse gave me an injection.
+6245 | n | * | Radioactivity is the harmful energy that some substances give off when their atoms break up. | The workers checked the level of radioactivity.
+6261 | n | * | Manure is the waste from animals that farmers put on the soil to help plants grow. | The farmer spread manure on his fields.
+6273 | adj | * | Kinetic means to do with movement. | A moving car has kinetic energy.
+6279 | adj | * | Someone unfortunate has bad luck; something unfortunate is bad or makes you sad. | It was an unfortunate accident.
+6282 | adj | * | A fortified place has strong walls or other defenses to protect it from attack. | They lived in a fortified town on a hill.
+6287 | n | * | Defense is the act of protecting someone or something from attack. | The army is ready for the defense of the city.
+6291 | adj | * | Something showy is very bright and has many colors, and is meant to attract attention. | She wore a showy hat to the wedding.
+6303 | n | * | A contraction is the process of becoming smaller or shorter; a contraction is also a short form of two words joined together. | Cold weather causes the contraction of metal.
+6312 | n | * | Elasticity is the ability of a material to stretch and then return to its usual shape. | Rubber has great elasticity.
+6321 | n | * | Your specialty is the thing that you do best or know most about. | Fish soup is the specialty of this restaurant.
+6331 | n | * | Your intent is what you plan or want to do. | He came with the intent to steal.
+6331 | adj | - | If you are intent on doing something, you are determined to do it.
+6334 | adv | * | Pleasantly means in a nice or enjoyable way. | The weather was pleasantly warm.
+6339 | adj | * | If something is conducive to a good result, it helps that result to happen. | A quiet room is conducive to study.
+6343 | adj | * | Something irregular is not regular in shape, time or pattern; irregular also means not following the usual rules. | The stone has an irregular shape.
+6344 | adv | * | Potentially means possibly, or in a way that could happen in the future. | The situation is potentially dangerous.
+6358 | adj | * | Something expressive shows clearly what someone thinks or feels. | She has an expressive face.
+6378 | adj | * | Something supplementary is added to something else to make it complete. | Children need supplementary food in winter.
+6379 | n | * | A tract is a large area of land; in the body, a tract is a system of organs and tubes. | They bought a large tract of forest.
+6391 | adj | * | Something unvarying is always the same. | He eats an unvarying lunch of bread and cheese.
+6392 | n | * | Weariness is the state of being very tired. | Weariness showed on her face after the long journey.
+6410 | n | * | Fission is the splitting of the center of an atom, which produces a lot of energy. | Nuclear power stations use fission to make electricity.
+6424 | n | * | Troy is a system for measuring the weight of gold, silver and jewels. | Gold is weighed in troy ounces.
+6439 | adj | * | Spatial means to do with space, size and position. | Architects need good spatial skills.
+6450 | n | * | An autocracy is a country or a government ruled by one person who has complete power. | The country was an autocracy for fifty years.
+6476 | n | * | Discontent is the feeling of not being satisfied with a situation. | There is growing discontent among the workers.
+6477 | adj | * | An ardent person has very strong feelings of support or love for something. | He is an ardent fan of the team.
