@@ -150,6 +150,9 @@ object UserMetaKeys {
 
     /** The learner's own explanations, per word, as JSON. */
     const val STREAM_NOTES = "stream_notes"
+
+    /** The web app's address progress syncs with (docs/contracts/sync.md); absent until the first sync. */
+    const val SYNC_ADDRESS = "sync_address"
 }
 
 object ProgressDefaults {
