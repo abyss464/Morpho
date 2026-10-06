@@ -32,6 +32,8 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -77,16 +79,77 @@ def api_upload(word_id, path, source):
     return out.stdout.strip()
 
 
+class Throttle:
+    """Paces every request to one host, shared by all threads.
+
+    Requests leave at least `interval` apart. A 429 or 503 pauses the host for
+    its Retry-After and doubles the interval; every success narrows it again
+    toward the base, so the run settles at whatever rate the provider actually
+    allows instead of hammering it or crawling after one refusal.
+    """
+
+    def __init__(self, interval):
+        self.base = interval
+        self.interval = interval
+        self.next_at = 0.0
+        self.lock = threading.Lock()
+        self.limited = 0
+
+    def wait(self):
+        with self.lock:
+            now = time.monotonic()
+            at = max(now, self.next_at)
+            self.next_at = at + self.interval
+        time.sleep(max(0.0, at - now))
+
+    def succeed(self):
+        with self.lock:
+            self.interval = max(self.base, self.interval * 0.95)
+
+    def penalize(self, retry_after):
+        with self.lock:
+            self.limited += 1
+            self.interval = min(self.interval * 2, 10.0)
+            self.next_at = max(self.next_at, time.monotonic() + retry_after)
+
+
+THROTTLES = {
+    "pixabay.com": Throttle(0.65),
+    "commons.wikimedia.org": Throttle(0.5),
+    "api.openverse.org": Throttle(1.0),
+    "upload.wikimedia.org": Throttle(0.1),
+}
+DEFAULT_THROTTLE = Throttle(0.05)
+
+
+def request(url, attempts=5):
+    """GET through the host's throttle, retrying rate limits; other errors raise."""
+    throttle = THROTTLES.get(urllib.parse.urlsplit(url).hostname, DEFAULT_THROTTLE)
+    for attempt in range(attempts):
+        throttle.wait()
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                data = resp.read(24 * 1024 * 1024)
+            throttle.succeed()
+            return data
+        except urllib.error.HTTPError as err:
+            if err.code not in (429, 503) or attempt == attempts - 1:
+                raise
+            try:
+                retry_after = float(err.headers.get("Retry-After") or 30)
+            except ValueError:
+                retry_after = 30.0
+            throttle.penalize(min(retry_after, 120.0))
+    raise RuntimeError("unreachable")
+
+
 def http_json(url):
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-        return json.load(resp)
+    return json.loads(request(url))
 
 
 def fetch(url):
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-        return resp.read(24 * 1024 * 1024)
+    return request(url, attempts=3)
 
 
 def content_words(sentence, lemma):
@@ -154,9 +217,10 @@ class Openverse:
         try:
             data = http_json(url)
         except urllib.error.HTTPError as err:
-            if err.code in (401, 403, 429):
+            if err.code in (401, 403):
                 self.alive = False
-            return []
+                return []
+            raise
         out = []
         for r in data.get("results", []):
             if (r.get("width") or 640) < 400:
@@ -170,18 +234,58 @@ class Openverse:
         return out
 
 
-def gather(word, openverse):
+def pixabay_key():
+    """Pixabay's free API key, from the environment or the compose .env file;
+    re-read every chunk so a key added mid-run is picked up."""
+    key = os.environ.get("PIXABAY_API_KEY", "").strip()
+    env = os.path.join(ROOT, ".env")
+    if not key and os.path.exists(env):
+        for line in open(env):
+            name, _, value = line.partition("=")
+            if name.strip() == "PIXABAY_API_KEY":
+                key = value.strip().strip('"').strip("'")
+    return key or None
+
+
+def search_pixabay(q, key):
+    url = "https://pixabay.com/api/?" + urllib.parse.urlencode(
+        {"key": key, "q": q[:100], "image_type": "photo", "safesearch": "true", "per_page": "10"})
+    out = []
+    for r in http_json(url).get("hits", []):
+        if (r.get("imageWidth") or 0) < 400:
+            continue
+        out.append({
+            "source": "pixabay", "thumb": r.get("webformatURL"), "full": r.get("largeImageURL"),
+            "page": r.get("pageURL"), "license": "Pixabay Content License", "author": (r.get("user") or "")[:200],
+            "query": q,
+        })
+    return out
+
+
+def gather(word, openverse, key):
+    """Search results for one word, or None when a search failed outright (the
+    word is then left for a later run rather than recorded as searched).
+
+    Pixabay, when a key is configured, is asked first because its limit is
+    generous; the keyless libraries fill in only what it leaves short."""
     results, seen = [], set()
+
+    def take(found):
+        for r in found:
+            if r["thumb"] and r["thumb"] not in seen:
+                seen.add(r["thumb"])
+                results.append(r)
+
     for q in word["queries"]:
-        for finder in (search_commons, openverse.search):
-            try:
-                found = finder(q)
-            except Exception:
-                found = []
-            for r in found:
-                if r["thumb"] and r["thumb"] not in seen:
-                    seen.add(r["thumb"])
-                    results.append(r)
+        try:
+            if key:
+                take(search_pixabay(q, key))
+                if len(results) >= PER_WORD_RESULTS:
+                    break
+            take(search_commons(q))
+            take(openverse.search(q))
+        except Exception:
+            return None
         if len(results) >= PER_WORD_RESULTS:
             break
     return results[:PER_WORD_RESULTS]
@@ -287,7 +391,7 @@ def main():
         words = words[: args.limit]
     print(f"{len(words)} words to check", flush=True)
     openverse = Openverse()
-    totals = {"checked": 0, "under": 0, "uploaded": 0, "improved": 0}
+    totals = {"checked": 0, "under": 0, "uploaded": 0, "improved": 0, "failed": 0}
 
     for start in range(0, len(words), CHUNK):
         chunk = words[start: start + CHUNK]
@@ -305,18 +409,23 @@ def main():
                 under.append(w)
         # Pass 2: search, download, score the under-bar words' finds.
         with cf.ThreadPoolExecutor(8) as pool:
-            finds = list(pool.map(lambda w: gather(w, openverse), under))
+            key = pixabay_key()
+            finds = list(pool.map(lambda w: gather(w, openverse, key), under))
         shutil.rmtree(STAGE, ignore_errors=True)
         os.makedirs(STAGE)
         with cf.ThreadPoolExecutor(16) as pool:
             for w, found in zip(under, finds):
-                w["finds"] = [d for d in pool.map(lambda r: download(r, STAGE), found) if d]
+                w["failed"] = found is None
+                w["finds"] = [d for d in pool.map(lambda r: download(r, STAGE), found or []) if d]
         jobs = [{"key": w["word_id"], "text": w["text"],
                  "images": [f"{CONTAINER_STAGE}/{d['file']}" for d in w["finds"]]} for w in under if w["finds"]]
         scored = clip_score(jobs, STAGE) if jobs else {}
         under_ids = {w["word_id"] for w in under}
         with open(LOG, "a") as log:
             for w in chunk:
+                if w.get("failed"):
+                    totals["failed"] += 1
+                    continue
                 record = {"word_id": w["word_id"], "lemma": w["lemma"], "best_before": round(w["best"], 4), "uploads": []}
                 if w["word_id"] in under_ids:
                     res = scored.get(str(w["word_id"]), {"scores": {}, "flags": {}})
@@ -341,7 +450,8 @@ def main():
                     print(json.dumps(record, ensure_ascii=False))
         totals["checked"] += len(chunk)
         totals["under"] += len(under)
-        print(f"... {totals}", flush=True)
+        pace = {h: (round(t.interval, 2), t.limited) for h, t in THROTTLES.items()}
+        print(f"... {totals} pace={pace}", flush=True)
     shutil.rmtree(STAGE, ignore_errors=True)
     print(f"done {totals} openverse={'on' if openverse.alive else 'off'}")
 

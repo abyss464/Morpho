@@ -3,3 +3,6 @@ ops/logs/
 ops/__pycache__/
 content/corpora/
 .claude/worktrees/
+
+# Local secrets (API keys) read by docker compose
+.env
