@@ -245,7 +245,8 @@ COMMIT_MSG="ops: cut release ${CONTENT_VERSION}"
 
 # Stage the files we changed.
 git add app/app/src/main/assets/release.db
-git add "$TEST_FILE"
+# -f: the test sits under a .gitignore pattern, which makes a plain add fail even though it is tracked.
+git add -f "$TEST_FILE"
 # Stage specbook changes if any (includes untracked new specs).
 git add .specs/ docs/specbook/ SPECBOOK.md
 
