@@ -104,19 +104,6 @@ object ProgressTracker {
         )
     }
 
-    fun estimatedDaysRemaining(
-        remainingWords: Int,
-        recentStats: Collection<DailyStats>,
-    ): Int? {
-        if (remainingWords <= 0) return 0
-        val activeDays = recentStats.filter { it.newLearned > 0 }
-        if (activeDays.isEmpty()) return null
-        val recent = activeDays.take(14)
-        val avgPerDay = recent.sumOf { it.newLearned }.toFloat() / recent.size
-        if (avgPerDay < 0.1f) return null
-        return (remainingWords / avgPerDay).toInt().coerceAtLeast(1)
-    }
-
     /**
      * Folds counts into the day's row. Every field is a count, so merging is pure
      * addition: a day folded step by step lands on the same numbers as one folded at once.
