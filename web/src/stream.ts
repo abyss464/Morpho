@@ -14,9 +14,7 @@ export const BACKLOG = 50;
 
 export type Outcome = 'clean' | 'shaky' | 'failed';
 
-// Same scheduling as the app's FSRS: the stream's own steps are the short-term learning, so a
-// graduated word goes straight to day-based review, without fuzz.
-const scheduler = fsrs(generatorParameters({ enable_fuzz: false, enable_short_term: false }));
+const scheduler = fsrs(generatorParameters({ enable_fuzz: true }));
 const toStored = (c: Card): StoredCard => JSON.parse(JSON.stringify(c)) as StoredCard;
 
 /** Today's counters, reset when the date changes. */
