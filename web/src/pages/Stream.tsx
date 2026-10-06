@@ -28,8 +28,20 @@ const RATING_NAME: Record<number, string> = {
   4: 'Easy',
 };
 
+const ordinal = (n: number) => {
+  const tens = n % 100;
+  const suffix = tens >= 11 && tens <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
+  return `${n}${suffix}`;
+};
+
+/** How a review task went, as the result card says it. */
+const HOW: Record<'rebuild' | 'fill', Record<Outcome, string>> = {
+  rebuild: { clean: 'Rebuilt with no mistakes', shaky: 'Rebuilt after one wrong check', failed: 'Needed help or several tries' },
+  fill: { clean: 'Filled in first time', shaky: 'Filled in after a wrong pick', failed: 'Filled in after a wrong pick' },
+};
+
 /** The step's kind as the learner reads it, with its motif: new (square), learning or review (diamonds). */
-function Stage({ kind, unit, again }: { kind: Current['kind']; unit?: number; again?: boolean }) {
+function Stage({ kind, unit, again, nth }: { kind: Current['kind']; unit?: number; again?: boolean; nth?: number }) {
   const [mark, label] =
     kind === 'know' && again
       ? ['mk learn', 'Look again']
@@ -39,7 +51,7 @@ function Stage({ kind, unit, again }: { kind: Current['kind']; unit?: number; ag
           ? ['mk learn', 'Explain it']
           : kind === 'use'
             ? ['mk learn', 'Use it']
-            : ['mk review', 'Review'];
+            : ['mk review', nth ? `Review · ${ordinal(nth)} time` : 'Review'];
   return (
     <span className="stage">
       <i className={mark} aria-hidden="true" />
@@ -75,7 +87,7 @@ export function Stream({ index }: { index: Index }) {
   const progress = useProgress();
   const cur = progress.current;
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const [result, setResult] = useState<WordFull | null>(null);
+  const [result, setResult] = useState<{ w: WordFull; outcome: Outcome; task: 'rebuild' | 'fill' } | null>(null);
   const [cover, setCover] = useState(true);
   const started = useRef(Date.now());
 
@@ -118,7 +130,7 @@ export function Stream({ index }: { index: Index }) {
   const reviewed = (o: Outcome) => {
     if (!cur || !loaded) return;
     commit(complete(progress, cur, o, Date.now() - started.current));
-    setResult(loaded.w);
+    setResult({ w: loaded.w, outcome: o, task: cur.task ?? 'rebuild' });
     readAloud(loaded.w);
   };
 
@@ -136,7 +148,7 @@ export function Stream({ index }: { index: Index }) {
   });
 
   /* ---------- review result ---------- */
-  if (result) return <ReviewResult w={result} progress={progress} onContinue={leaveResult} />;
+  if (result) return <ReviewResult {...result} progress={progress} onContinue={leaveResult} />;
 
   /* ---------- done ---------- */
   if (!cur) return <Done index={index} progress={progress} />;
@@ -194,7 +206,7 @@ export function Stream({ index }: { index: Index }) {
           )}
         </figure>
         <div className="body">
-          <Stage kind={cur.kind} />
+          <Stage kind={cur.kind} nth={review ? progress.cards[cur.word]?.reps : undefined} />
           {rebuild ? (
             <>
               <div className="head">
@@ -240,7 +252,19 @@ function StepNav({ enabled, onContinue, hint }: { enabled: boolean; onContinue: 
   );
 }
 
-function ReviewResult({ w, progress, onContinue }: { w: WordFull; progress: Progress; onContinue: () => void }) {
+function ReviewResult({
+  w,
+  outcome,
+  task,
+  progress,
+  onContinue,
+}: {
+  w: WordFull;
+  outcome: Outcome;
+  task: 'rebuild' | 'fill';
+  progress: Progress;
+  onContinue: () => void;
+}) {
   const last = progress.lastReview;
   const [writing, setWriting] = useState(false);
   const [text, setText] = useState('');
@@ -254,10 +278,13 @@ function ReviewResult({ w, progress, onContinue }: { w: WordFull; progress: Prog
           <Picture w={w} eager />
         </figure>
         <div className="body">
-          <Stage kind="review" />
+          <Stage kind="review" nth={last.prev.reps} />
           <Head w={w} />
           <Meta w={w} />
-          <Definition w={w} />
+          <div className={`result ${outcome}`}>
+            <span className="how">{HOW[task][outcome]}</span>
+            <Definition w={w} />
+          </div>
           <ExampleBlock w={w} />
           <div className="rating">
             <p className="verdict">
@@ -278,7 +305,7 @@ function ReviewResult({ w, progress, onContinue }: { w: WordFull; progress: Prog
                 </button>
               ))}
             </div>
-            <span className="hintnote">Rated from how you did. Click another to change it.</span>
+            <span className="hintnote">Rated from how it went. Click another to change it.</span>
           </div>
           {writing ? (
             <div className="own">

@@ -54,6 +54,12 @@ export function Today({ index }: { index: Index }) {
           <div className="bar-track" aria-hidden="true">
             <i style={{ width: `${(met / Math.max(1, total)) * 100}%` }} />
           </div>
+          {met < total && (
+            <p>
+              Unit {firstOpen < 0 ? index.unitCount : firstOpen + 1} of {index.unitCount} · about{' '}
+              {plural(Math.ceil((total - met) / progress.newPerDay), 'day')} at {progress.newPerDay} a day
+            </p>
+          )}
           <label className="perday">
             New words a day
             <select value={progress.newPerDay} onChange={(e) => setNewPerDay(Number(e.target.value))}>
