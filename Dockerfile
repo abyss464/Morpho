@@ -6,10 +6,10 @@
 # -- 1. Admin UI (React/Vite via pnpm) -------------------------------------
 FROM node:22-slim AS ui-builder
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@11.21.0 --activate
 
 WORKDIR /build
-COPY admin-ui/package.json admin-ui/pnpm-lock.yaml ./
+COPY admin-ui/package.json admin-ui/pnpm-lock.yaml admin-ui/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --ignore-scripts && \
     pnpm rebuild esbuild
 
@@ -31,7 +31,7 @@ RUN cargo build --release --bin morphod
 # -- 3. Python adapters (uv-managed venvs) ---------------------------------
 FROM python:3.12-slim-bookworm AS py-builder
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /usr/local/bin/uv
 
 WORKDIR /build/adapters
 
@@ -54,11 +54,11 @@ RUN cd morfessor && uv sync --frozen
 COPY adapters/codex/ ./codex/
 RUN cd codex && uv sync --frozen
 
-# CLIP adapter. CPU-only torch is resolved from PyTorch's dedicated index
-# so the image stays small and accelerator-free. GPU auto-detection kicks
-# in when running natively under a venv that holds a CUDA/ROCm build.
+# CLIP adapter. Its lockfile pins CPU-only torch from PyTorch's dedicated
+# index, so the image stays small and accelerator-free. GPU auto-detection
+# kicks in when running natively under a venv that holds a CUDA/ROCm build.
 COPY adapters/clip/ ./clip/
-RUN cd clip && UV_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu uv sync --frozen
+RUN cd clip && uv sync --frozen
 
 # -- 4. Runtime image -------------------------------------------------------
 FROM python:3.12-slim-bookworm AS runtime
@@ -83,7 +83,7 @@ COPY --from=py-builder /build/adapters/codex/    /app/adapters/codex/
 COPY --from=py-builder /build/adapters/clip/     /app/adapters/clip/
 
 # uv binary (morphod spawns adapters via `uv run`)
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /usr/local/bin/uv
 
 # Container config
 COPY morphod.docker.toml /app/morphod.toml

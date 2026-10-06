@@ -10,10 +10,10 @@ requires-python = ">=3.12"
 # PYTHONPATH and pointing at the source tree, as documented in
 # docs/contracts/clip-service.md.
 #
-# In Docker the Dockerfile resolves torch from the CPU-only index
-# (https://download.pytorch.org/whl/cpu) via UV_EXTRA_INDEX_URL so the image
-# stays small and accelerator-free.  Natively, torch auto-detects CUDA/ROCm
-# and uses whatever the host has.
+# The project's own venv (the one Docker builds) resolves torch and torchvision
+# from PyTorch's CPU-only index, pinned in uv.lock, so the image stays small
+# and accelerator-free.  A GPU host runs the sidecar under its own venv
+# instead, where torch auto-detects CUDA/ROCm.
 dependencies = [
     "morpho-adapter-common",
     "torch>=2.0",
@@ -34,6 +34,13 @@ packages = ["src/morpho_clip"]
 
 [tool.uv.sources]
 morpho-adapter-common = { path = "../common", editable = true }
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [dependency-groups]
 dev = ["pytest>=8.3", "ruff>=0.6"]
