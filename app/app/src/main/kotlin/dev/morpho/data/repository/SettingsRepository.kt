@@ -24,6 +24,8 @@ data class MorphoSettings(
     val reducedMotion: Boolean? = null,
     val activityChartStyle: ActivityChartStyle = ActivityChartStyle.BAR,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /** The web app progress syncs with; null until the learner syncs the first time. */
+    val syncAddress: String? = null,
 )
 
 class SettingsRepository(private val progress: ProgressRepository) {
@@ -49,6 +51,7 @@ class SettingsRepository(private val progress: ProgressRepository) {
             themeMode = progress.metaValue(UserMetaKeys.THEME_MODE)
                 ?.let { ThemeMode.fromDb(it) }
                 ?: ThemeMode.SYSTEM,
+            syncAddress = progress.metaValue(UserMetaKeys.SYNC_ADDRESS)?.takeIf { it.isNotBlank() },
         )
         state.value = loaded
         return loaded
@@ -89,6 +92,11 @@ class SettingsRepository(private val progress: ProgressRepository) {
     suspend fun setThemeMode(value: ThemeMode) {
         progress.setMeta(UserMetaKeys.THEME_MODE, value.dbValue)
         state.value = state.value.copy(themeMode = value)
+    }
+
+    suspend fun setSyncAddress(value: String) {
+        progress.setMeta(UserMetaKeys.SYNC_ADDRESS, value)
+        state.value = state.value.copy(syncAddress = value)
     }
 
     companion object {

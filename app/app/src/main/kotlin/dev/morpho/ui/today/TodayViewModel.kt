@@ -6,6 +6,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.morpho.data.repository.IndexedWord
 import dev.morpho.data.stream.StreamSnapshot
+import dev.morpho.data.sync.SyncOutcome
 import dev.morpho.di.AppContainer
 import dev.morpho.domain.model.ActivityChartStyle
 import dev.morpho.domain.model.DailyActivity
@@ -68,56 +69,66 @@ class TodayViewModel(private val container: AppContainer) : ViewModel() {
     private val _state = MutableStateFlow(TodayUiState())
     val state: StateFlow<TodayUiState> = _state.asStateFlow()
 
+    /**
+     * Loads Today's figures; when a sync address is saved, then syncs once, silently, and
+     * loads them again when words came from the web.
+     */
     fun refresh() {
         viewModelScope.launch {
-            val engine = container.streamEngine
-            val today = LocalDate.now()
-            val now = Instant.now()
-            val snapshot = container.streamStore.open(today)
-            val stream = engine.today(snapshot.state, today)
-            val settings = container.settingsRepository.settings.value
-            val recentStats = container.progressRepository.recentStats(120)
-
-            val due = engine.dueReviews(stream, snapshot.cards, snapshot.order.toSet(), now).size
-            val fresh = if (due < StreamEngine.BACKLOG) engine.newAllowance(stream, settings.dailyGoal) else 0
-            val shipped = snapshot.order.toSet()
-            val met = snapshot.cards.keys.count { it in shipped } + stream.words.size
-            val journey = OverallProgress(
-                totalWords = snapshot.order.size,
-                learnedWords = met,
-                inFlightWords = stream.words.size,
-            )
-            val units = unitsOf(snapshot)
-            val firstOpen = units.indexOfFirst { !it.finished }.let { if (it < 0) units.size else it }
-            val from = (firstOpen - 2).coerceAtLeast(0)
-
-            _state.value = TodayUiState(
-                loading = false,
-                greetingPeriod = ProgressTracker.greetingPeriod(LocalTime.now().hour),
-                streakDays = ProgressTracker.streak(recentStats, today),
-                dueReviews = due,
-                newWords = fresh,
-                backlogged = due >= StreamEngine.BACKLOG,
-                entry = when {
-                    due == 0 && fresh == 0 && stream.words.isEmpty() -> TodayEntry.SUMMARY
-                    stream.day.steps > 0 || stream.current != null -> TodayEntry.CONTINUE
-                    else -> TodayEntry.START
-                },
-                journey = journey,
-                pace = JourneyPace(
-                    unit = if (firstOpen < units.size) firstOpen + 1 else units.size,
-                    unitCount = units.size,
-                    newPerDay = settings.dailyGoal,
-                ),
-                weeklyActivity = ProgressTracker.weeklyActivity(recentStats, today),
-                heatmapData = ProgressTracker.heatmapData(recentStats, today),
-                activityChartStyle = settings.activityChartStyle,
-                units = units.drop(from).take(UNITS_SHOWN),
-                unitsFinished = units.count { it.finished },
-                unitCount = units.size,
-                index = container.contentRepository.wordIndex(),
-            )
+            load()
+            val synced = container.progressSync.syncSaved()
+            if (synced is SyncOutcome.Done && synced.updated > 0) load()
         }
+    }
+
+    private suspend fun load() {
+        val engine = container.streamEngine
+        val today = LocalDate.now()
+        val now = Instant.now()
+        val snapshot = container.streamStore.open(today)
+        val stream = engine.today(snapshot.state, today)
+        val settings = container.settingsRepository.settings.value
+        val recentStats = container.progressRepository.recentStats(120)
+
+        val due = engine.dueReviews(stream, snapshot.cards, snapshot.order.toSet(), now).size
+        val fresh = if (due < StreamEngine.BACKLOG) engine.newAllowance(stream, settings.dailyGoal) else 0
+        val shipped = snapshot.order.toSet()
+        val met = snapshot.cards.keys.count { it in shipped } + stream.words.size
+        val journey = OverallProgress(
+            totalWords = snapshot.order.size,
+            learnedWords = met,
+            inFlightWords = stream.words.size,
+        )
+        val units = unitsOf(snapshot)
+        val firstOpen = units.indexOfFirst { !it.finished }.let { if (it < 0) units.size else it }
+        val from = (firstOpen - 2).coerceAtLeast(0)
+
+        _state.value = TodayUiState(
+            loading = false,
+            greetingPeriod = ProgressTracker.greetingPeriod(LocalTime.now().hour),
+            streakDays = ProgressTracker.streak(recentStats, today),
+            dueReviews = due,
+            newWords = fresh,
+            backlogged = due >= StreamEngine.BACKLOG,
+            entry = when {
+                due == 0 && fresh == 0 && stream.words.isEmpty() -> TodayEntry.SUMMARY
+                stream.day.steps > 0 || stream.current != null -> TodayEntry.CONTINUE
+                else -> TodayEntry.START
+            },
+            journey = journey,
+            pace = JourneyPace(
+                unit = if (firstOpen < units.size) firstOpen + 1 else units.size,
+                unitCount = units.size,
+                newPerDay = settings.dailyGoal,
+            ),
+            weeklyActivity = ProgressTracker.weeklyActivity(recentStats, today),
+            heatmapData = ProgressTracker.heatmapData(recentStats, today),
+            activityChartStyle = settings.activityChartStyle,
+            units = units.drop(from).take(UNITS_SHOWN),
+            unitsFinished = units.count { it.finished },
+            unitCount = units.size,
+            index = container.contentRepository.wordIndex(),
+        )
     }
 
     fun setActivityChartStyle(style: ActivityChartStyle) {

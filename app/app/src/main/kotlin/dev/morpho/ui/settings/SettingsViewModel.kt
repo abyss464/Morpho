@@ -11,6 +11,8 @@ import dev.morpho.data.haptics.HapticPattern
 import dev.morpho.data.repository.MorphoSettings
 import dev.morpho.data.repository.SettingsRepository
 import dev.morpho.data.sound.SfxEvent
+import dev.morpho.data.sync.ProgressSync
+import dev.morpho.data.sync.SyncOutcome
 import dev.morpho.di.AppContainer
 import dev.morpho.domain.model.ActivityChartStyle
 import dev.morpho.domain.model.ThemeMode
@@ -32,6 +34,37 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     private val _backup = MutableStateFlow(BackupUiState())
     val backup: StateFlow<BackupUiState> = _backup.asStateFlow()
+
+    /** The address field: the saved sync address, else the default. */
+    private val _syncAddress = MutableStateFlow(repo.settings.value.syncAddress ?: ProgressSync.DEFAULT_ADDRESS)
+    val syncAddress: StateFlow<String> = _syncAddress.asStateFlow()
+
+    private val _syncing = MutableStateFlow(false)
+    val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
+
+    /** The last sync's outcome, this one or Today's silent one. */
+    val syncOutcome: StateFlow<SyncOutcome?> = container.progressSync.last
+
+    fun setSyncAddress(value: String) {
+        _syncAddress.value = value
+    }
+
+    /**
+     * "Sync now": saves the address and syncs with it. The field then shows the address as
+     * saved (scheme added, trailing slash dropped), unless it was edited meanwhile; text that
+     * is not an address stays as typed, under its error.
+     */
+    fun syncNow() {
+        if (_syncing.value) return
+        container.tap()
+        _syncing.value = true
+        val typed = _syncAddress.value
+        viewModelScope.launch {
+            container.progressSync.syncWith(typed)
+            ProgressSync.normalizeAddress(typed)?.let { if (_syncAddress.value == typed) _syncAddress.value = it }
+            _syncing.value = false
+        }
+    }
 
     /** A tick for each step the slider passes, not for every pixel it moves. */
     fun setDailyGoal(value: Int) {

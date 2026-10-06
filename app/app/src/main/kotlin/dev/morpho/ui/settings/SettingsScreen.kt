@@ -9,8 +9,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -22,6 +25,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -33,7 +37,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.morpho.BuildConfig
@@ -43,11 +51,14 @@ import dev.morpho.data.backup.BackupVerdict
 import dev.morpho.data.backup.ProgressBackup
 import dev.morpho.data.repository.MorphoSettings
 import dev.morpho.data.repository.SettingsRepository
+import dev.morpho.data.sync.SyncFailure
+import dev.morpho.data.sync.SyncOutcome
 import dev.morpho.di.AppContainer
 import dev.morpho.di.StartupReport
 import dev.morpho.domain.model.ActivityChartStyle
 import dev.morpho.domain.model.ThemeMode
 import dev.morpho.ui.designsystem.component.PreviewBox
+import dev.morpho.ui.designsystem.component.PrimaryButton
 import dev.morpho.ui.designsystem.component.ThemePreviews
 import dev.morpho.ui.designsystem.motion.pressMotion
 import dev.morpho.ui.designsystem.theme.MorphoTheme
@@ -67,6 +78,9 @@ fun SettingsScreen(
     val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(container))
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val backup by viewModel.backup.collectAsStateWithLifecycle()
+    val syncAddress by viewModel.syncAddress.collectAsStateWithLifecycle()
+    val syncing by viewModel.syncing.collectAsStateWithLifecycle()
+    val syncOutcome by viewModel.syncOutcome.collectAsStateWithLifecycle()
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(ProgressBackup.MIME_TYPE),
@@ -105,6 +119,13 @@ fun SettingsScreen(
             wordCount = startup.wordCount,
             contentVersion = startup.contentVersion,
             backupStatus = backupStatusText(backup),
+            sync = SyncUi(
+                address = syncAddress,
+                busy = syncing,
+                status = syncStatusText(syncing, syncOutcome),
+                onAddressChange = viewModel::setSyncAddress,
+                onSync = viewModel::syncNow,
+            ),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
@@ -187,6 +208,81 @@ private fun ImportConfirmDialog(
     )
 }
 
+/** What the sync section shows and does. */
+private data class SyncUi(
+    val address: String,
+    val busy: Boolean,
+    val status: String?,
+    val onAddressChange: (String) -> Unit,
+    val onSync: () -> Unit,
+)
+
+/**
+ * "Sync with the web app" (docs/contracts/sync.md §5): the address, Sync now, and how the
+ * last sync went.
+ */
+@Composable
+private fun SyncSection(sync: SyncUi) {
+    // The keyboard goes away on sync, so the result line under the button can be read.
+    val focus = LocalFocusManager.current
+    val syncNow = {
+        focus.clearFocus()
+        sync.onSync()
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(MorphoTheme.spacing.sm)) {
+        Text(
+            text = stringResource(R.string.settings_sync_summary),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = sync.address,
+            onValueChange = sync.onAddressChange,
+            label = { Text(stringResource(R.string.settings_sync_address)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Uri,
+                autoCorrectEnabled = false,
+                imeAction = ImeAction.Go,
+            ),
+            keyboardActions = KeyboardActions(onGo = { syncNow() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        PrimaryButton(
+            text = stringResource(if (sync.busy) R.string.settings_sync_working else R.string.settings_sync_now),
+            onClick = syncNow,
+            enabled = !sync.busy && sync.address.isNotBlank(),
+        )
+        if (sync.status != null) {
+            Text(
+                text = sync.status,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+        }
+    }
+}
+
+/** One line for the last sync: what moved, or what went wrong in plain words. */
+@Composable
+private fun syncStatusText(busy: Boolean, outcome: SyncOutcome?): String? = when {
+    busy || outcome == null -> null
+    outcome is SyncOutcome.Done -> stringResource(
+        R.string.settings_sync_done,
+        pluralStringResource(R.plurals.sync_words, outcome.updated, outcome.updated),
+        outcome.sent,
+    )
+    outcome is SyncOutcome.Failed -> when (outcome.reason) {
+        SyncFailure.BAD_ADDRESS -> stringResource(R.string.settings_sync_bad_address)
+        SyncFailure.UNREACHABLE -> stringResource(R.string.settings_sync_unreachable, outcome.address)
+        SyncFailure.REFUSED -> stringResource(R.string.settings_sync_refused, outcome.address)
+        SyncFailure.TIMED_OUT -> stringResource(R.string.settings_sync_timed_out, outcome.address)
+        SyncFailure.SERVER_ERROR -> stringResource(R.string.settings_sync_server_error, outcome.status ?: 0)
+        SyncFailure.BAD_REPLY -> stringResource(R.string.settings_sync_bad_reply)
+    }
+    else -> null
+}
+
 /** Turns the view model's backup state into one line of copy under the data section. */
 @Composable
 private fun backupStatusText(state: BackupUiState): String? = when {
@@ -224,6 +320,7 @@ private fun SettingsContent(
     wordCount: Int,
     contentVersion: String?,
     backupStatus: String?,
+    sync: SyncUi,
     onDailyGoalChange: (Int) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     onActivityChartStyleChange: (ActivityChartStyle) -> Unit,
@@ -238,6 +335,7 @@ private fun SettingsContent(
     val spacing = MorphoTheme.spacing
     Column(
         modifier = modifier
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.screenGutter)
             .padding(bottom = spacing.xxl),
@@ -358,6 +456,10 @@ private fun SettingsContent(
                 color = MaterialTheme.colorScheme.secondary,
             )
         }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        SectionHeader(stringResource(R.string.settings_section_sync))
+        SyncSection(sync)
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         SectionHeader(stringResource(R.string.settings_section_about))
@@ -488,6 +590,13 @@ private fun SettingsPreview() {
             wordCount = 4_253,
             contentVersion = "2026.08.26+ff7fd531",
             backupStatus = null,
+            sync = SyncUi(
+                address = "http://127.0.0.1:30017",
+                busy = false,
+                status = "Synced: 3 words updated from the web, 212 sent",
+                onAddressChange = {},
+                onSync = {},
+            ),
             onDailyGoalChange = {},
             onThemeModeChange = {},
             onActivityChartStyleChange = {},

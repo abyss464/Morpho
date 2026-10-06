@@ -19,6 +19,7 @@ import dev.morpho.data.repository.SettingsRepository
 import dev.morpho.data.sound.SfxEvent
 import dev.morpho.data.sound.SoundManager
 import dev.morpho.data.stream.StreamStore
+import dev.morpho.data.sync.ProgressSync
 import dev.morpho.domain.content.GlossIndex
 import dev.morpho.domain.review.FsrsScheduler
 import dev.morpho.domain.stream.StreamEngine
@@ -52,6 +53,8 @@ class AppContainer(private val context: Context) {
     }
 
     val streamStore: StreamStore by lazy { StreamStore(progressRepository, contentRepository) }
+
+    val progressSync: ProgressSync by lazy { ProgressSync(streamStore, settingsRepository) }
 
     val progressBackup: ProgressBackup by lazy {
         ProgressBackup(context, databaseProvider)

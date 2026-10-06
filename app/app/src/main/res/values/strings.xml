@@ -158,6 +158,22 @@
     <string name="settings_export_summary">Save a copy of your progress file</string>
     <string name="settings_import">Import progress</string>
     <string name="settings_import_summary">Restore progress from a saved file</string>
+    <string name="settings_section_sync">Sync with the web app</string>
+    <string name="settings_sync_summary">Your cards, the words you are learning and your notes are merged with the web app\'s. Today\'s counts and settings stay on this phone.</string>
+    <string name="settings_sync_address">Web app address</string>
+    <string name="settings_sync_now">Sync now</string>
+    <string name="settings_sync_working">Syncing…</string>
+    <string name="settings_sync_done">Synced: %1$s updated from the web, %2$d sent</string>
+    <plurals name="sync_words">
+        <item quantity="one">%1$d word</item>
+        <item quantity="other">%1$d words</item>
+    </plurals>
+    <string name="settings_sync_bad_address">That is not a web address. Try something like 192.168.1.5:30017.</string>
+    <string name="settings_sync_unreachable">Could not reach %1$s. Check the address and that this phone can reach that computer.</string>
+    <string name="settings_sync_refused">%1$s refused the connection. Is the web app running?</string>
+    <string name="settings_sync_timed_out">%1$s did not answer in time.</string>
+    <string name="settings_sync_server_error">The web app answered with an error (HTTP %1$d).</string>
+    <string name="settings_sync_bad_reply">The web app sent back something that is not progress.</string>
     <string name="settings_section_about">About</string>
     <string name="settings_content_version">Content version</string>
     <string name="settings_app_version">App version</string>

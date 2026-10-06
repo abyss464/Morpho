@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Progress sync talks plain http to the web app at an address the learner types in
+  (docs/contracts/sync.md): 127.0.0.1 over adb reverse, or a computer on the same network.
+  Nothing else in the app uses the network.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
