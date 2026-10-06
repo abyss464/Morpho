@@ -38,10 +38,13 @@ Endpoints, provided by the Vite plugin in `server/release.ts`:
 | `/api/index` | release meta and every word in learning order as `[word_id, word]` |
 | `/api/unit/:n` | full data for unit `n` (20 consecutive words in `learning_order`) |
 | `/api/words?ids=1,2,3` | full data for up to 200 word ids |
+| `GET`/`POST /api/sync` | the synced progress document: POST merges the sender's into it and returns the result |
 
 ## Progress
 
 Stored in the browser's `localStorage` under `morpho-web-v2`, keyed by `word_id` (stable across releases): each word's stage and next step, FSRS cards for graduated words, today's counters, a per-day step history, the daily new-word setting, the step on screen (so a paused stream resumes on it) and the learner's own notes. Progress from the earlier unit-and-review version (`morpho-web-v1`) carries over: its studied words continue in review.
+
+The page also syncs this progress with the Android app through the server (`docs/contracts/sync.md`): on load and a moment after every change it posts its words' cards, learning stages and notes, and takes the merged copy back. The server keeps that copy in `data/sync/progress.json`. The phone reaches the server at the address entered in its Settings; over USB, `adb reverse tcp:30017 tcp:30017` makes `127.0.0.1:30017` on the phone reach it. `MORPHO_WEB_PORT` and `MORPHO_SYNC_FILE` start a second copy with its own port and sync file, for testing.
 
 ## Layout
 
@@ -50,6 +53,7 @@ server/release.ts           Vite plugin: release resolution, SQLite reads, JSON 
 src/types.ts                JSON shapes shared by server and client
 src/api.ts                  fetch + cache for index, units and words
 src/store.ts                localStorage progress
+src/sync.ts, src/syncdoc.ts progress sync with the server: client, and the shared document and merge
 src/stream.ts               the stream: next step, transitions, derived ratings, FSRS
 src/explain.ts              definition blanks, pieces and the rebuild puzzle
 src/audio.ts                shared audio player (single files or a word-definition-example run)

@@ -4,6 +4,7 @@
 //   GET /api/unit/:n        full data for unit n (unitSize consecutive words, 1-based)
 //   GET /api/words?ids=1,2  full data for the given word ids (at most 200)
 //   GET /media/img/{hash}.webp, /media/audio/{hash}.ogg   files straight from the bundle
+//   GET /api/sync, POST /api/sync   the synced progress document (docs/contracts/sync.md)
 //
 // The release directory is re-resolved on every API request, so a newly cut release in
 // data/releases/ is picked up without a restart.
@@ -13,6 +14,8 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connect, Plugin } from 'vite';
+import { emptyDoc, mergeDocs, parseDoc } from '../src/syncdoc';
+import type { SyncDoc } from '../src/syncdoc';
 import type { Example, ReleaseIndex, Sense, WordFull } from '../src/types';
 
 export const UNIT_SIZE = 20;
@@ -229,9 +232,46 @@ function serveMedia(req: IncomingMessage, res: ServerResponse, file: string, typ
   fs.createReadStream(file, { start, end }).pipe(res);
 }
 
+const MAX_SYNC_BODY = 32 * 1024 * 1024;
+
+function readStoredDoc(file: string): SyncDoc {
+  try {
+    return parseDoc(JSON.parse(fs.readFileSync(file, 'utf8'))) ?? emptyDoc();
+  } catch {
+    return emptyDoc();
+  }
+}
+
+/** GET returns the stored progress document; POST merges the client's into it and returns the result. */
+function handleSync(req: IncomingMessage, res: ServerResponse, file: string): void {
+  if (req.method === 'GET') return sendJson(res, 200, readStoredDoc(file));
+  const chunks: Buffer[] = [];
+  let size = 0;
+  req.on('data', (c: Buffer) => {
+    size += c.length;
+    if (size <= MAX_SYNC_BODY) chunks.push(c);
+  });
+  req.on('end', () => {
+    let incoming: SyncDoc | null = null;
+    try {
+      incoming = size <= MAX_SYNC_BODY ? parseDoc(JSON.parse(Buffer.concat(chunks).toString('utf8'))) : null;
+    } catch {
+      incoming = null;
+    }
+    if (!incoming) return sendJson(res, 400, { error: 'not a version-1 progress document' });
+    const merged = mergeDocs(readStoredDoc(file), incoming);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(merged));
+    fs.renameSync(tmp, file);
+    sendJson(res, 200, merged);
+  });
+}
+
 export function morphoRelease(): Plugin {
   let releasesDir = '';
   let repoRoot = '';
+  let syncFile = '';
   let current: Loaded | null = null;
 
   function release(): Loaded {
@@ -248,6 +288,7 @@ export function morphoRelease(): Plugin {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const p = url.pathname;
     if (!p.startsWith('/api/') && !p.startsWith('/media/')) return next();
+    if (p === '/api/sync' && (req.method === 'GET' || req.method === 'POST')) return handleSync(req, res, syncFile);
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
 
     let rel: Loaded;
@@ -293,6 +334,7 @@ export function morphoRelease(): Plugin {
     configResolved(config) {
       repoRoot = path.resolve(config.root, '..');
       releasesDir = path.join(repoRoot, 'data', 'releases');
+      syncFile = process.env.MORPHO_SYNC_FILE || path.join(repoRoot, 'data', 'sync', 'progress.json');
     },
     configureServer(server) {
       server.middlewares.use(handler);

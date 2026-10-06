@@ -154,13 +154,14 @@ try {
   /* no window */
 }
 
-function subscribe(l: () => void): () => void {
+/** Calls `l` after every change to the progress; returns the unsubscribe. */
+export function onChange(l: () => void): () => void {
   listeners.add(l);
   return () => listeners.delete(l);
 }
 
 export function useProgress(): Progress {
-  return useSyncExternalStore(subscribe, () => state);
+  return useSyncExternalStore(onChange, () => state);
 }
 
 export function getProgress(): Progress {
