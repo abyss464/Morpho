@@ -1,0 +1,47 @@
+5765 | n | * | Enjoyment is the feeling of pleasure that you have when you do something that you like. | She plays the piano for her own enjoyment.
+5771 | n | * | An examination is a close look at something or someone, for example by a doctor; an examination is also a test of what a student knows. | The doctor gave him a full examination.
+5813 | n | * | An investigation is a search for the facts about something, for example a crime. | The police started an investigation into the fire.
+5822 | adv | * | Mainly means for the most part, or more than anything else. | The workers are mainly young people.
+5824 | adv | * | Mentally means in your mind, or to do with your mind. | He felt mentally tired after a long day at work.
+5826 | adv | * | Naturally means as you would expect; naturally also means in a natural way, without being forced. | Naturally, the children were happy about the trip.
+5852 | n | * | Protection is the act of keeping someone or something safe from harm. | Sun cream gives protection from the sun.
+5855 | adv | * | If you do something publicly, you do it in front of other people, so that everyone knows. | The minister publicly said sorry.
+5878 | adv | * | If you do something slowly, you do it at a low speed or take a long time to do it. | The old man walked slowly up the hill.
+5973 | adj | * | A dishonest person is not honest and may lie or cheat. | It is dishonest to copy other people's work.
+6264 | adj | * | A playful person or animal is full of fun and likes to play. | The young dog is very playful.
+6280 | adj | * | Something unpleasant is not nice and makes you feel bad. | There was an unpleasant smell in the kitchen.
+5725 | adv | * | Completely means in every way, with nothing left out. | I completely forgot her birthday.
+5759 | adv | * | If you do something easily, you do it without difficulty. | She won the race easily.
+5787 | n | * | The going is how easy or hard it is to travel or to do something. | The going was slow on the snowy road.
+5790 | n | * | Happiness is the feeling of being happy. | Money does not always bring happiness.
+5791 | adj | * | Something harmful can hurt people or damage things. | Smoking is harmful to your health.
+5856 | n | * | Punishment is something bad that is done to someone because they have done something wrong. | The punishment for stealing is prison.
+5857 | adv | * | If you do something quickly, you do it fast or in a short time. | She quickly ran to the door.
+5858 | n | * | Your reaction to something is what you feel, say or do because of it; in chemistry, a reaction is a process in which substances change into other substances. | What was his reaction to the news?
+5872 | adv | * | Roughly means about, not exactly; if you treat someone roughly, you treat them with force and without care. | The trip takes roughly two hours.
+5875 | n | * | Seriousness is the quality of being serious or important. | He did not understand the seriousness of the problem.
+5886 | adv | * | If something happens suddenly, it happens quickly and when you do not expect it. | Suddenly, the lights went out.
+5896 | n | * | Treatment is medical care for an illness or an injury; your treatment of someone is the way you behave toward them. | He needs treatment for his back.
+5899 | adj | * | If you are unable to do something, you can not do it. | I am unable to come to the party.
+5911 | n | * | The value of something is how much money it is worth, or how useful or important it is. | The value of the house has gone up.
+5911 | v | - | If you value something, you think that it is important.
+5916 | n | * | A vehicle is a machine such as a car, a bus or a truck that carries people or things. | No vehicles are allowed in the park.
+5922 | n | * | Your view is your opinion; a view is also what you can see from a place. | The room has a beautiful view of the sea.
+5922 | v | - | If you view something, you look at it, or you think about it in a certain way.
+5924 | adj | * | A violent person uses force to hurt people; a violent event is very strong and causes damage. | The film has too many violent scenes.
+5929 | adv | * | Widely means by many people or in many places. | English is widely spoken.
+6305 | adv | * | Seriously means in a serious way; seriously also means badly. | He was seriously hurt in the accident.
+6351 | adj | * | Something valuable is worth a lot of money or is very useful. | This ring is very valuable.
+5717 | adj | * | A cheerful person is happy and full of good feelings. | She is always cheerful in the morning.
+5750 | n | * | Development is the process of growing or changing and becoming bigger or better; a development is also a new event. | Good food is important for a child's development.
+5778 | adv | * | Extremely means very, very much. | It was extremely cold last night.
+5831 | adv | * | Officially means in a way that is approved by a government or by the people in charge. | The new bridge was officially opened yesterday.
+5871 | adj | * | Roman means to do with the ancient Romans, who ruled a great empire; Roman numbers are letters such as I, V and X that are used as numbers. | The old clock has Roman numbers on its face.
+5885 | adv | * | Strongly means with great force or with great feeling. | I strongly agree with you.
+5910 | adj | * | A valid ticket or document can be used and is accepted by law; a valid reason is a good one that people accept. | Your ticket is valid for one month.
+5930 | n | * | Willingness is the quality of being ready and happy to do something. | I admire her willingness to help others.
+6067 | adv | * | If you do something sensibly, you do it in a reasonable and wise way. | Please drive sensibly.
+6237 | adj | * | Something informal is relaxed and friendly and not official. | It was an informal meeting.
+6299 | adv | * | If you do something politely, you do it in a polite way, showing respect for other people. | He politely asked for help.
+6308 | adj | * | Alphabetical means arranged in the order of the letters of the alphabet, from A to Z. | The names are in alphabetical order.
+6310 | n | * | A diagnosis is a doctor's discovery of what illness a person has. | The doctor made a quick diagnosis.

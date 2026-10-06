@@ -1,0 +1,224 @@
+2152 | n | * | Arithmetic is the part of mathematics that deals with adding, taking away, multiplying and dividing numbers. | She is good at arithmetic.
+4670 | adj | * | Something quarterly happens four times a year. | The company publishes a quarterly report.
+4670 | n | - | A quarterly is a magazine that is published four times a year.
+2788 | n | * | A coward is a person who is not brave and avoids danger. | He called me a coward because I would not jump.
+4676 | v | * | If something quivers, it shakes a little. | Her lips quiver when she is about to cry.
+4676 | n | - | A quiver is a small shaking movement; a quiver is also a case for carrying arrows.
+5446 | n | * | A thrill is a sudden strong feeling of excitement and pleasure. | Riding a roller coaster gives me a thrill.
+5446 | v | - | If something thrills you, it makes you feel very excited and happy.
+4783 | n | * | Relativity is a famous theory in physics about space, time and movement. | Einstein's theory of relativity changed physics.
+2557 | adv | * | If something moves clockwise, it moves in the same direction as the hands of a clock. | Turn the key clockwise to open the door.
+5357 | n | * | A swan is a large white bird with a long neck that lives on rivers and lakes. | Two swans swam across the lake.
+5330 | n | * | Superstition is a belief in luck or magic that is not based on reason or science. | It is a superstition that black cats bring bad luck.
+2686 | adj | * | A conscientious person works hard and does things with great care. | She is a conscientious student who always does her homework.
+4543 | adj | * | Something predominant is the most important, the strongest or the most common. | Green is the predominant colour in the painting.
+3033 | adj | * | Something dominant is more important, powerful or noticeable than other things. | The company has a dominant position in the market.
+5335 | adj | * | Supreme means highest in rank or greatest in degree. | The Supreme Court is the highest court in the country.
+3592 | n | * | Highlands are an area of high land with mountains. | They spent their holiday in the Scottish highlands.
+4471 | n | * | A plateau is a large area of high, flat land; a plateau is also a period when something stops increasing. | The Tibetan plateau is very high.
+2438 | v | * | If you caress someone, you touch them gently to show love. | The mother caresses her baby's head.
+3972 | n | * | A locomotive is an engine that pulls a train. | The old steam locomotive pulled six carriages.
+2409 | n | * | A cab is a taxi; a cab is also the part of a truck or a train where the driver sits. | We took a cab to the airport.
+2067 | n | * | An alloy is a metal made by mixing two or more metals. | Bronze is an alloy of copper and tin.
+3104 | adj | * | Something elastic can stretch and then return to its original shape. | The waist of the trousers is elastic.
+3104 | n | - | Elastic is a material that can stretch.
+5670 | adj | * | A wretched person is very sad or ill; something wretched is very bad or poor. | The refugees lived in wretched conditions.
+2436 | n | * | A cardinal is a priest of high rank in the Catholic Church; a cardinal is also a small red bird. | The cardinals met in Rome to choose a new Pope.
+2436 | adj | - | Cardinal means most important.
+2143 | adj | * | An approximate number or amount is close to the exact one but not exactly correct. | The approximate cost of the trip is five thousand yuan.
+2143 | v | - | If one thing approximates another, it is close to it.
+3367 | adj | * | If you are fluent in a language, you can speak it easily and well. | She speaks fluent English.
+5390 | n | * | Tar is a thick black sticky liquid that becomes hard when it cools, used for making roads. | The workers spread hot tar on the road.
+4968 | n | * | Scorn is a strong feeling that someone or something is not worth respect. | She looked at him with scorn.
+4968 | v | - | If you scorn someone or something, you show that you think they are not worth respect.
+5613 | adj | * | Something waterproof does not let water pass through it. | Wear a waterproof jacket in the rain.
+5478 | n | * | Torment is very great pain or suffering of the body or the mind. | She lived in torment after her son died.
+5478 | v | - | If someone torments you, they make you suffer.
+2096 | adj | * | An analytic way of thinking studies things in detail to understand them. | She has an analytic mind.
+3440 | v | * | When a horse gallops, it runs as fast as it can. | The horses gallop across the field.
+3440 | n | - | A gallop is the fastest speed of a horse.
+5526 | n | * | A trolley is a small cart with wheels for carrying things, for example in a supermarket; a trolley is also a vehicle that runs on rails in a city. | She pushed the trolley around the supermarket.
+2047 | v | * | If something agitates you, it makes you worried or excited; if people agitate for something, they protest to get it. | The workers agitate for higher wages.
+5190 | v | * | If a liquid splashes, it falls or hits something in drops; if you splash, you hit water so that it flies up. | The children splash in the pool.
+5190 | n | - | A splash is the sound or action of liquid splashing.
+3278 | n | * | A fable is a short story, often about animals, that teaches a moral lesson. | The fable of the fox and the grapes is well known.
+3662 | adj | * | An illiterate person is not able to read or write. | Many old people in the village are illiterate.
+3803 | adj | * | Something intermittent stops and starts again many times. | There will be intermittent rain today.
+4981 | n | * | The seaside is the land near the sea, especially a place where people go on holiday. | We spent a week at the seaside.
+3320 | adj | * | Someone or something feeble is very weak. | The old man was too feeble to walk.
+2376 | n | * | The brim of a cup or a glass is its top edge; the brim of a hat is the part that sticks out around the bottom. | The cup was full to the brim.
+4323 | v | * | If a liquid overflows, it flows over the edge of its container. | The river overflows after the heavy rain.
+4991 | v | * | If you segregate people or things, you keep them apart from others. | In the past, some schools segregate boys and girls.
+4062 | v | * | If you meditate, you sit in silence and think deeply, or you calm your mind for religious reasons. | She meditates for twenty minutes every morning.
+1970 | v | * | If people acclaim someone or something, they praise them with great enthusiasm. | Critics acclaim the new film.
+1970 | n | - | Acclaim is great praise.
+3844 | n | * | Jargon is the special words that people in a particular job or group use, which are hard for others to understand. | The doctor used so much medical jargon that I did not understand.
+2189 | v | * | If something astonishes you, it surprises you very much. | Her quick progress astonishes her teachers.
+3706 | adj | * | Something incredible is very hard to believe, or very good. | The view from the top is incredible.
+4805 | n | * | A renaissance is a time when interest in something becomes strong again; the Renaissance was a time of new art and learning in Europe. | Leonardo da Vinci was a great artist of the Renaissance.
+3413 | n | * | Fright is a sudden feeling of fear. | The loud noise gave me a fright.
+3537 | n | * | A guy is a man. | He is a nice guy.
+5419 | n | * | Terror is very great fear. | The people ran away in terror.
+4354 | n | * | Panic is a sudden strong feeling of fear that makes you act without thinking. | There was panic when the fire started.
+4354 | v | - | If you panic, you feel so afraid that you act without thinking.
+4180 | adj | * | A naughty child behaves badly and does not obey. | The naughty boy broke the window.
+5271 | adj | * | Something strenuous needs a lot of energy or effort. | Avoid strenuous exercise for a week.
+2345 | n | * | A woman's bosom is her chest; the bosom of a family is the place where you are loved and safe. | The child returned to the bosom of his family.
+3366 | v | * | If something fluctuates, it changes again and again, going up and down. | The price of vegetables fluctuates with the season.
+5121 | v | * | If you sneeze, air suddenly comes out of your nose with a loud noise. | Pepper makes me sneeze.
+5121 | n | - | A sneeze is the act of sneezing.
+5044 | n | * | A shopkeeper is a person who owns or manages a small shop. | The shopkeeper gave me my change.
+2094 | v | * | If you analyse something, you study it in detail to understand it. | The scientists analyse the water samples.
+2649 | adj | * | If something is compulsory, you must do it because of a rule or a law. | Education is compulsory for children until the age of sixteen.
+5547 | v | * | If a star or a light twinkles, it shines and seems to flash on and off. | The stars twinkle in the night sky.
+3181 | n | * | An epoch is a long period of time in history with special events or features. | The invention of the computer began a new epoch.
+2827 | adj | * | A cunning person is clever at tricking others to get what they want. | The cunning fox tricked the farmer.
+2827 | n | - | Cunning is the ability to trick others in a clever way.
+4430 | v | * | If people persecute someone, they treat them in a cruel and unfair way, often because of their race or religion. | The government persecutes people who speak against it.
+5114 | n | * | Smog is a mixture of fog and smoke that makes the air dirty in cities. | The city is covered in smog on hot days.
+4749 | adj | * | Something redundant is not needed; if you are made redundant, you lose your job because you are no longer needed. | The word "very" is redundant in this sentence.
+3725 | n | * | Inertia is a lack of energy or wish to change; in physics, inertia is the force that keeps a thing still or moving until another force acts on it. | Inertia keeps the company from changing.
+3544 | n | * | A handbook is a book that gives you information or instructions about a subject. | Read the student handbook before the course starts.
+4025 | n | * | A manual is a book that tells you how to use a machine or do something. | Read the manual before you use the camera.
+4025 | adj | - | Manual work is done with the hands.
+4506 | n | * | A porter is a person whose job is to carry bags at a station or a hotel. | The porter carried our bags to our room.
+4274 | v | * | If a ruler or a government oppresses people, they treat them in a cruel and unfair way. | The dictator oppresses his people.
+3538 | n | * | A gymnasium is a large room with equipment for physical exercise. | The students play basketball in the gymnasium.
+4355 | n | * | A panorama is a wide view of a large area. | From the hill, we had a panorama of the whole city.
+3110 | n | * | An electrician is a person whose job is to fit and repair electrical equipment. | We called an electrician to fix the lights.
+2875 | v | * | If you deduce something, you reach a conclusion from the facts that you know. | From the footprints, the police deduce that there were two thieves.
+4551 | n | * | A premise is an idea that an argument or a theory is based on; the premises of a business are its buildings and land. | The premise of his argument is wrong.
+3730 | v | * | If you infer something, you decide that it is true from the facts that you know. | What can you infer from his silence?
+3459 | v | * | If you generalize, you say that something is true of a whole group because it is true of some members. | You can't generalize about people from one country.
+5159 | n | * | A spade is a tool with a long handle and a flat blade for digging; spades are also one of the four kinds of playing cards. | He dug the garden with a spade.
+3376 | n | * | If something comes to the fore, it becomes important or noticeable. | The problem of pollution has come to the fore.
+4328 | adv | * | If something happens overnight, it happens during the night or very quickly. | The town changed almost overnight.
+4328 | adj | - | Overnight means happening during the night or lasting one night.
+3755 | n | * | An inn is a small hotel, often in the country, where you can eat and drink. | We stayed at an old inn by the river.
+3623 | n | * | A host is a person who invites guests and looks after them; a host is also a person who presents a television show. | The host welcomed us at the door.
+3623 | v | - | If you host an event, you organize it and invite people to it.
+3625 | n | * | A hostess is a woman who invites guests and looks after them. | The hostess served dinner at eight.
+4567 | n | * | A pretext is a false reason that you give for doing something. | He visited her on the pretext of returning a book.
+2216 | n | * | Automation is the use of machines to do work that people used to do. | Automation has reduced the number of factory jobs.
+3911 | n | * | A leaflet is a printed sheet of paper that gives information about something. | They handed out leaflets about the concert.
+3754 | n | * | An inlet is a narrow area of water that goes into the land from the sea or a lake. | The boat sailed into a small inlet.
+4214 | n | * | A noun is a word such as "table", "dog" or "love" that is the name of a person, a place, a thing or an idea. | "Book" is a noun.
+5680 | n | * | A zebra is a wild animal from Africa like a horse with black and white stripes. | We saw zebras in the park.
+2218 | adj | * | Auxiliary means helping or supporting, or used in addition to the main thing. | The hospital has an auxiliary power supply.
+2068 | n | * | An ally is a person or a country that supports another, especially in a war. | Britain was an ally of America in the war.
+2068 | v | - | If you ally yourself with someone, you join them to support them.
+2064 | n | * | An alliance is an agreement between countries or groups to work together. | The two countries formed an alliance.
+3036 | n | * | A donkey is an animal like a small horse with long ears. | The farmer carries his goods on a donkey.
+4858 | adj | * | Resultant means happening as a result of something. | The storm and the resultant floods destroyed many homes.
+2304 | n | * | A bibliography is a list of books and articles about a subject, or the list of sources used in a piece of writing. | Put a bibliography at the end of your essay.
+3771 | adj | * | Something instantaneous happens at once, without any delay. | Death was instantaneous.
+4350 | n | * | A pail is a bucket. | She carried a pail of water.
+4013 | n | * | Majesty is great beauty and dignity; Your Majesty is a way of speaking to a king or a queen. | We admired the majesty of the mountains.
+4010 | n | * | A maiden is a young woman who is not married, in old stories. | The knight saved the maiden from the dragon.
+4010 | adj | - | A maiden voyage or flight is the first one.
+4009 | n | * | A maid is a woman whose job is to clean rooms in a hotel or a house. | The maid cleaned our room.
+3032 | adj | * | Domestic means to do with the home or the family, or to do with your own country and not foreign countries. | The plane makes domestic flights only.
+3585 | n | * | A herd is a large group of animals of one kind that live and move together. | A herd of cows was eating grass.
+3585 | v | - | If you herd animals or people, you move them together in a group.
+3329 | n | * | Fertilizer is a substance that you put on soil to help plants grow. | The farmer puts fertilizer on his fields.
+3523 | n | * | A grocer is a person who owns or works in a shop that sells food and things for the home. | She buys vegetables from the grocer.
+4230 | n | * | An oar is a long pole with a flat end that you use to row a boat. | He pulled the oars and the boat moved.
+4349 | n | * | A paddle is a short pole with a flat end that you use to move a small boat through water. | She lost her paddle in the river.
+4349 | v | - | If you paddle a boat, you move it with a paddle; if you paddle, you walk in shallow water.
+3836 | adv | * | If something is true irrespective of a thing, that thing does not change it. | Everyone pays the same price irrespective of age.
+5197 | n | * | A sportsman is a man who plays sports. | He is a keen sportsman.
+5232 | n | * | Stationery is paper, envelopes, pens and other things that you need for writing. | The shop sells books and stationery.
+3080 | v | * | If the tide ebbs, it moves away from the land; if a feeling ebbs, it becomes weaker. | His strength slowly ebbs.
+3080 | n | - | The ebb is the time when the tide moves away from the land.
+4464 | n | * | A piston is a part of an engine that moves up and down inside a tube. | The pistons drive the engine.
+2089 | n | * | An amplifier is a machine that makes sounds louder. | The guitar is connected to an amplifier.
+2425 | n | * | A canteen is a place in a school or a factory where people can buy and eat meals. | We have lunch in the school canteen.
+5340 | n | * | Your surname is your family name. | His surname is Wang.
+2085 | adj | * | An amiable person is friendly and pleasant. | She is an amiable old lady.
+3826 | v | * | If you invert something, you turn it so that the top is at the bottom, or you put it in the opposite order. | Invert the cake onto a plate.
+2607 | n | * | A commonwealth is a group of countries or states that are joined together; the Commonwealth is a group of countries that were once ruled by Britain. | Canada and India are members of the Commonwealth.
+3605 | adv | * | Hitherto means until now. | Hitherto, nobody has solved the problem.
+5060 | n | * | Sightseeing is the activity of visiting interesting places as a tourist. | We went sightseeing in Beijing.
+5492 | n | * | A tramp is a person with no home or job who travels from place to place. | A tramp was sleeping on the bench.
+5492 | v | - | If you tramp somewhere, you walk with heavy steps for a long distance.
+5326 | adj | * | Something superfluous is more than is needed. | Remove any superfluous words from your essay.
+5161 | adj | * | Spare things are extra and not being used; spare time is time when you are not working. | Do you have a spare pen?
+5161 | v | - | If you can spare something, you can give it because you do not need it.
+4207 | n | * | Normalization is the process of making something normal or making relations normal again. | The two countries agreed on the normalization of relations.
+1944 | n | * | Abatement is the act of making something less strong or less bad. | The city has a plan for noise abatement.
+3837 | v | * | If you irrigate land, you supply it with water through pipes or channels. | The farmers irrigate their fields with water from the river.
+3330 | adj | * | Feudal means to do with the old system in which people worked on land owned by a lord and fought for him. | China had a feudal society for a long time.
+3983 | n | * | A lord is a man of high rank, or a man who owns a lot of land; the Lord is God. | The lord lived in a large castle.
+5520 | n | * | A trifle is something that is not important or valuable; a trifle also means a little. | Don't worry about such a trifle.
+3178 | v | * | If you envisage something, you imagine it as a possible future event. | I can't envisage living in another country.
+4407 | v | * | If you peep at something, you look at it quickly and in secret. | The child peeps through the keyhole.
+4407 | n | - | A peep is a quick look; a peep is also a short, high sound.
+3825 | adj | * | Inverse means opposite in order or effect. | There is an inverse relationship between price and demand.
+4729 | adj | * | Something reciprocal is done or felt by both sides. | They have a reciprocal agreement to help each other.
+4134 | adj | * | Something monotonous is boring because it never changes. | The work is very monotonous.
+4617 | n | * | A pronoun is a word such as "he", "she" or "it" that is used instead of a noun. | "They" is a pronoun.
+2697 | adj | * | A considerate person thinks about other people's feelings and needs. | It was considerate of you to call.
+2313 | n | * | Blackmail is the crime of asking for money from someone by threatening to tell their secrets. | He went to prison for blackmail.
+2313 | v | - | If someone blackmails you, they ask you for money and threaten to tell your secrets if you do not pay.
+3322 | v | * | If you fell a tree, you cut it down. | The workers fell old trees in the forest.
+5329 | adj | * | Supersonic means faster than the speed of sound. | Concorde was a supersonic plane.
+3820 | adj | * | Something invalid is not acceptable by law or by official rules. | Your ticket is invalid because the date is wrong.
+3820 | n | - | An invalid is a person who is very ill or disabled and needs care.
+2771 | adj | * | A corrupt person is dishonest and uses their power to get money or advantages. | The police officer was corrupt and took money from criminals.
+2771 | v | - | If someone or something corrupts a person, they make them dishonest or bad.
+3250 | v | * | If a document or an agreement expires, it is no longer valid because its time has ended. | My passport expires next month.
+2370 | n | * | A bribe is money or a gift that you give to someone to make them do something dishonest for you. | The official took a bribe.
+2370 | v | - | If you bribe someone, you give them a bribe.
+2011 | v | * | If one room or building adjoins another, they are next to each other and joined. | The kitchen adjoins the dining room.
+4190 | n | * | Negro is an old word for a black person, which is now considered very offensive. | The word Negro is no longer used because it is offensive.
+5143 | adj | * | A soluble substance can dissolve in a liquid. | Sugar is soluble in water.
+2029 | adj | * | If an action is advisable, it is sensible and a good idea. | It is advisable to book a hotel early.
+2026 | n | * | An adverb is a word such as "slowly" or "very" that tells you how, when or where something happens. | In the sentence "She sings well", "well" is an adverb.
+2033 | n | * | An aeroplane is a plane. | The aeroplane landed safely.
+2092 | adj | * | An analogue watch or clock has hands that move around a face, not numbers that change. | He wears an analogue watch.
+2092 | n | - | An analogue is something that is similar to another thing.
+2300 | v | * | If something bewilders you, it confuses you very much. | The complicated rules bewilder the new players.
+4169 | n | * | A mystery is something that is hard to understand or explain. | His disappearance is still a mystery.
+4661 | n | * | A puzzle is a game or a question that you have to think hard to solve; a puzzle is also something that is hard to understand. | The children are doing a jigsaw puzzle.
+4661 | v | - | If something puzzles you, you can not understand it.
+4429 | v | * | If something perplexes you, it confuses you because you can not understand it. | The question perplexes even the teacher.
+2419 | n | * | A calorie is a unit for measuring how much energy food gives you. | An apple has about eighty calories.
+2517 | n | * | Christ is the title that Christians give to the man who they believe is the son of God. | Christians believe that Christ was the son of God.
+2532 | v | * | If you civilize people, you educate them and improve their behavior and way of life. | Education helps to civilize a society.
+2770 | v | * | If metal corrodes, it is slowly destroyed by water, air or chemicals. | Salt water corrodes metal.
+2775 | adj | * | A cosy place is warm, comfortable and pleasant. | We sat in a cosy room by the fire.
+2809 | n | * | A criterion is a standard that you use to judge or decide something. | Price is the main criterion for choosing a hotel.
+3391 | n | * | A fortnight is a period of two weeks. | We are going on holiday for a fortnight.
+3723 | v | * | If a country industrializes, it develops a lot of industries. | China began to industrialize quickly in the 1980s.
+4151 | n | * | Mould is a soft green or black substance that grows on old food or wet walls; a mould is also a container used to give a shape to something. | There is mould on the bread.
+4303 | n | * | An ounce is a small unit of weight; an ounce of something is a very small amount of it. | He has not an ounce of fear.
+4329 | n | * | An overpass is a bridge that carries one road over another. | The bus drove under the overpass.
+4357 | n | * | Pants are trousers; in Britain, pants are the short clothes that you wear under trousers. | He wore blue pants and a white shirt.
+4416 | n | * | A percent is one part in every hundred. | Sixty percent of the students are girls.
+4480 | n | * | A plough is a large farming tool that cuts and turns over the soil. | The farmer uses a plough pulled by horses.
+4480 | v | - | If you plough land, you turn over the soil with a plough.
+4652 | adj | * | A punctual person arrives at the right time. | She is always punctual for meetings.
+5040 | n | * | A shilling was a British coin; a shilling is also the money of some countries in Africa. | The book cost one shilling.
+5167 | n | * | A speciality is a subject or a skill that you know a lot about; a speciality is also a food that a place is famous for. | Roast duck is the speciality of this restaurant.
+5258 | n | * | A storey is one floor of a building. | The house has three storeys.
+5602 | v | * | If you waken, you wake up; if something wakens you, it wakes you up. | The birds waken me every morning.
+4140 | adv | * | Moreover means also, and is used to add more information. | The plan is too expensive; moreover, it will take too long.
+3015 | n | * | A district is an area of a country or a city. | They live in a quiet district of the city.
+2402 | n | * | A bureau is an office or an organization that deals with a special subject; a bureau is also a desk with drawers. | She works at the tourist information bureau.
+5110 | n | * | A slum is a poor area of a city with old, crowded and dirty houses. | Many children grow up in the slums.
+2179 | n | * | An assignment is a task that someone gives you to do, such as homework. | The teacher gave us a writing assignment.
+4112 | n | * | A mission is an important task, often one that you travel to do; your mission is also your main aim. | The soldiers went on a secret mission.
+4113 | n | * | A missionary is a person who goes to another country to teach people about their religion. | Her grandfather was a missionary in Africa.
+3087 | n | * | Economics is the study of how money, trade and industry work. | He studied economics at university.
+4989 | adv | * | Seemingly means in a way that seems true but may not be. | He was seemingly calm, but he was very nervous.
+3645 | n | * | Hydrogen is a gas that is the lightest of all chemical elements. | Water is made of hydrogen and oxygen.
+5318 | n | * | Sulfur is a yellow chemical element that smells bad when it burns. | The hot springs smell of sulfur.
+3562 | n | * | Hatred is a very strong feeling of dislike. | His eyes were full of hatred.
+5660 | adj | * | Something wooden is made of wood. | They sat at a wooden table.
+5109 | n | * | A slot is a narrow opening for putting something in, such as a coin; a slot is also a time or a position in a schedule. | Put a coin in the slot.
+3644 | n | * | A hut is a small, simple house or shelter. | The farmer lives in a small hut.
+5054 | n | * | Shutters are wooden or metal covers on the outside of a window; a shutter is also the part of a camera that opens to let in light. | She opened the shutters to let in the sun.
+5225 | v | * | If you stare, you look at someone or something for a long time. | Don't stare at people; it is rude.
+5225 | n | - | A stare is a long look.
+3455 | v | * | If you gaze at something, you look at it for a long time without moving your eyes. | She gazes out of the window.
+3455 | n | - | A gaze is a long, steady look.

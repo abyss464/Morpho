@@ -1,0 +1,203 @@
+3830 | adj | * | If something is invisible, nobody can see it. | Air is invisible.
+2104 | n | * | Your ankle is the part of your body where your foot joins your leg. | She hurt her ankle while playing football.
+5493 | n | * | A transaction is an act of buying or selling something, or of moving money. | You can check every transaction on your bank account online.
+5393 | n | * | A tax is money that people and companies must pay to the government. | We pay tax on everything we buy.
+5393 | v | - | If the government taxes something, it makes people pay tax on it.
+2448 | n | * | Cash is money in the form of coins and notes. | Do you want to pay by card or in cash?
+2833 | n | * | A currency is the system of money that a country uses. | The yen is the currency of Japan.
+2086 | prep | * | If something is amid other things, it is in the middle of them or happens while they are happening. | The house stands amid tall trees.
+3650 | adj | * | Things that are identical are exactly the same. | The two sisters wear identical dresses.
+2951 | v | * | If a doctor diagnoses an illness, they find out what it is. | The doctor diagnosed a broken bone.
+3936 | n | * | Liberty is the freedom to live, act and think as you choose. | The people fought for their liberty.
+3549 | adj | * | A handsome man is attractive; a handsome amount of money is large. | Her husband is tall and handsome.
+4613 | adj | * | Someone or something promising is likely to be good or successful in the future. | She is a promising young singer.
+3846 | n | * | Jazz is a kind of music with strong rhythms that began among black Americans. | He plays the piano in a jazz band.
+1993 | n | * | Acquisition is the act of getting something; an acquisition is something that a person or a company has bought. | Language acquisition is easy for young children.
+4465 | n | * | A pit is a large hole in the ground; a pit is also the hard seed in some fruits. | The workers dug a deep pit.
+3530 | n | * | Guidance is help and advice about how to do something. | Students need guidance when they choose a career.
+3910 | adj | * | Leading means most important or most successful. | She is one of the leading scientists in the country.
+2769 | n | * | A corridor is a long, narrow passage in a building with rooms on one or both sides. | His office is at the end of the corridor.
+4793 | adj | * | If you are reluctant to do something, you do not want to do it. | The company was reluctant to admit that the product had failed.
+4527 | adv | * | Practically means almost; practically also means in a way that is real and useful. | The theatre was practically empty.
+3599 | n | * | A hint is something that you say to help someone guess an answer or understand something; a hint is also a very small amount. | Give me a hint about the answer.
+3599 | v | - | If you hint at something, you suggest it without saying it directly.
+4360 | n | * | A parade is a long line of people or vehicles that move through the streets to celebrate something. | The children watched the parade on National Day.
+4716 | n | * | A realm is an area of activity or interest; a realm is also a country ruled by a king or a queen. | That idea belongs to the realm of science fiction.
+4406 | v | * | If you peel fruit or vegetables, you take off their skin. | Peel the potatoes before you cook them.
+4406 | n | - | Peel is the skin of a fruit or a vegetable.
+3446 | n | * | Garbage is waste food and other things that you throw away. | Please take out the garbage.
+2970 | adj | * | Diplomatic means to do with the relations between countries; a diplomatic person deals with people in a careful way that does not offend them. | The two countries have good diplomatic relations.
+2511 | n | * | Your chin is the part of your face below your mouth. | He rested his chin on his hand.
+2670 | v | * | If you confess, you admit that you did something wrong or bad. | He confessed to stealing the money.
+4098 | v | * | If you minimize something, you make it as small as possible. | We must minimize the risk of fire.
+3824 | n | * | An inventory is a complete list of things in a place, such as all the things for sale in a shop. | We made an inventory of everything in the house.
+3624 | n | * | A hostage is a person who is held by someone who will hurt them unless people do what they want. | The robbers took three hostages.
+4784 | v | * | If you release someone, you let them go free; if a company releases a film or a product, it makes it available. | The police released the man after questioning him.
+4784 | n | - | A release is the act of letting someone go free, or of making a film or a product available.
+3900 | v | * | If you launch something, you start it or send it into the air or the water. | The company will launch a new phone next month.
+3900 | n | - | A launch is the act of launching something.
+4788 | n | * | Relief is the happy feeling that you have when something bad ends or does not happen; relief is also help such as food given to people in need. | It was a relief to hear that she was safe.
+2548 | v | * | If you click on something on a computer screen, you press a button on the mouse to choose it. | Click here to start the game.
+2548 | n | - | A click is a short, sharp sound.
+2061 | adj | * | Something alien is strange and not familiar, or comes from another country. | The idea was alien to him.
+2061 | n | - | An alien is a creature from another planet; an alien is also a person who is not a citizen of the country where they live.
+3072 | adj | * | A dynamic person is full of energy and new ideas; something dynamic is always changing. | She is a dynamic young leader.
+4689 | n | * | Rage is very strong anger. | He shouted in rage.
+4537 | adj | * | Something precious is very valuable or very important to you. | Time is precious, so don't waste it.
+5454 | n | * | The tide is the regular rise and fall of the level of the sea. | The tide comes in twice a day.
+2752 | v | * | If people cooperate, they work together to achieve something. | The two companies cooperate on the new project.
+4877 | adj | * | Revolutionary means to do with a political revolution, or bringing great changes. | The computer was a revolutionary invention.
+3555 | n | * | Hardware is the machines and parts of a computer; hardware is also tools and equipment for the house and garden. | The company sells computer hardware.
+4456 | n | * | A pillow is a soft bag that you rest your head on in bed. | She put her head on the pillow and fell asleep.
+3872 | n | * | A kit is a set of tools or equipment for a particular purpose; a kit is also a set of parts that you put together. | Every car should have a first aid kit.
+4952 | v | * | If you scan something, you look at it quickly; if you scan a document, you copy it into a computer with a machine. | She scans the newspaper every morning.
+4952 | n | - | A scan is a medical test in which a machine makes a picture of the inside of your body.
+2856 | n | * | A deadline is the time or date by which you must finish something. | The deadline for the essay is Friday.
+5565 | v | * | If you undertake a task, you agree to do it and start it. | The company will undertake the building of the new bridge.
+2420 | n | * | A campaign is a planned series of actions to achieve a goal, such as winning a vote or selling a product. | The school started a campaign against smoking.
+2420 | v | - | If you campaign for something, you work in an organized way to achieve it.
+3338 | n | * | Finance is the management of money; your finances are the money that you have. | She works in finance.
+3338 | v | - | If you finance something, you provide the money for it.
+2215 | adj | * | An automatic machine works by itself without a person controlling it; an automatic action is done without thinking. | The doors are automatic.
+2214 | n | * | An auto is a car. | He works in the auto industry.
+3689 | n | * | An import is a product that is bought from another country. | Oil is the country's main import.
+3689 | v | - | If a country imports things, it buys them from another country.
+3764 | n | * | Inspiration is a feeling or an idea that makes you want to do or create something. | The beautiful view gave the artist inspiration.
+4045 | n | * | A mate is a friend; an animal's mate is the animal that it has young with. | He went to the pub with his mates.
+4674 | n | * | A quest is a long search for something. | Their quest for the lost city took many years.
+4929 | n | * | A sacrifice is something important that you give up to help someone or to get something else. | Her parents made many sacrifices to pay for her education.
+4929 | v | - | If you sacrifice something, you give it up to help someone or to get something else.
+4313 | n | * | Output is the amount of something that a person, a machine or a factory produces. | The factory doubled its output in one year.
+5094 | v | * | If you slap someone, you hit them with your open hand. | She slaps him across the face.
+5094 | n | - | A slap is a hit with an open hand.
+3845 | n | * | Your jaw is the lower part of your face that moves when you open your mouth. | He broke his jaw in a fight.
+3516 | n | * | Grief is great sorrow, especially when someone you love has died. | She was full of grief after her father died.
+2351 | v | * | If you bow, you bend your head or body forward to show respect. | The actors bow to the audience.
+2351 | n | - | A bow is a weapon for shooting arrows; a bow is also a knot with two loops, used to tie ribbons.
+2386 | n | * | A bubble is a small ball of air or gas inside a liquid. | The children like to blow bubbles.
+3059 | n | * | A drum is a musical instrument that you hit with sticks; a drum is also a large round container for liquids. | He plays the drums in a band.
+2260 | n | * | A barrel is a large round container with flat ends, used for storing liquids such as oil or beer. | The price of oil rose to eighty dollars a barrel.
+2963 | n | * | A dilemma is a difficult situation in which you must choose between two things. | She faced a dilemma: stay at home or take the job abroad.
+5025 | adj | * | Something shallow is not deep; a shallow person does not think about serious things. | The children played in the shallow water.
+4073 | n | * | A merchant is a person who buys and sells things in large amounts. | The merchant sold silk and tea.
+1964 | n | * | Your accent is the way you say words, which shows where you come from. | She speaks English with a French accent.
+4680 | n | * | A rack is a frame or a shelf with bars or hooks for holding things. | He hung his coat on the rack.
+2774 | n | * | A costume is a set of clothes worn by actors or by people at a party, or the typical clothes of a country or a time. | She wore a cat costume to the party.
+4599 | n | * | Productivity is the rate at which a person, a company or a country produces things. | New machines have increased productivity.
+3519 | v | * | If you grin, you smile widely. | He grins when he sees his friend.
+3519 | n | - | A grin is a wide smile.
+2322 | v | * | If a priest blesses someone or something, he asks God to protect them. | The priest blesses the new ship.
+2340 | n | * | A bonus is an extra amount of money that you get, or something extra that is good. | All the workers got a bonus at the end of the year.
+3507 | v | * | If you grasp something, you hold it hard; if you grasp an idea, you understand it. | He grasps the rope with both hands.
+3507 | n | - | A grasp is a firm hold, or an understanding of something.
+3545 | n | * | A handful of something is the amount that you can hold in one hand; a handful of people is a small number of them. | She took a handful of nuts.
+4387 | n | * | Patience is the ability to stay calm and wait without getting angry. | Teaching young children needs a lot of patience.
+3563 | v | * | If you haul something heavy, you pull it with effort. | The fishermen haul their nets onto the boat.
+3563 | n | - | A haul is an amount of things that someone has caught or stolen.
+2652 | v | * | If you concede that something is true, you admit that it is true; if you concede defeat, you accept that you have lost. | He concedes that he made a mistake.
+5175 | adj | * | Something spectacular is very impressive and exciting to see. | The view from the top of the mountain is spectacular.
+3239 | adj | * | Something exotic is unusual and interesting because it comes from a distant country. | The garden is full of exotic plants.
+5437 | n | * | Your thigh is the top part of your leg, above your knee. | He hurt his thigh playing football.
+2983 | v | * | If you discourage someone from doing something, you try to make them not do it. | The high price will discourage people from buying the car.
+4607 | adj | * | A progressive person or idea supports new ways and social change; something progressive happens step by step. | The school has progressive teaching methods.
+2704 | n | * | A conspiracy is a secret plan by a group of people to do something bad or against the law. | They were arrested for a conspiracy to rob the bank.
+3773 | n | * | Instinct is a natural way of behaving that you do not have to learn. | Birds build nests by instinct.
+2753 | adj | * | A cooperative person is helpful and willing to work with others. | The children were very cooperative.
+4529 | n | * | A practitioner is a person who works in a profession, especially a doctor. | She is a medical practitioner.
+3980 | n | * | A loop is a curved shape made by a line, a string or a rope that crosses over itself. | Make a loop in the rope.
+3321 | n | * | Feedback is information or opinions about how well someone has done something. | The teacher gave us feedback on our essays.
+4162 | n | * | A mushroom is a plant-like living thing with a round top on a short stem; some mushrooms can be eaten. | She added mushrooms to the soup.
+5299 | n | * | A subsidy is money that a government pays to help a business or to keep prices low. | Farmers receive a subsidy from the government.
+5487 | adj | * | Something tragic is very sad, often because someone dies. | He died in a tragic accident.
+3843 | n | * | A jar is a glass container with a wide top and a lid, used for keeping food. | She keeps the cookies in a jar.
+5562 | adj | * | The underlying cause or problem is the real one that is not easy to see. | Poverty is the underlying cause of the crime.
+3279 | n | * | Fabric is cloth; the fabric of a society is its basic structure. | The dress is made of a soft fabric.
+5666 | v | * | If you wrap something, you cover it with paper or cloth. | She wraps the present in red paper.
+3738 | n | * | Infrastructure is the basic systems that a country needs, such as roads, power and water supplies. | The government plans to improve the country's infrastructure.
+4082 | n | * | A metaphor is a way of describing something by calling it something else, such as "time is money". | "Life is a journey" is a metaphor.
+3957 | adv | * | Literally means in the exact or real meaning of the words. | He was literally shaking with fear.
+2195 | v | * | If you attach something, you join or fix it to something else. | Please attach a photo to your application.
+3877 | n | * | A label is a small piece of paper or cloth on an object that gives information about it. | Read the label before you take the medicine.
+3877 | v | - | If you label something, you put a label on it.
+4504 | n | * | A porch is a covered area outside the front door of a house. | They sat on the porch in the evening.
+3927 | n | * | A lens is a curved piece of glass in glasses, a camera or a microscope that makes things look clearer or bigger. | She cleaned the lens of her camera.
+4517 | n | * | A poster is a large printed picture or notice that you put on a wall. | There is a poster of a film star on his bedroom wall.
+5380 | v | * | If you tackle a problem, you try to deal with it; if you tackle a player in a game, you try to take the ball from them. | The government must tackle the problem of unemployment.
+2441 | n | * | A carpet is a thick, soft cloth that covers a floor. | There is a red carpet in the living room.
+5536 | v | * | If you tuck something somewhere, you push it into a small space or under something to keep it tidy. | Tuck your shirt into your trousers.
+5374 | n | * | A syndrome is a medical condition with a particular set of signs. | The baby was born with a rare syndrome.
+2081 | n | * | Ambition is a strong wish to be successful, rich or powerful. | Her ambition is to become a doctor.
+2369 | n | * | A breeze is a gentle wind. | A cool breeze came from the sea.
+2082 | adj | * | An ambitious person wants very much to be successful; an ambitious plan is large and difficult. | He is an ambitious young lawyer.
+3735 | adj | * | Someone or something influential has a lot of influence on people or events. | She is one of the most influential women in the country.
+4085 | adj | * | Metropolitan means to do with a large city. | Tokyo is a huge metropolitan area.
+3762 | v | * | If you insert something, you put it into something else. | Insert the key into the lock.
+2342 | n | * | A booth is a small closed space where one person can do something in private, such as make a phone call or vote; a booth is also a small stall at a market or a fair. | He called from a telephone booth.
+4917 | adj | * | Royal means to do with a king or a queen or their family. | The royal family lives in the palace.
+2760 | n | * | A cord is a strong, thick string; a cord is also a wire covered with plastic that connects a machine to the electricity. | Tie the box with a cord.
+2109 | adj | * | An anonymous person does not give their name; something anonymous is done by someone whose name is not known. | The money came from an anonymous donor.
+5473 | v | * | If you tolerate something unpleasant, you accept it and do not complain about it. | I cannot tolerate his rude behavior.
+4088 | n | * | If you are in the midst of something, you are in the middle of it. | They were in the midst of dinner when the phone rang.
+4130 | n | * | Momentum is the force that keeps a moving object moving; momentum is also the energy that keeps something developing. | The campaign is gaining momentum.
+5033 | v | * | If you shed something, you get rid of it or let it fall; if a tree sheds its leaves, they fall off. | Many trees shed their leaves in autumn.
+5033 | n | - | A shed is a small simple building used for storing things.
+3665 | v | * | If you illustrate a book, you add pictures to it; if you illustrate a point, you explain it with examples. | She illustrates children's books.
+2498 | v | * | If you cheat, you behave in a dishonest way to get something, such as in an exam or a game. | He was caught trying to cheat in the exam.
+3570 | v | * | If a wound heals, it becomes healthy again; if someone heals a person, they make them well. | The cut on his hand will heal in a few days.
+5430 | n | * | Therapy is the treatment of an illness or a problem, often without drugs. | She is having therapy for her back.
+4289 | n | * | An organism is any living thing. | Bacteria are very small organisms.
+4288 | adj | * | Organic means produced without artificial chemicals, or to do with living things. | They only eat organic vegetables.
+3539 | n | * | The habitat of an animal or a plant is the natural place where it lives. | The forest is the natural habitat of the panda.
+5211 | n | * | A stadium is a large building with seats around an open area where people watch sports. | The football stadium holds sixty thousand people.
+2693 | n | * | Conservation is the protection of nature, such as plants, animals and forests. | She works for a wildlife conservation group.
+3438 | n | * | A gallery is a room or a building where works of art are shown. | We visited the national art gallery.
+5050 | v | * | If you shove someone or something, you push them in a rough way. | He shoves his way through the crowd.
+2647 | v | * | If something comprises certain parts, it is made of them. | The house comprises three bedrooms, a kitchen and a living room.
+4385 | n | * | A patent is an official right to be the only person to make or sell a new invention. | He has a patent for his new machine.
+5199 | n | * | Spray is very small drops of water or another liquid flying through the air. | We felt the spray from the waves.
+5199 | v | - | If you spray a liquid, you send it out in very small drops.
+2981 | v | * | If you disclose information, you make it known. | The company will not disclose the price.
+4869 | n | * | A revelation is a surprising fact that is made known, or the act of making it known. | The revelation of the minister's secret shocked the public.
+3798 | v | * | If you interfere in something, you get involved in a way that is not wanted; if something interferes with a thing, it stops it from working well. | Don't interfere in other people's problems.
+4080 | n | * | A mess is a state of being dirty or not tidy, or a situation full of problems. | The kitchen was in a terrible mess after the party.
+4080 | v | - | If you mess something up, you make it dirty or spoil it.
+5184 | v | * | If you spill a liquid, you let it flow out of its container by accident. | I spilled coffee on my shirt.
+5184 | n | - | A spill is an amount of liquid that has spilled.
+2198 | n | * | Attendance is the act of being present at a place, or the number of people present. | Attendance at school is compulsory.
+4092 | n | * | A mill is a building with machinery for crushing grain into flour, or a factory that produces cloth, paper or steel. | The old mill stands by the river.
+5382 | n | * | A tag is a small piece of paper, cloth or plastic attached to something that gives information about it. | Look at the price tag before you buy.
+3356 | n | * | A fleet is a group of ships, planes or vehicles that belong to the same organization. | The company has a fleet of fifty buses.
+3770 | n | * | An instant is a very short moment. | For an instant, I thought I had lost my keys.
+3770 | adj | - | Instant means happening at once; instant food can be made very quickly.
+5424 | n | * | Thanksgiving is a holiday in America and Canada when families eat a big meal to give thanks. | We eat turkey at Thanksgiving.
+4961 | n | * | A scent is a pleasant smell; an animal's scent is the smell that it leaves behind. | The garden is full of the scent of roses.
+3041 | n | * | A dot is a small round mark. | Her dress is white with red dots.
+3643 | n | * | A hurricane is a storm with very strong winds. | The hurricane destroyed many houses.
+5089 | v | * | If you skip, you move forward by jumping from one foot to the other; if you skip something, you do not do it. | Don't skip breakfast.
+3942 | adv | * | Likewise means in the same way. | He went to bed early, and his wife did likewise.
+2333 | v | * | If you boast, you talk with too much pride about what you have or what you have done. | He boasts about his new car.
+3485 | n | * | Glory is great praise and honor that you get for doing something great; glory is also great beauty. | The soldiers fought for the glory of their country.
+4646 | n | * | Publicity is attention from newspapers and television, or activity to make people notice something. | The film got a lot of publicity.
+2579 | n | * | A collar is the part of a shirt or a coat that goes around your neck; a collar is also a band that goes around a dog's neck. | He loosened his collar.
+5624 | n | * | A weed is a wild plant that grows where you do not want it. | She pulls weeds in the garden every weekend.
+3479 | n | * | A glimpse is a very short look at something. | We caught a glimpse of the queen as she drove past.
+5120 | v | * | If you sneak somewhere, you go there in a quiet and secret way so that nobody sees you. | The boy tried to sneak out of the house at night.
+5097 | n | * | A sleeve is the part of a shirt or a coat that covers your arm. | Roll up your sleeves before you wash your hands.
+2165 | n | * | Ash is the grey powder that is left after something has burned. | There is ash from the fire on the floor.
+5474 | n | * | A toll is money that you pay to use a road or a bridge; the toll of a disaster is the number of people killed or hurt. | We paid a toll to cross the bridge.
+5353 | adj | * | If you are suspicious of someone, you think that they may have done something wrong; something suspicious makes you think that something is wrong. | The police found a suspicious bag at the station.
+3117 | adj | * | If you are eligible for something, you have the right to do it or to get it. | You are eligible to vote at the age of eighteen.
+4694 | n | * | A rally is a large public meeting to support or protest about something. | Thousands of people went to the rally in the square.
+4694 | v | - | If people rally, they come together to support someone or something.
+2500 | v | * | If people cheer, they shout loudly to show that they are happy or that they support someone. | The crowd cheers when the team scores a goal.
+2500 | n | - | A cheer is a shout of joy or support.
+2507 | v | * | If you chew food, you break it up with your teeth. | Chew your food well before you swallow it.
+3102 | adj | * | Something elaborate has many parts or details and is planned with great care. | They made elaborate plans for the wedding.
+3102 | v | - | If you elaborate on something, you give more details about it.
+5238 | n | * | A steak is a thick, flat piece of meat, especially beef. | He ordered a steak and chips.
+5524 | n | * | A triumph is a great success or win. | The concert was a triumph.
+5524 | v | - | If you triumph, you win or succeed after a struggle.
+2626 | v | * | If you compete, you try to win something or to be more successful than others. | Ten teams will compete in the tournament.
+2628 | adj | * | A competitive situation is one in which people try hard to win; a competitive person wants very much to win; a competitive price is low. | Football is a very competitive sport.
+4895 | n | * | A rival is a person, a team or a company that you compete with. | The two companies are rivals in the phone market.
+4895 | v | - | If one thing rivals another, it is as good as it.

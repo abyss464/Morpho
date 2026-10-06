@@ -1,0 +1,190 @@
+2694 | adj | * | Someone who is conservative does not like change and prefers traditional ways and ideas. | My grandparents have very conservative ideas about marriage.
+3118 | v | * | If you eliminate something, you remove it or get rid of it completely. | We must eliminate waste in the factory.
+5533 | v | * | If you trust someone, you believe that they are honest and will not hurt you or lie to you. | I trust my best friend with all my secrets.
+5533 | n | - | Trust is the belief that someone is honest and good.
+3023 | n | * | Division is the act of dividing something into parts; a division is also one part of a large organization. | The division of the money caused a quarrel between the brothers.
+2674 | v | * | If you confirm something, you say or show that it is true or certain. | Please call to confirm your booking.
+3926 | n | * | The length of something is how long it is. | The length of the room is six metres.
+4794 | v | * | If you rely on someone or something, you need them and trust them to help you. | You can rely on me to keep your secret.
+5476 | n | * | A topic is a subject that people talk or write about. | The topic of today's lesson is the weather.
+2671 | n | * | Confidence is the feeling that you can do something well, or the belief that someone or something is good. | She answered the questions with confidence.
+2861 | n | * | A debt is money that you owe to someone. | He is still paying off his debts.
+4701 | adj | * | Something rare is not common and does not happen or exist very often. | This bird is very rare in Europe.
+5252 | v | * | If you stir a liquid, you move it around with a spoon. | Stir the soup so that it does not burn.
+4753 | n | * | A reference is a mention of something, or a book or a source that you look at for information; a reference is also a letter about your character and ability. | The essay makes several references to the war.
+3042 | n | * | Doubt is a feeling of not being sure about something. | There is no doubt that she is the best player in the team.
+3042 | v | - | If you doubt something, you think that it may not be true.
+3504 | v | * | If someone grants you something, they give it to you or allow you to have it. | The bank agreed to grant him a loan.
+3504 | n | - | A grant is money that a government or an organization gives for a special purpose.
+5590 | n | * | The volume of something is the amount of space it fills, or how loud a sound is; a volume is also one book in a series. | Please turn down the volume of the TV.
+2054 | n | * | Your aim is what you plan or hope to achieve. | Our aim is to finish the project by May.
+2054 | v | - | If you aim at something, you point a gun or an object at it; if you aim to do something, you plan to do it.
+4272 | v | * | If you oppose something, you do not agree with it and try to stop it. | Many people oppose the plan to build a new airport.
+4156 | adj | * | Multiple means many or more than one. | The driver suffered multiple injuries in the crash.
+3194 | adj | * | Something essential is very important and necessary. | Water is essential for life.
+2805 | n | * | A criminal is a person who has done a crime. | The police caught the criminal at the airport.
+5659 | n | * | A witness is a person who sees something happen, such as a crime or an accident. | The police are looking for witnesses to the accident.
+5659 | v | - | If you witness something, you see it happen.
+2292 | prep | * | If something is beneath another thing, it is under it. | The cat is sleeping beneath the table.
+3699 | n | * | An incident is an event, often an unpleasant or unusual one. | The police are looking into the incident.
+3946 | adj | * | Something limited is small in amount or number. | The number of seats is limited, so book early.
+3364 | v | * | If a liquid or a gas flows, it moves along in a steady way. | The river flows into the sea.
+3364 | n | - | A flow is a steady movement of something.
+3285 | n | * | A faculty is a part of a university, or all the teachers in it; a faculty is also a natural ability of the mind or body. | She teaches in the faculty of law.
+4039 | n | * | A mass is a large amount of something without a clear shape; mass is also how much matter something contains. | A mass of black clouds covered the sky.
+4039 | adj | - | Mass means involving a very large number of people.
+2872 | v | * | If something declines, it becomes less, smaller or weaker; if you decline an offer, you say no to it politely. | The number of birds in the forest declines every year.
+2872 | n | - | A decline is a fall in the amount, size or quality of something.
+3827 | v | * | If you invest money, you put it into a business or a plan so that you can make more money later. | He wants to invest his money in a new restaurant.
+2412 | n | * | A cable is a thick wire or a strong rope; cable is also a system of sending television through wires. | A cable carries electricity to the house.
+3259 | v | * | If you expose something, you show it or uncover it; if you expose someone to something, you put them in a situation where it can affect them. | Don't expose your skin to the sun for too long.
+5139 | adj | * | Something solid is hard and firm and not a liquid or a gas; solid also means strong and reliable. | Water turns into solid ice when it freezes.
+5383 | n | * | A talent is a natural ability to do something well. | She has a talent for music.
+2490 | n | * | A characteristic is a quality or a feature that is typical of a person or a thing. | Kindness is her best characteristic.
+2751 | v | * | If you convince someone, you make them believe that something is true or make them agree to do something. | She tried to convince me to come to the party.
+2176 | v | * | If you assess something, you judge how good, important or big it is. | The teacher will assess your work at the end of the term.
+2797 | adj | * | A creative person is good at thinking of new ideas or making new things. | Children are often very creative.
+3989 | adj | * | Lower means below something else, or less high. | The lower shelf is for children's books.
+3989 | v | - | If you lower something, you move it down or make it less.
+2142 | v | * | If you approve of something, you think that it is good; if someone approves a plan, they officially agree to it. | My parents do not approve of my new friends.
+3251 | n | * | An explanation is something that you say or write to make something clear or to give the reason for it. | Is there an explanation for his strange behavior?
+3533 | adj | * | If you feel guilty, you feel bad because you have done something wrong; if someone is guilty of a crime, they did it. | I feel guilty about forgetting her birthday.
+2074 | n | * | An alternative is something that you can choose instead of something else. | Is there an alternative to driving to work?
+2074 | adj | - | An alternative thing can be used or done instead of another.
+4433 | n | * | Your personality is the kind of person you are, shown in the way you think, feel and behave. | She has a warm and friendly personality.
+5061 | n | * | A signal is a sound, a light or an action that gives information or tells someone to do something. | The driver waited for the signal to turn green.
+5061 | v | - | If you signal, you make a sound or an action to give someone a message.
+3612 | n | * | Honor is great respect that people show to someone; it is also the quality of being honest and fair. | It is an honor to meet you.
+3612 | v | - | If you honor someone, you show that you respect them very much.
+2182 | n | * | Assistance is help. | Do you need any assistance with your bags?
+2184 | n | * | An association is a group of people who join together for a common purpose; an association is also a connection between ideas. | She joined the teachers' association.
+2177 | n | * | An asset is something or someone that is useful or valuable. | Her good English is a great asset in her job.
+5188 | adj | * | Spiritual means to do with the soul and deep feelings, not with the body or the material world. | Music gives him spiritual comfort.
+2551 | n | * | The climate of a place is the weather that it usually has. | The climate in the south is warm and dry.
+2887 | n | * | A definition is a statement that explains the meaning of a word or an idea. | Look up the definition of the word in the dictionary.
+4826 | n | * | A request is the act of asking for something politely. | The manager agreed to my request for a day off.
+4826 | v | - | If you request something, you ask for it politely or officially.
+3133 | n | * | An emotion is a strong feeling, such as love, fear or anger. | She tried to hide her emotions.
+4740 | v | * | If you recover, you become healthy again after an illness; if you recover something, you get it back. | He took a long time to recover from the illness.
+5241 | n | * | Steel is a very strong metal made from iron. | The bridge is made of steel.
+4766 | prep | * | Regarding means about. | I have a question regarding the homework.
+4995 | n | * | Your self is the person you are, including your thoughts and feelings. | After her holiday, she felt like her old self again.
+4415 | v | * | If you perceive something, you notice it or understand it in a certain way. | Children perceive the world in a different way from adults.
+2618 | n | * | A comparison is the act of looking at two things to see how they are the same or different. | In comparison with London, our town is very small.
+4507 | n | * | A portion is a part of something, or an amount of food for one person. | A large portion of the money went to the poor.
+4270 | n | * | Your opponent is the person or team that you play or fight against. | She beat her opponent in the final.
+1943 | v | * | If you abandon something, you leave it and never come back for it; if you abandon a plan, you stop doing it. | Many people abandon their pets when they move house.
+5496 | v | * | If you transform something, you change it completely. | The new owners transformed the old house into a hotel.
+2347 | v | * | If something bothers you, it worries you or annoys you; if you bother to do something, you make the effort to do it. | The noise from the street bothers me at night.
+2291 | v | * | If you bend something, you make it into a curve; if you bend, you move the top of your body down. | She bends down to pick up the pen.
+2291 | n | - | A bend is a curve in a road or a river.
+3383 | adj | * | Formal behavior, clothes or language are serious and correct, and used for important or official occasions. | You must wear formal clothes to the dinner.
+3237 | n | * | Existence is the state of being real or alive. | Do you believe in the existence of ghosts?
+2154 | v | * | If you arrange something, you plan it and make it happen; if you arrange things, you put them in a certain order. | She arranges the flowers in a vase.
+4273 | adj | * | Opposite means on the other side, or completely different. | They live on the opposite side of the street.
+4273 | n | - | The opposite of something is the thing that is completely different from it.
+4840 | n | * | Resistance is the act of fighting against something or refusing to accept it. | There is strong resistance to the new law.
+3260 | n | * | Exposure is the state of being in a place or a situation where something can affect you. | Too much exposure to the sun is bad for your skin.
+4844 | v | * | If you resolve a problem, you find an answer to it; if you resolve to do something, you make a firm decision to do it. | The two sides met to resolve their quarrel.
+4445 | n | * | A phase is one stage in a process or in the growth of something. | The project is now in its final phase.
+5373 | n | * | A symptom is a sign of an illness, such as a fever or a pain. | A high temperature is a common symptom of the flu.
+4448 | n | * | Philosophy is the study of the nature of life, knowledge and truth; your philosophy is also your set of ideas about how to live. | She studied philosophy at university.
+4248 | n | * | An occasion is a time when something happens, or a special event. | A wedding is a happy occasion.
+5300 | n | * | A substance is a solid, a liquid or a gas of a certain kind. | Water is a common substance.
+4526 | adj | * | Practical means to do with real situations and actions rather than ideas; practical things are useful and sensible. | We need a practical solution to the problem.
+4378 | n | * | Passion is a very strong feeling, especially of love, or a strong interest in something. | Football is his great passion.
+3685 | v | * | If you implement a plan or a system, you put it into action. | The school will implement the new rules next year.
+3791 | adj | * | Something intense is very strong or extreme. | The heat in the desert is intense.
+2022 | v | * | If you advance, you move forward; if something advances, it makes progress. | The army advances towards the city.
+2022 | n | - | An advance is forward movement or progress.
+2012 | v | * | If you adjust something, you change it a little so that it works or fits better; if you adjust to a new situation, you get used to it. | You can adjust the height of the chair.
+4863 | v | * | If you retire, you stop working because you are old. | My father will retire next year at the age of sixty-five.
+3691 | v | * | If you impose a rule or a tax, you make people accept it. | The government will impose a new tax on cars.
+3204 | v | * | If you evaluate something, you think about it to decide how good or useful it is. | Teachers evaluate the students' progress every term.
+5366 | n | * | A symbol is a sign, a shape or an object that stands for something else. | The dove is a symbol of peace.
+4137 | n | * | Your mood is the way that you feel at a certain time. | She is in a good mood today.
+1974 | v | * | If you accomplish something, you succeed in doing it. | We accomplish a lot when we work together.
+2798 | n | * | A creature is any living thing that can move, such as an animal. | The forest is full of strange creatures.
+2101 | n | * | Anger is the strong feeling that you have when you think someone has treated you badly. | He could not hide his anger.
+4110 | n | * | A missile is a weapon that flies through the air and explodes when it hits something. | The army fired a missile at the enemy ship.
+5650 | n | * | A wire is a long, thin piece of metal, often used to carry electricity. | The electric wire was cut in the storm.
+2427 | adj | * | If you are capable of doing something, you are able to do it. | She is capable of running ten kilometres.
+4235 | n | * | An objective is something that you plan to achieve. | Our main objective is to raise money for the hospital.
+4235 | adj | - | If you are objective, you judge things on facts and not on your feelings.
+3112 | adj | * | Electronic machines use electricity and small parts such as chips to work. | Phones and computers are electronic devices.
+4116 | n | * | A mixture is something made by mixing two or more things together. | Pour the mixture into a baking pan.
+4656 | adj | * | Something pure is not mixed with anything else; pure water is clean. | The ring is made of pure gold.
+2966 | n | * | A dimension is the length, width or height of something; a dimension is also one part or aspect of something. | What are the dimensions of the room?
+4434 | n | * | The personnel of an organization are the people who work for it. | All personnel must wear their badges.
+4782 | n | * | A relative is a member of your family. | We visit our relatives at the Spring Festival.
+4782 | adj | - | Relative means compared with something else.
+2569 | n | * | The coast is the land next to the sea. | They live in a small town on the coast.
+1973 | v | * | If you accompany someone, you go somewhere with them. | Children under twelve must have an adult to accompany them.
+4734 | n | * | Recognition is the act of knowing who or what someone is; it is also praise and respect for something good that someone has done. | She received recognition for her work with poor children.
+4645 | n | * | Publication is the act of printing a book or a magazine and selling it; a publication is a book or a magazine. | The publication of her first novel made her famous.
+4425 | adj | * | Something permanent lasts for a very long time or for ever. | He is looking for a permanent job.
+2114 | n | * | Anxiety is a feeling of worry and fear about what might happen. | She felt a lot of anxiety before the exam.
+4839 | v | * | If you resist something, you fight against it or refuse to accept it; if you resist doing something, you stop yourself from doing it. | I could not resist eating another piece of cake.
+2181 | v | * | If you assist someone, you help them. | Two nurses assist the doctor during the operation.
+2710 | v | * | If you construct something, you build it. | They plan to construct a new bridge over the river.
+2698 | n | * | Consideration is careful thought about something; consideration is also kindness towards other people. | After much consideration, I decided to accept the job.
+4985 | adj | * | Something secure is safe and well protected; if you feel secure, you feel safe and confident. | Keep your money in a secure place.
+4985 | v | - | If you secure something, you get it after some effort, or you make it safe.
+2307 | v | * | If you bind something, you tie it with a rope or string; if something binds people, it holds them together. | They bind the old books with leather.
+3169 | n | * | An enterprise is a company or a business, or a new and difficult plan. | He runs a small enterprise that makes furniture.
+5006 | adj | * | A sensitive person is quick to feel hurt; sensitive also means able to notice small changes. | She is very sensitive about her weight.
+4719 | adj | * | Something reasonable is fair and sensible; a reasonable price is not too high. | The hotel offers rooms at a reasonable price.
+3115 | adj | * | Elementary means very simple and basic. | The book teaches elementary English.
+3296 | adj | * | Something false is not true or not real. | He gave the police a false name.
+3794 | n | * | An intention is something that you plan to do. | I have no intention of leaving my job.
+3275 | adj | * | Extreme means very great, or as far as possible from what is normal. | The plants cannot live in extreme heat.
+5535 | n | * | A tube is a long, round, hollow pipe; a tube is also a soft container that you press to get something out. | Squeeze the toothpaste out of the tube.
+1952 | n | * | Someone's absence is the fact that they are not in a place. | Nobody noticed his absence from the meeting.
+3142 | n | * | Employment is the state of having a paid job. | It is hard to find employment in this town.
+4854 | v | * | If you restore something, you repair it so that it is in good condition again; if you restore something lost, you bring it back. | They restore old paintings at the museum.
+5301 | adj | * | Something substantial is large in amount or importance. | She earned a substantial amount of money.
+2141 | n | * | If you have someone's approval, they think that what you do is good, or they officially agree to it. | The plan needs the approval of the manager.
+2917 | n | * | The depth of something is how deep it is. | The depth of the lake is about ten metres.
+2151 | v | * | If a problem or a situation arises, it begins to happen. | Problems often arise when people do not talk to each other.
+5597 | n | * | A wage is the money that a worker is paid for each hour or each week of work. | The workers asked for higher wages.
+3740 | n | * | An ingredient is one of the foods that you use to make a dish. | Flour, eggs and sugar are the main ingredients of the cake.
+3331 | n | * | A fiber is a thin thread; fiber is also the part of food that helps your stomach and is found in fruit and vegetables. | Fresh vegetables are a good source of fiber.
+2186 | n | * | An assumption is something that you believe is true without proof. | Your assumption that he is rich is wrong.
+4102 | adj | * | Something minor is small and not very important or serious. | She had a minor injury to her hand.
+2178 | v | * | If you assign a task to someone, you give it to them to do. | The teacher assigns homework every day.
+2502 | adj | * | Chemical means to do with chemistry or made by chemistry. | Rust is caused by a chemical change.
+2502 | n | - | A chemical is a substance made by chemistry.
+3006 | adj | * | Something distant is far away in space or time. | They could hear distant thunder.
+4697 | n | * | Your rank is your position in an organization such as the army, showing how important you are. | He has the rank of captain.
+2561 | n | * | Clothing is the clothes that people wear. | You should bring warm clothing for the trip.
+5677 | v | * | If something yields a result, it produces it; if you yield to someone, you stop fighting and let them have what they want. | The farm yields a lot of rice every year.
+2476 | n | * | A ceremony is a formal event with special actions or words, such as a wedding. | The wedding ceremony took place in the church.
+2608 | v | * | If you communicate with someone, you share information or ideas with them by talking, writing or making signs. | We communicate by email every day.
+4057 | n | * | A mechanism is a part of a machine that does a special job, or a way that something works. | The clock has a simple mechanism.
+3108 | adj | * | Something electric works by using electricity. | She bought an electric car.
+4591 | v | * | If you proceed, you go on doing something or move forward to a place. | Please proceed to gate twelve.
+3000 | n | * | A dispute is a serious quarrel between people or groups. | The workers are in a dispute with the factory owners.
+3393 | n | * | A fortune is a very large amount of money; your fortune is also what will happen to you in the future. | He made a fortune selling cars.
+4322 | v | * | If you overcome a problem, you succeed in dealing with it. | She has to overcome her fear of flying.
+3462 | adj | * | Genetic means to do with genes, the parts of cells that pass qualities from parents to children. | The disease has a genetic cause.
+4861 | v | * | If you retain something, you keep it. | The town retains much of its old charm.
+3697 | n | * | An incentive is something that makes you want to do something or work harder. | The company offers money as an incentive to work harder.
+1983 | adj | * | Something accurate is correct and exact. | The weather report was accurate.
+2395 | n | * | A bullet is a small piece of metal that is shot from a gun. | The bullet hit the wall.
+2635 | adj | * | Something complicated has many parts and is hard to understand or deal with. | The rules of the game are very complicated.
+5399 | n | * | A telescope is a long tube with special glass that makes things far away look closer and bigger. | We looked at the moon through a telescope.
+4876 | n | * | A revolution is a time when people change their government, often by force; a revolution is also a great change in the way people do things. | The revolution began in 1789.
+2350 | n | * | A boundary is a line that marks the edge of an area. | The river forms the boundary between the two countries.
+4493 | n | * | A pole is a long, thin stick of wood or metal; the poles are also the points at the top and bottom of the earth. | The flag is flying from a tall pole.
+4121 | n | * | A mode is a way of doing something, or one of the ways a machine can work. | The bus is a cheap mode of transport.
+3688 | v | * | If you imply something, you show it or suggest it without saying it directly. | Are you implying that I'm lying?
+3649 | adj | * | Something ideal is perfect or the best possible. | The weather was ideal for a walk.
+5510 | n | * | A treaty is a written agreement between two or more countries. | The two countries signed a peace treaty.
+4581 | adj | * | Prior means earlier or coming before. | You do not need any prior experience for this job.
+3786 | adj | * | Intellectual means to do with thinking and understanding; an intellectual person is clever and likes to study ideas. | Chess is an intellectual game.
+3268 | adj | * | External means on the outside of something or coming from outside. | The external walls of the house are painted white.
+4618 | n | * | Proof is a fact or a piece of evidence that shows that something is true. | Do you have any proof that he took the money?
+2491 | v | * | If something characterizes a person or a thing, it is a typical quality of them. | Hot summers characterize the climate of this region.
+4600 | n | * | A profession is a job that needs special training and education, such as a doctor or a lawyer. | Teaching is a respected profession.
+2072 | v | * | If you alter something, you change it. | The tailor will alter the dress so that it fits you.
+2707 | v | * | If things constitute something, they form it or make it up. | Women constitute half of the population.

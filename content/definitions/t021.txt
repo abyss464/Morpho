@@ -1,0 +1,232 @@
+2155 | n | * | An array of things is a large group of them, often shown together. | The shop has an array of fresh fruit.
+3851 | n | * | Jewelry is objects such as rings and necklaces that people wear to look beautiful. | She keeps her jewelry in a small box.
+4786 | adj | * | Someone or something reliable can be trusted to work well or to do what you expect. | My old car is still very reliable.
+4923 | n | * | A rumor is a story that people tell each other but that may not be true. | There is a rumor that the factory will close.
+5636 | v | * | If you whisper, you speak in a very low voice so that only one person can hear you. | She whispers a secret in my ear.
+5636 | n | - | A whisper is a very soft voice.
+2461 | n | * | Cattle are cows and bulls that are kept on a farm. | The farmer has two hundred cattle.
+2394 | n | * | A bull is a male cow. | The bull ran at the man.
+2278 | n | * | A beast is a large or dangerous animal; a beast is also a cruel person. | The lion is the king of beasts.
+4118 | n | * | A mob is a large, angry crowd of people. | An angry mob gathered outside the courthouse.
+5221 | n | * | A stall is a table or a small shop in a market where things are sold; a stall is also a space for one animal in a farm building. | She sells fruit at a stall in the market.
+5221 | v | - | If an engine stalls, it stops working suddenly.
+5384 | adj | * | A tame animal is not wild and is not afraid of people. | The birds in the park are very tame.
+5384 | v | - | If you tame a wild animal, you train it to live with people.
+4721 | n | * | A rebel is a person who fights against the government or who refuses to obey rules. | The rebels attacked the capital.
+4721 | v | - | If people rebel, they fight against those in power or refuse to obey.
+4875 | n | * | A revolt is a violent attempt by a group of people to change their government. | The army crushed the revolt.
+4875 | v | - | If people revolt, they fight against those in power.
+2934 | n | * | Your destination is the place that you are going to. | We reached our destination after a long journey.
+5604 | v | * | If you wander, you walk around slowly without a special purpose or direction. | We wander through the old streets of the town.
+2949 | v | * | If you devote yourself or your time to something, you spend a lot of time and energy on it. | She devotes her free time to helping the poor.
+4287 | n | * | An organ is a part of the body that has a special job, such as the heart; an organ is also a large musical instrument with pipes. | The heart is a vital organ.
+3525 | adj | * | Gross means total, before tax or other costs are taken away; something gross is also disgusting. | His gross income is fifty thousand dollars a year.
+3961 | n | * | Your liver is a large organ in your body that cleans the blood. | Drinking too much alcohol damages the liver.
+3518 | adj | * | Something grim is very serious, sad or worrying; a grim person looks serious and not friendly. | The news from the hospital was grim.
+5504 | v | * | If doctors transplant an organ, they take it from one person and put it into another; if you transplant a plant, you move it to another place. | Doctors can now transplant hearts.
+5504 | n | - | A transplant is an operation in which an organ is transplanted.
+2111 | n | * | Antennae are the two long, thin parts on the heads of insects; an antenna is also a wire that receives radio or television signals. | The insect moved its long antenna.
+3815 | adj | * | An intrinsic quality is a natural and important part of something. | Music has intrinsic value.
+5246 | adj | * | A stern person is serious and strict. | The teacher gave him a stern look.
+5246 | n | - | The stern of a boat is its back part.
+3182 | n | * | An equation is a statement in mathematics that two amounts are equal, such as 2x + 1 = 7. | Can you solve this equation?
+4714 | adj | * | A realistic person or idea accepts how things really are; a realistic picture shows things as they really are. | We need a realistic plan.
+4947 | n | * | A sausage is a long, thin tube of skin filled with meat. | We had sausages for breakfast.
+3043 | n | * | A dove is a white or grey bird that is a sign of peace. | She let a white dove fly away.
+4564 | adv | * | Presumably means that you think something is probably true. | Presumably, he will come by train.
+4881 | n | * | Your ribs are the curved bones around your chest. | He broke a rib when he fell.
+2515 | v | * | If you chop something, you cut it into pieces with a knife or an axe. | She chops the onions for the soup.
+2515 | n | - | A chop is a small piece of meat with a bone in it.
+3057 | v | * | If someone drowns, they die because they are under water and can not breathe. | Many people drown in the sea every year.
+2257 | n | * | A bargain is something that you buy for less than its usual price; a bargain is also an agreement. | The coat was a bargain at only twenty dollars.
+2257 | v | - | If you bargain, you discuss the price of something to try to make it lower.
+2757 | v | * | If you cope with a problem, you deal with it well. | She copes well with stress.
+2779 | n | * | Counsel is advice; a counsel is also a lawyer who speaks for someone in court. | He went to his father for counsel.
+2779 | v | - | If you counsel someone, you give them advice about their problems.
+2031 | n | * | An advocate is a person who publicly supports an idea; an advocate is also a lawyer. | She is an advocate of women's rights.
+2031 | v | - | If you advocate something, you support it publicly.
+4390 | n | * | A patron is a person who gives money to support an artist or an organization; a patron is also a customer of a shop or a restaurant. | The rich man was a patron of many artists.
+2297 | v | * | If you betray someone, you are not loyal to them, for example by giving their secrets to their enemies. | He betrays his friends for money.
+3564 | n | * | A hawk is a large bird that hunts small animals. | A hawk was circling above the field.
+4733 | v | * | If you reclaim something, you get it back; if people reclaim land, they make it fit to use. | You can reclaim your bags at the airport.
+5490 | n | * | A traitor is a person who betrays their country or their friends. | He was called a traitor for helping the enemy.
+2985 | adj | * | A discreet person is careful about what they say or do so that they do not hurt or embarrass others. | Please be discreet about what I told you.
+4051 | n | * | A meadow is a field with grass and wild flowers. | Cows were eating grass in the meadow.
+3511 | v | * | When animals graze, they eat grass in a field. | The sheep graze on the hill.
+3476 | v | * | If you glance at something, you look at it quickly. | She glances at her watch.
+3476 | n | - | A glance is a quick look.
+4693 | n | * | A rake is a garden tool with a long handle and a row of metal teeth, used for collecting leaves. | He used a rake to collect the leaves.
+4693 | v | - | If you rake leaves, you collect them with a rake.
+2130 | n | * | Applause is the sound of people clapping their hands to show that they liked something. | The singer was greeted with loud applause.
+5331 | v | * | If you supervise people or an activity, you watch them to make sure that the work is done in the right way. | A teacher supervises the students during the exam.
+5179 | n | * | Spelling is the way in which a word is written; spelling is also the ability to write words in the right way. | Check the spelling of the words before you hand in your essay.
+3951 | v | * | If something lingers, it stays for a long time; if you linger, you stay in a place longer than you need to. | The smell of the fire lingers in the house.
+3658 | n | * | Ignorance is a lack of knowledge or information. | His mistake was caused by ignorance.
+3659 | adj | * | An ignorant person does not know things that they should know. | He is ignorant of the law.
+3218 | adj | * | Something exceptional is much better than usual or very unusual. | She is an exceptional student.
+3273 | adj | * | Something extraordinary is very unusual or surprising. | She has an extraordinary memory.
+3163 | adj | * | Something enormous is extremely large. | They live in an enormous house.
+3463 | n | * | A genius is a person who is extremely clever or skillful; genius is very great ability. | Einstein was a genius.
+2830 | n | * | Curiosity is a strong wish to know or learn about something. | The child opened the box out of curiosity.
+5174 | n | * | A spectacle is an impressive show or event; spectacles are glasses. | The fireworks were a wonderful spectacle.
+3262 | adj | * | Something exquisite is extremely beautiful and delicate. | She wore an exquisite silk dress.
+2192 | n | * | An athlete is a person who is good at sports, especially running and jumping. | The athletes are training for the Olympics.
+5324 | adj | * | Something superb is excellent. | The food at the restaurant was superb.
+4063 | n | * | Meditation is the practice of thinking deeply in silence, or of calming your mind. | She practises meditation every morning.
+5203 | v | * | If something spurs you to do something, it encourages you to do it. | The prize spurs the students to work harder.
+5203 | n | - | A spur is a thing that encourages you to do something; on the spur of the moment means suddenly, without planning.
+3011 | v | * | If you distort something, you change its shape, or you change facts so that they are no longer true. | The newspaper distorts the facts.
+2996 | v | * | If something displaces a person or a thing, it takes their place or makes them leave their home. | The war displaces thousands of families.
+4473 | adj | * | Something plausible seems likely to be true. | He gave a plausible excuse for being late.
+5105 | adj | * | Something slippery is smooth or wet, so that it is hard to hold or to walk on. | The road is slippery after the rain.
+5103 | v | * | If you slip, you slide by accident and fall or almost fall. | Be careful that you don't slip on the ice.
+5103 | n | - | A slip is a small mistake; a slip is also a small piece of paper.
+4962 | n | * | A schedule is a plan that lists the times when things will happen. | The project is on schedule.
+4962 | v | - | If you schedule an event, you plan it for a certain time.
+4812 | n | * | A repertoire is all the songs, plays or pieces of music that a performer can perform. | The singer has a large repertoire of folk songs.
+5104 | n | * | A slipper is a soft, comfortable shoe that you wear in the house. | He put on his slippers after work.
+3203 | v | * | If you evade something, you avoid it or escape from it. | He tries to evade paying taxes.
+2824 | n | * | A cucumber is a long, green vegetable with a pale inside that is eaten raw. | She put cucumber in the salad.
+4352 | n | * | A pamphlet is a small, thin book with a paper cover that gives information about something. | They handed out pamphlets about the dangers of smoking.
+4926 | adj | * | A ruthless person is cruel and does not care if they hurt others. | He is a ruthless businessman.
+5029 | n | * | A shark is a large, dangerous fish with sharp teeth. | A shark attacked the swimmer.
+4316 | n | * | The outskirts of a city are the parts at its edges, far from the centre. | They live on the outskirts of the city.
+3450 | n | * | Gasoline is the fuel used in cars in America. | The car ran out of gasoline.
+4441 | n | * | Petrol is the fuel used in cars in Britain. | The price of petrol has gone up.
+3445 | n | * | A garage is a building where a car is kept; a garage is also a place where cars are repaired. | He parked the car in the garage.
+2174 | n | * | An assembly is a group of people who meet for a purpose, such as making laws; an assembly is also the act of putting parts together. | The students gather for morning assembly.
+3966 | n | * | A lobby is the area just inside the entrance of a hotel or a large building; a lobby is also a group that tries to influence politicians. | Let's meet in the hotel lobby.
+3966 | v | - | If you lobby politicians, you try to persuade them to support your cause.
+4324 | adv | * | If something is overhead, it is above your head. | Planes fly overhead all day.
+4324 | n | - | The overheads of a business are its regular costs, such as rent.
+4128 | n | * | Moisture is small drops of water in the air or on a surface. | The plants take moisture from the soil.
+5361 | n | * | Sweat is the liquid that comes out of your skin when you are hot or nervous. | He wiped the sweat from his face.
+5361 | v | - | If you sweat, sweat comes out of your skin.
+3637 | n | * | Humidity is the amount of water in the air. | The humidity makes the heat hard to bear.
+4344 | n | * | Ozone is a gas in the air; the ozone layer high above the earth protects us from the sun's harmful light. | The ozone layer is getting thinner.
+4671 | n | * | Quartz is a hard, clear mineral used in watches and electronic equipment. | The watch has a quartz crystal inside.
+2399 | n | * | A bunch of things is a group of them held or tied together; a bunch of people is a group of them. | He gave her a bunch of flowers.
+2564 | n | * | A cluster is a small group of people or things close together. | A cluster of houses stood near the river.
+2708 | n | * | A constitution is the set of basic laws of a country or an organization; your constitution is also the general health of your body. | The constitution protects the rights of citizens.
+2497 | v | * | If you chat, you talk with someone in a friendly, informal way. | She chats with her neighbour every morning.
+2497 | n | - | A chat is a friendly, informal talk.
+3868 | n | * | Your kidneys are the two organs in your body that clean your blood and remove waste. | He has a problem with his kidneys.
+3493 | n | * | Gossip is talk about other people's private lives, which may not be true. | She loves gossip about film stars.
+3493 | v | - | If you gossip, you talk about other people's private lives.
+5525 | adj | * | Something trivial is not important. | Don't worry about such trivial matters.
+3588 | n | * | Heroin is a strong illegal drug that people find very hard to stop taking. | He went to prison for selling heroin.
+5183 | n | * | A spider is a small animal with eight legs that makes webs to catch insects. | A spider was hanging from the ceiling.
+4200 | n | * | Nitrogen is a gas that has no colour or smell and makes up most of the air. | Plants need nitrogen to grow.
+2570 | n | * | Cocaine is a powerful illegal drug. | The police found cocaine in his car.
+5122 | v | * | If you sniff, you breathe in quickly through your nose, for example to smell something. | The dog sniffs the ground.
+5122 | n | - | A sniff is the act of sniffing.
+2110 | n | * | An ant is a very small insect that lives in large groups. | Ants are carrying food to their nest.
+2191 | n | * | Astronomy is the scientific study of the stars and planets. | He studies astronomy at university.
+3291 | n | * | A fairy is a very small creature in stories that looks like a person with wings and has magic powers. | The children love the story of the good fairy.
+5157 | n | * | A spacecraft is a vehicle that travels in space. | The spacecraft landed on the moon.
+2190 | n | * | An astronaut is a person who travels in space. | The astronaut walked on the moon.
+4692 | n | * | A rainbow is a curve of different colours that appears in the sky when the sun shines through rain. | After the storm, a rainbow appeared.
+4002 | n | * | Madame is a polite way of speaking to a woman, especially a French woman. | Good morning, madame.
+4550 | n | * | A premier is the leader of a government. | The premier met the president.
+4550 | adj | - | Premier means best or most important.
+5543 | n | * | A turbine is a machine with blades that turn to produce power. | The wind turns the turbines to produce electricity.
+5572 | adv | * | Unfortunately means that you are sorry about something or that something is bad luck. | Unfortunately, the shop was closed.
+2454 | n | * | A casualty is a person who is hurt or killed in an accident or a war. | Every casualty of the battle was taken to hospital.
+5013 | n | * | A setback is a problem that makes progress slower or makes things worse. | The injury was a setback for the team.
+3416 | n | * | A frontier is the border between two countries; a frontier is also the limit of what is known. | They crossed the frontier at night.
+5057 | n | * | A siege is a military action in which an army surrounds a town to make the people in it surrender. | The city was under siege for months.
+4880 | n | * | Rhythm is a regular pattern of sounds or movements. | The music has a strong rhythm.
+3822 | adv | * | Invariably means always. | He invariably arrives late.
+3670 | adj | * | An imaginative person is good at thinking of new and clever ideas. | She is an imaginative writer.
+3332 | n | * | Fiction is stories about people and events that are not real. | She prefers fiction to history.
+3604 | adj | * | Historical means to do with history or with the past. | The museum has many historical objects.
+3029 | n | * | A documentary is a film or a television show that gives facts about something. | We watched a documentary about whales.
+2799 | n | * | Credentials are documents or qualities that show that you are suitable for a job. | She has excellent credentials for the job.
+5009 | adj | * | Serial means happening one after another in a series. | The police are looking for a serial killer.
+5009 | n | - | A serial is a story that is told in parts on television or in a magazine.
+4631 | v | * | If a person or a business prospers, they are successful and make money. | The town prospers because of tourism.
+5447 | v | * | If someone or something thrives, they grow or develop well. | These plants thrive in warm weather.
+3363 | v | * | If something flourishes, it grows well or is successful. | Art and music flourish in the city.
+2327 | n | * | Blossom is the flowers on a fruit tree. | The cherry trees are in blossom.
+2327 | v | - | If a tree blossoms, it produces flowers; if a person blossoms, they develop well.
+3589 | n | * | A heroine is a woman who is admired for her courage; the heroine of a story is its main female character. | The heroine of the story is a brave young girl.
+4365 | v | * | If something paralyzes a person, it makes them unable to move; if something paralyzes a system, it stops it working. | The snow paralyzes the city's traffic.
+4216 | n | * | Novelty is the quality of being new and unusual; a novelty is also a cheap small toy or object. | The novelty of the new job soon wore off.
+3303 | n | * | A farewell is the act of saying goodbye. | They said their farewells at the station.
+2761 | adj | * | Cordial means friendly and polite. | We received a cordial welcome.
+2100 | n | * | An anecdote is a short, interesting or funny story about a real person or event. | He told an anecdote about his childhood.
+3710 | n | * | An index is an alphabetical list at the back of a book that shows where things are mentioned; an index is also a number that shows the level of something. | Look up the word in the index.
+4642 | n | * | Psychiatry is the study and treatment of mental illness. | She is a doctor who specializes in psychiatry.
+4819 | n | * | Repression is the use of force to control people; repression is also the act of not allowing feelings to show. | The government used repression to stop the protests.
+2907 | n | * | A dentist is a doctor whose job is to look after people's teeth. | I go to the dentist twice a year.
+2378 | adj | * | Something brittle is hard but breaks easily. | Old bones become brittle.
+4503 | n | * | Porcelain is a hard, white, delicate material used to make cups and plates. | China is famous for its porcelain.
+3821 | adj | * | Something invaluable is extremely useful. | Your help has been invaluable.
+2392 | n | * | A bulb is the glass part of an electric lamp that gives light; a bulb is also the round root of some plants. | The light bulb has gone out.
+3447 | n | * | Garlic is a small plant like an onion with a strong taste and smell, used in cooking. | Add some garlic to the sauce.
+5544 | adj | * | Something turbulent is full of confusion, fighting or sudden change; turbulent water or air moves in a wild way. | The country went through a turbulent period.
+4700 | adj | * | Something rapid happens very quickly. | The city has seen rapid growth.
+5363 | adj | * | Something swift happens or moves very quickly. | We need a swift decision.
+3540 | n | * | Hail is small balls of ice that fall from the sky like rain. | The hail damaged the crops.
+3540 | v | - | If you hail a taxi, you wave to make it stop; if people hail someone, they praise them.
+5685 | v | * | If something zooms, it moves very fast; if a camera zooms in, it makes a picture look closer. | A car zooms past us.
+2728 | adj | * | Something continual happens again and again, or continues without stopping. | I am tired of his continual complaints.
+4948 | adj | * | Something savage is very cruel and violent. | It was a savage attack.
+4948 | n | - | In the past, savage was a word for a person from a society that was thought to be primitive; it is now offensive.
+4108 | n | * | Misfortune is bad luck, or an event that brings bad luck. | He had the misfortune to break his leg.
+4381 | n | * | A pastime is something that you do for pleasure in your free time. | Fishing is his favourite pastime.
+3461 | n | * | A generator is a machine that produces electricity. | The hospital has a generator for emergencies.
+3636 | adj | * | Humid air or weather is hot and wet. | Summers here are hot and humid.
+5529 | adj | * | Tropical means to do with the hot parts of the world near the equator. | They spent their holiday on a tropical island.
+4469 | n | * | A plantation is a large farm in a hot country where crops such as tea, coffee or cotton are grown. | They work on a tea plantation.
+2950 | n | * | Dew is small drops of water that form on the ground at night. | The grass was wet with dew.
+5550 | n | * | A typhoon is a very strong storm with heavy wind and rain in the western Pacific Ocean. | The typhoon hit the coast of China.
+3347 | n | * | A flame is the bright burning gas that comes from a fire. | The flames from the fire lit up the room.
+5239 | n | * | Steam is the hot gas that water becomes when it boils. | Steam was rising from the pot.
+5239 | v | - | If you steam food, you cook it with steam.
+2334 | v | * | When a liquid boils, it becomes very hot and starts to turn into gas; if you boil food, you cook it in boiling water. | Water boils at one hundred degrees.
+2663 | n | * | Concrete is a hard building material made of cement, sand, small stones and water. | The bridge is made of concrete.
+2663 | adj | - | Something concrete is real and definite, not just an idea.
+3866 | n | * | A kettle is a metal or plastic container with a lid and a handle, used for boiling water. | She put the kettle on to make tea.
+4944 | v | * | If something saturates a thing, it makes it completely wet or full. | The rain saturates the ground.
+2375 | adj | * | Something brilliant is very bright; a brilliant person is extremely clever. | She is a brilliant scientist.
+5124 | v | * | If you soak something, you put it in liquid for a long time; if rain soaks you, it makes you very wet. | Soak the beans in water overnight.
+2415 | n | * | Calcium is a chemical element that is found in bones, teeth and milk. | Children need calcium for strong bones.
+3850 | n | * | A jewel is a valuable stone such as a diamond. | The crown is covered in jewels.
+5509 | n | * | Treasure is a collection of gold, silver and jewels; a treasure is also something very valuable. | The pirates buried their treasure on the island.
+5509 | v | - | If you treasure something, you think it is very precious.
+5215 | n | * | A stain is a mark that is difficult to remove. | There is a coffee stain on my shirt.
+5215 | v | - | If something stains a thing, it leaves a mark on it.
+5240 | n | * | A steamer is a ship that is driven by steam. | They crossed the sea on an old steamer.
+4657 | v | * | If you purify something, you make it clean by removing harmful substances. | Plants help purify the air.
+4673 | v | * | If you quench your thirst, you drink so that you are no longer thirsty; if you quench a fire, you put it out. | A glass of cold water will quench your thirst.
+2472 | adj | * | Centigrade is a scale for measuring temperature in which water freezes at 0 degrees and boils at 100 degrees. | The temperature is thirty degrees centigrade.
+3007 | v | * | If you distill a liquid, you heat it until it becomes steam and then cool it to make it pure. | They distill water to make it safe to drink.
+2360 | n | * | Brandy is a strong drink with a lot of alcohol, made from wine. | He drank a glass of brandy after dinner.
+5587 | n | * | A volcano is a mountain with a hole at the top from which hot rock and gas can come out. | The volcano erupted last year.
+3419 | adj | * | Something fruitful produces good results. | We had a fruitful discussion.
+5639 | adj | * | Something wholesome is good for your health or your mind. | They eat wholesome food.
+5130 | adj | * | A sociable person enjoys meeting and talking to other people. | She is very sociable and has many friends.
+4043 | n | * | A masterpiece is an excellent work of art, or the best work of an artist. | The painting is a masterpiece.
+4482 | n | * | A plumber is a person whose job is to fit and repair water pipes, baths and toilets. | We called a plumber to fix the leak.
+3739 | adj | * | An ingenious idea or person is very clever and new. | She found an ingenious solution to the problem.
+2840 | n | * | Cyberspace is the imaginary place where people communicate on the internet. | They met in cyberspace.
+3716 | n | * | Indignation is anger about something that you think is unfair. | She expressed her indignation at the decision.
+4017 | adj | * | A malignant tumour is very dangerous and can spread in the body. | The doctor said the tumour was malignant.
+5498 | n | * | A transistor is a small electronic part that controls the flow of electricity; a transistor is also a small radio. | Modern computers have billions of transistors.
+5066 | n | * | Silicon is a chemical element used to make computer chips and glass. | Computer chips are made of silicon.
+2778 | n | * | A council is a group of people who are chosen to make decisions or give advice, for example for a town. | The city council will meet on Monday.
+5012 | n | * | A session is a period of time for a particular activity; a session is also a meeting of an official group. | We have a training session every Friday.
+2554 | n | * | A clinic is a building where people go to get medical treatment or advice. | She took her baby to the clinic.
+4050 | n | * | A mayor is the leader of the government of a town or a city. | The mayor opened the new library.
+5001 | n | * | A senator is a member of a senate. | The senator voted against the law.
+4369 | n | * | A parliament is the group of people who make laws in some countries. | The new law was passed by parliament.
+4773 | n | * | A rehearsal is a practice of a play, a concert or a speech before the real performance. | The actors had a rehearsal before the show.
+3560 | adj | * | Something hasty is done too quickly, without enough thought. | Don't make a hasty decision.
+3559 | n | * | Haste is great speed in doing something, often too much speed. | In his haste, he forgot his keys.
+4691 | n | * | A railroad is a railway. | The town grew after the railroad was built.
+4970 | v | * | If you scramble somewhere, you climb or move quickly with your hands and feet; if people scramble for something, they compete to get it. | The children scramble up the rocks.
+4703 | adj | * | A rash action is done too quickly without thinking about the results. | It was a rash decision.
+4703 | n | - | A rash is a group of red spots on your skin.
+2929 | v | * | If you despatch someone or something, you send them somewhere. | The company will despatch the goods tomorrow.
+4528 | v | * | If you practise something, you do it again and again to get better at it. | She practises the piano every day.

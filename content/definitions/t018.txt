@@ -1,0 +1,228 @@
+3429 | n | * | A furnace is a large closed container in which a very hot fire is made, for example to heat a building or to melt metal. | The workers melt iron in a furnace.
+2209 | v | * | If you augment something, you make it bigger or stronger by adding to it. | He works at night to augment his income.
+4931 | v | * | If you safeguard something, you protect it from harm. | The new law will safeguard workers' rights.
+4931 | n | - | A safeguard is something that protects people or things from harm.
+2254 | n | * | A barber is a man whose job is cutting men's hair. | He goes to the barber once a month.
+3572 | v | * | If you heave something heavy, you lift or pull it with great effort. | The men heave the boxes onto the truck.
+5472 | adj | * | A tolerant person accepts other people's beliefs and ways even if they do not agree with them. | We should be tolerant of other cultures.
+3627 | n | * | A hound is a dog that is used for hunting. | The hounds chased the fox across the field.
+3627 | v | - | If people hound someone, they follow them or keep asking them questions in an annoying way.
+2503 | n | * | A chemist is a scientist who studies chemistry; in Britain, a chemist is also a person who sells medicines. | She works as a chemist in a drug company.
+3001 | v | * | If you disregard something, you pay no attention to it. | Many drivers disregard the speed limit.
+2071 | n | * | An alphabet is the set of letters used to write a language, in a fixed order. | The English alphabet has twenty-six letters.
+3646 | n | * | Hypocrisy is the act of saying that you have good beliefs or behavior that you do not really have. | It is hypocrisy to tell children not to smoke when you smoke yourself.
+2432 | n | * | A captive is a person or an animal that is kept as a prisoner. | The soldiers released the captives.
+2432 | adj | - | A captive person or animal is kept as a prisoner.
+3065 | v | * | If you duplicate something, you make an exact copy of it. | Please duplicate this document for everyone in the meeting.
+3065 | n | - | A duplicate is an exact copy of something.
+2574 | n | * | A coil is a series of rings made by winding a rope or a wire around and around. | He carried a coil of rope over his shoulder.
+2574 | v | - | If something coils, it winds into a series of rings.
+3469 | n | * | A germ is a very small living thing that can cause disease. | Wash your hands to kill the germs.
+5388 | n | * | A tanker is a ship or a truck that carries large amounts of oil, gas or another liquid. | An oil tanker sank near the coast.
+3324 | n | * | Fellowship is a friendly feeling among people who share interests; a fellowship is also a group of people who share interests. | There is a strong sense of fellowship among the soldiers.
+5313 | v | * | If something suffices, it is enough. | A short answer will suffice.
+4265 | adj | * | Something opaque does not let light pass through it, so you can not see through it. | The bathroom window is made of opaque glass.
+3434 | n | * | A fuss is too much worry or excitement about something that is not important. | Don't make a fuss about such a small thing.
+3434 | v | - | If you fuss, you worry or pay too much attention to small things.
+3638 | v | * | If someone humiliates you, they make you feel stupid and ashamed in front of others. | The teacher humiliates him in front of the whole class.
+4221 | adj | * | If a part of your body is numb, you can not feel anything in it. | My fingers are numb with cold.
+3269 | adj | * | An extinct animal or plant no longer exists; an extinct volcano no longer erupts. | Dinosaurs are extinct.
+3435 | adj | * | Something futile has no chance of success. | It is futile to argue with him.
+2352 | n | * | Your bowels are the long tube in your body that carries waste food from your stomach. | The doctor examined his bowel.
+3606 | v | * | If you hoist something, you lift it up, often with a rope or a machine. | They hoist the flag every morning.
+2248 | n | * | A bandage is a long piece of cloth that you wrap around an injury. | The nurse put a bandage on his arm.
+2248 | v | - | If you bandage a wound, you wrap a bandage around it.
+2180 | v | * | If people assimilate into a group, they become part of it; if you assimilate information, you learn and understand it. | Immigrants often assimilate into the new culture.
+4227 | n | * | Nutrition is the food that you eat and how it affects your health. | Good nutrition is important for children.
+5386 | n | * | A tangle is a mass of threads, hair or wires that are twisted together and hard to separate. | There was a tangle of wires behind the computer.
+5386 | v | - | If things tangle, they become twisted together.
+4611 | v | * | If you prolong something, you make it last longer. | The doctors tried to prolong his life.
+3631 | v | * | If a dog or a wolf howls, it makes a long, loud crying sound; if the wind howls, it makes a loud sound. | The wolves howl at night.
+3631 | n | - | A howl is a long, loud cry.
+2961 | v | * | When you digest food, your stomach breaks it down so that your body can use it; if you digest information, you understand it. | It takes time to digest a big meal.
+4424 | v | * | If people or animals perish, they die, especially in an accident or a disaster. | Many people perish in the earthquake every year.
+3286 | v | * | If something fades, it slowly becomes less bright, strong or loud. | The colours of the curtains fade in the sun.
+3947 | v | * | If you limp, you walk with difficulty because one of your legs or feet is hurt. | He limps after he hurt his foot.
+3947 | adj | - | Something limp is soft and not firm.
+3232 | adj | * | If you are exempt from something, you do not have to do it or pay it. | Children are exempt from the tax.
+3232 | v | - | If someone exempts you from something, they say that you do not have to do it.
+2646 | v | * | If you compress something, you press it so that it takes up less space. | The machine compresses the rubbish into small blocks.
+3678 | n | * | An impact is the force of one object hitting another; an impact is also a strong effect. | The new road had a big impact on the town.
+3678 | v | - | If something impacts a thing, it has an effect on it.
+2584 | n | * | A collision is an accident in which two vehicles or objects hit each other. | Three people were hurt in the collision.
+2583 | v | * | If people or vehicles collide, they hit each other while they are moving. | Two cars collide at the crossroads.
+5043 | n | * | A shock is a sudden unpleasant surprise; a shock is also a sudden pain caused by electricity. | The news of his death was a terrible shock.
+5043 | v | - | If something shocks you, it surprises you in a very unpleasant way.
+4650 | n | * | A pump is a machine that pushes a liquid or a gas into or out of something. | He used a pump to put air in the tires.
+4650 | v | - | If you pump a liquid or a gas, you force it to move with a pump.
+5093 | v | * | If you slam a door, you shut it hard and with a loud noise. | He slams the door when he is angry.
+2034 | adj | * | Aesthetic means to do with beauty and art. | The building has great aesthetic value.
+2357 | n | * | A brake is the part of a vehicle that you use to make it stop or go slower. | He put his foot on the brake.
+2357 | v | - | If you brake, you make a vehicle stop or go slower.
+5289 | v | * | If something stuns you, it surprises or shocks you so much that you can not speak; if a hit stuns you, it makes you unable to think or move for a moment. | The news stuns everyone in the room.
+4573 | n | * | A priest is a person who leads religious ceremonies, especially in a Christian church. | The priest blessed the couple.
+3750 | v | * | If a doctor injects a drug into you, they put it into your body with a needle. | The nurse injects the medicine into his arm.
+3451 | v | * | If you gasp, you breathe in suddenly and loudly because you are surprised or in pain. | The audience gasps at the trick.
+3451 | n | - | A gasp is a sudden, loud breath.
+4750 | n | * | A reed is a tall plant like grass that grows near water. | Birds built nests in the reeds.
+2814 | n | * | A crow is a large black bird. | A crow was sitting on the fence.
+4940 | adj | * | A sane person is mentally healthy; a sane decision is sensible. | No sane person would go out in this storm.
+4477 | adj | * | If something is plentiful, there is a lot of it. | Fish are plentiful in the lake.
+1950 | v | * | If things abound, there are a lot of them. | Wild flowers abound in the hills.
+2090 | v | * | If you amplify a sound, you make it louder; if you amplify an idea, you explain it in more detail. | The speakers amplify the singer's voice.
+5531 | n | * | A trumpet is a metal musical instrument that you blow into. | He plays the trumpet in a jazz band.
+5032 | v | * | If you shear a sheep, you cut off its wool. | The farmers shear the sheep in spring.
+4426 | v | * | If something permeates a place, it spreads through every part of it. | The smell of coffee permeates the house.
+3858 | n | * | A jug is a container with a handle and a lip, used for pouring liquids. | She filled the jug with water.
+1990 | v | * | If you are acquainted with someone or something, you know them. | I am not acquainted with her family.
+3811 | adj | * | An intimate friend is very close to you; an intimate place is small and private. | They are intimate friends.
+3590 | v | * | If you hesitate, you wait for a moment before you do or say something because you are not sure. | Don't hesitate to ask for help.
+4904 | n | * | A romance is a love affair; romance is also the feeling of excitement connected with love. | Their romance began at university.
+2383 | v | * | If you browse, you look at things in a shop or a book without looking for anything special; if you browse the internet, you look at different pages. | She likes to browse in bookshops.
+5435 | n | * | A thermometer is an instrument that measures temperature. | The nurse put a thermometer in his mouth.
+2429 | n | * | A cape is a coat without sleeves that hangs from the shoulders; a cape is also a piece of land that goes out into the sea. | Superman wears a red cape.
+4359 | n | * | A parachute is a large piece of cloth that opens and lets a person fall slowly from a plane to the ground. | The pilot jumped from the plane with a parachute.
+2091 | v | * | If something amuses you, it makes you laugh or smile. | His jokes always amuse the children.
+2593 | n | * | A comedy is a funny play or film. | We watched a romantic comedy last night.
+3048 | n | * | A drama is a play for the theatre, television or radio; drama is also an exciting event. | She studied drama at college.
+3049 | adj | * | Something dramatic is sudden and surprising, or exciting to watch; dramatic also means to do with plays and the theatre. | There has been a dramatic rise in prices.
+2594 | adj | * | Something comic is funny. | The film has many comic scenes.
+2594 | n | - | A comic is a magazine with stories told in pictures.
+4353 | n | * | A panel is a flat piece of wood, glass or metal that is part of a door or a wall; a panel is also a small group of experts who discuss something or make decisions. | A panel of experts answered questions from the audience.
+4742 | n | * | Recreation is the activities that you do for fun when you are not working. | The park is a popular place for recreation.
+3019 | n | * | A diversion is a change in the direction of something; a diversion is also something that takes your attention away from something else. | There is a traffic diversion because of road works.
+5561 | v | * | If you underline a word, you draw a line under it; if you underline something, you show that it is important. | Underline the main idea in each paragraph.
+1945 | n | * | Your abdomen is the front part of your body below the chest, which contains the stomach. | He felt a sharp pain in his abdomen.
+3536 | n | * | Your gut is your stomach or the tube in your body that food goes through; your gut is also a feeling that you have without thinking. | My gut tells me that he is lying.
+2801 | v | * | If you creep, you move slowly and without noise so that nobody notices you. | The cat creeps towards the bird.
+2794 | v | * | When a baby crawls, it moves on its hands and knees; if traffic crawls, it moves very slowly. | The baby is learning to crawl.
+2794 | n | - | A crawl is a very slow speed.
+5111 | adj | * | A sly person is clever at tricking people. | The sly fox tricked the crow.
+5253 | n | * | A stitch is a single pass of a needle and thread through cloth or skin. | The doctor put five stitches in the cut.
+5253 | v | - | If you stitch something, you sew it.
+3517 | v | * | If you grieve, you feel very sad, especially because someone has died. | She grieves for her dead husband.
+5058 | v | * | If you sigh, you breathe out slowly and loudly because you are tired, sad or relieved. | He sighs and closes the book.
+5058 | n | - | A sigh is a long, loud breath out.
+4153 | v | * | If you mourn, you feel or show great sorrow because someone has died. | The whole country mourns the death of the president.
+4117 | v | * | If you moan, you make a long, low sound because of pain; if you moan about something, you complain about it. | He moans about his job all the time.
+3003 | v | * | If something dissipates, it slowly disappears. | The fog dissipates as the sun comes up.
+4342 | n | * | An oxide is a chemical compound of oxygen and another element. | Rust is iron oxide.
+5296 | n | * | Your subordinate is a person who has a lower position than you at work. | The manager is kind to her subordinates.
+5296 | adj | - | Subordinate means lower in rank or less important.
+4100 | n | * | A minister is a member of the government who is in charge of a department; a minister is also a priest in some churches. | The foreign minister visited China last week.
+4900 | n | * | A rocket is a vehicle that flies into space; a rocket is also a weapon that flies through the air and explodes. | The rocket carried three men to the moon.
+4101 | n | * | A ministry is a government department led by a minister. | She works in the Ministry of Education.
+3591 | n | * | A hierarchy is a system in which people or things are arranged in levels of importance. | There is a strict hierarchy in the army.
+2892 | n | * | A delegate is a person who is chosen to speak or vote for a group at a meeting. | Delegates from fifty countries came to the conference.
+2892 | v | - | If you delegate a task, you give it to someone else to do.
+4818 | n | * | A representative is a person who speaks or acts for another person or a group. | She is our representative on the committee.
+4818 | adj | - | Something representative is typical of a group.
+2079 | n | * | An ambassador is an important official who represents their country in a foreign country. | He is the Chinese ambassador to France.
+3124 | n | * | An embassy is the building where an ambassador and their staff work. | You can get a visa at the embassy.
+4438 | adj | * | A pessimistic person thinks that bad things will happen. | He is pessimistic about the future.
+5667 | n | * | A wreath is a ring of flowers or leaves, often put on a grave or hung on a door. | They put a wreath on the soldier's grave.
+3713 | adj | * | If one thing is indicative of another, it is a sign of it. | His red face was indicative of his anger.
+2299 | v | * | You say beware to warn someone to be careful of something. | Beware of the dog!
+5585 | n | * | A vocation is a strong feeling that you are suited to a certain job, often one that helps others; a vocation is also a job. | Teaching is her vocation.
+4232 | n | * | Obedience is the act of doing what you are told to do. | The army demands obedience from its soldiers.
+3150 | v | * | If someone is endowed with a quality, they have it naturally; if you endow an organization, you give it a large amount of money. | She is endowed with great talent.
+4145 | n | * | Moss is a very small, soft, green plant that grows on wet ground, trees or stones. | The old stones were covered with moss.
+3352 | v | * | If you flatter someone, you praise them too much because you want something from them. | He flatters his boss to get a pay rise.
+3889 | n | * | A lapse is a short failure of memory, attention or good behavior; a lapse is also a period of time between two events. | A lapse in concentration caused the accident.
+3889 | v | - | If something lapses, it ends because it has not been renewed.
+3884 | adj | * | A lame person or animal can not walk well because of an injured leg; a lame excuse is weak and hard to believe. | The horse is lame.
+5403 | n | * | The tempo of a piece of music is its speed; the tempo of an activity is how fast it happens. | The song has a fast tempo.
+5231 | adj | * | Something stationary is not moving. | The car crashed into a stationary truck.
+4744 | n | * | A rectangle is a shape with four straight sides and four right angles, with two sides longer than the others. | The table is a rectangle.
+5229 | n | * | A statesman is an experienced and respected political leader. | Nelson Mandela was a great statesman.
+5028 | n | * | Shampoo is a liquid soap for washing hair. | She bought a bottle of shampoo.
+4143 | n | * | A mosaic is a picture made of many small pieces of coloured stone or glass. | The floor of the old church has a beautiful mosaic.
+3524 | v | * | If you grope for something, you search for it with your hands because you can not see. | She gropes for the light switch in the dark.
+3817 | v | * | If you intrude, you go into a place or a situation where you are not wanted. | I don't want to intrude on your private life.
+5367 | n | * | Symmetry is the quality of having two halves that are exactly alike. | The building is famous for its symmetry.
+5679 | n | * | Zeal is great energy and enthusiasm for something. | He works with great zeal.
+4602 | n | * | Proficiency is a high level of skill in something. | You need proficiency in English for this job.
+4966 | v | * | If you scold someone, you speak to them in an angry way because they have done something wrong. | The teacher scolds the boys for being late.
+3768 | n | * | An installment is one of a series of payments that you make over a period of time; an installment is also one part of a story that comes out in parts. | He is paying for the car in monthly installments.
+4184 | v | * | If something necessitates an action, it makes it necessary. | The rise in prices will necessitate a change in our plans.
+4215 | v | * | If you nourish a person, an animal or a plant, you give them the food they need to live and grow. | Milk nourishes the body.
+4225 | v | * | If you nurture a child or a plant, you care for them while they are growing; if you nurture a feeling or a skill, you help it develop. | Parents nurture their children.
+4225 | n | - | Nurture is the care that you give to a child as it grows.
+3397 | v | * | If you foster a child, you take them into your family for a period of time without becoming their legal parent; if you foster something, you help it develop. | The school fosters a love of reading.
+3397 | adj | - | A foster parent or child is part of a family by fostering.
+2826 | v | * | If you cultivate land, you use it to grow crops; if you cultivate a skill, you work to develop it. | The farmers cultivate rice and vegetables.
+2051 | n | * | Agriculture is the work of farming. | Most people in the village work in agriculture.
+4924 | adj | * | Rural means to do with the country, not towns and cities. | They live in a quiet rural area.
+3333 | adj | * | A fierce animal or person is violent and angry; fierce also means very strong. | The dog is fierce, so don't touch it.
+2791 | n | * | A cradle is a small bed for a baby that can rock from side to side; the cradle of something is the place where it began. | The baby is sleeping in its cradle.
+2504 | v | * | If you cherish someone or something, you love them and take good care of them. | She cherishes the memory of her grandmother.
+5445 | n | * | Thrift is the careful use of money so that you do not waste it. | They saved money through hard work and thrift.
+3120 | adj | * | An eloquent person speaks or writes well and in a way that moves people. | He gave an eloquent speech.
+3319 | n | * | A federation is a group of states or organizations that have joined together. | Germany is a federation of sixteen states.
+2010 | n | * | An adjective is a word such as "big" or "happy" that describes a person or a thing. | "Beautiful" is an adjective.
+3433 | n | * | A fuse is a small wire in an electric system that breaks if too much electricity passes through it; a fuse is also a string that burns to light a bomb. | The lights went out because a fuse blew.
+3433 | v | - | If things fuse, they join together.
+5638 | phrase | * | Whoever means any person who, or it does not matter who. | Whoever comes first will win the prize.
+2305 | n | * | A bid is an offer of a price for something, especially at an auction; a bid is also an attempt to achieve something. | Her bid for the painting was too low.
+2305 | v | - | If you bid for something, you offer a price for it.
+2204 | n | * | An auction is a public sale where things are sold to the person who offers the most money. | The painting was sold at auction.
+2204 | v | - | If you auction something, you sell it at an auction.
+3280 | v | * | If you fabricate information, you invent it in order to deceive people; if you fabricate something, you make it. | The witness fabricated the whole story.
+5256 | v | * | If you stoop, you bend your body forward and down; if you stoop to doing something bad, you lower your moral standards to do it. | He stoops to pick up the coin.
+5669 | n | * | A wrench is a metal tool used for turning nuts. | He used a wrench to fix the pipe.
+5669 | v | - | If you wrench something, you pull or twist it suddenly and hard.
+4545 | adj | * | If one thing is preferable to another, it is better or more suitable. | Walking is preferable to taking the bus on a sunny day.
+5163 | v | * | If something sparkles, it shines with many small points of light. | Her eyes sparkle with joy.
+5163 | n | - | A sparkle is a small point of light.
+4244 | v | * | If something obstructs a road or a path, it blocks it; if you obstruct someone, you try to stop them from doing something. | A fallen tree obstructs the road.
+3573 | n | * | A hedge is a row of bushes growing close together around a garden or a field. | He trims the hedge every summer.
+3123 | v | * | If something embarrasses you, it makes you feel shy, nervous or ashamed. | My father embarrasses me in front of my friends.
+2678 | v | * | If something confuses you, it makes it hard for you to understand; if you confuse two things, you think that one is the other. | The new rules confuse many people.
+2230 | adj | * | Something awkward is difficult to use or deal with; an awkward situation makes you feel embarrassed. | There was an awkward silence after his question.
+3398 | adj | * | Something foul is dirty and smells very bad. | There was a foul smell from the drain.
+3398 | n | - | In sport, a foul is an action that is against the rules.
+5356 | n | * | A swamp is an area of very wet, soft land. | Crocodiles live in the swamp.
+5356 | v | - | If you are swamped with things, you have too many of them.
+2332 | v | * | If you blush, your face becomes red because you are embarrassed. | She blushes when he speaks to her.
+2563 | adj | * | A clumsy person moves without care and often drops or knocks things. | I am so clumsy; I broke another glass.
+2552 | n | * | The climax of something is its most exciting or important part, usually near the end. | The climax of the film is a car chase.
+4778 | v | * | If you rejoice, you feel or show great happiness. | The people rejoice at the end of the war.
+4946 | n | * | A saucer is a small, round plate that you put a cup on. | He put his cup on the saucer.
+4202 | adj | * | Something nominal exists in name only; a nominal amount of money is very small. | The club charges a nominal fee.
+4763 | n | * | A refund is money that is given back to you, for example when you return something to a shop. | I took the shoes back and got a refund.
+4763 | v | - | If someone refunds your money, they give it back to you.
+4278 | adj | * | Optimum means the best or most suitable. | The optimum temperature for the plants is twenty degrees.
+2404 | n | * | A burglar is a person who enters a building to steal things. | A burglar broke into our house last night.
+5051 | adj | * | A shrewd person is clever and good at judging situations. | She is a shrewd businesswoman.
+4003 | n | * | A magistrate is an official who acts as a judge in a court that deals with less serious crimes. | He appeared before a magistrate this morning.
+3968 | n | * | A locality is a small area of a country or a city. | There are three schools in the locality.
+4765 | v | * | If you refute a statement or a theory, you prove that it is wrong. | The scientist refutes the old theory.
+5369 | v | * | If you sympathize with someone, you feel sorry for them or you understand their feelings. | I sympathize with your problem.
+3131 | adj | * | An eminent person is famous and respected in their work. | He is an eminent scientist.
+3979 | v | * | If something looms, it appears as a large shape that is hard to see clearly; if a problem looms, it is going to happen soon. | A huge ship looms out of the fog.
+3979 | n | - | A loom is a machine for weaving cloth.
+5294 | v | * | If something submerges, it goes under the surface of water. | The submarine submerges and disappears.
+3833 | adj | * | Inward means inside your mind, or moving towards the inside. | She felt an inward peace.
+4811 | v | * | If something repels a person or an animal, it makes them go away; if something repels you, it disgusts you. | The smell of this oil repels insects.
+3753 | adj | * | Inland means in the middle of a country, away from the sea. | They live in an inland town.
+4500 | n | * | A pond is a small area of still water. | There are fish in the pond.
+5137 | adj | * | Sole means only or single. | He was the sole survivor of the crash.
+5137 | n | - | The sole of your foot or shoe is its bottom surface.
+2449 | n | * | A cashier is a person whose job is to take or pay out money in a shop or a bank. | The cashier gave me my change.
+2414 | n | * | A cafeteria is a restaurant where you choose your food at a counter and carry it to a table yourself. | We had lunch in the school cafeteria.
+3086 | adj | * | Something economical does not use a lot of money, fuel or other things. | This small car is very economical.
+3198 | n | * | Esteem is great respect and a high opinion of someone. | She is held in high esteem by her colleagues.
+3594 | adv | * | Highly means very or to a high degree; if you think highly of someone, you respect them. | He is a highly successful businessman.
+5460 | adj | * | A timid person is shy and easily frightened. | The timid child hid behind his mother.
+3314 | adj | * | If you are fearful, you are afraid. | She was fearful of losing her job.
+3812 | v | * | If you intimidate someone, you frighten them, often so that they will do what you want. | The older boys intimidate the new students.
+4070 | n | * | A menace is a person or a thing that is dangerous or annoying. | Drunk drivers are a menace to everyone.
+4070 | v | - | If something menaces a person or a thing, it threatens them.
+2876 | v | * | If you deduct an amount from a total, you take it away. | The company deducts tax from his salary.
+2982 | n | * | A discount is a reduction in the usual price of something. | Students get a discount on bus tickets.
+2982 | v | - | If you discount a product, you sell it for a lower price; if you discount an idea, you decide it is not important.
+3045 | v | * | If you doze, you sleep for a short time, but not deeply. | Grandpa dozes in his chair after lunch.
+5595 | adj | * | Something vulgar is rude or shows bad taste. | He told a vulgar joke at dinner.
+5372 | n | * | A symposium is a meeting where experts discuss a subject. | She spoke at a symposium on climate change.
+2485 | n | * | A chancellor is the head of the government in some countries; a chancellor is also the head of some universities. | The German chancellor visited China.
+2231 | n | * | An axe is a tool with a heavy metal blade on a long handle, used for cutting wood. | He chopped the wood with an axe.

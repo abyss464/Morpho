@@ -1,0 +1,218 @@
+4006 | adj | * | Something magnificent is very beautiful, grand and impressive. | The palace has a magnificent garden.
+4972 | v | * | If you scrape something, you rub a rough or sharp object against it to clean it or damage it. | He scrapes the mud off his boots.
+4972 | n | - | A scrape is a small injury where your skin has been rubbed off.
+2207 | n | * | An audit is an official check of the accounts of a company or an organization. | The company has an audit every year.
+2207 | v | - | If someone audits accounts, they check them officially.
+4937 | n | * | Salvation is the act of saving someone from danger, loss or sin. | The new job was his salvation.
+4397 | n | * | A peach is a round, soft, sweet fruit with yellow and red skin and a large stone inside. | She ate a ripe peach.
+3428 | adj | * | If you are furious, you are very angry. | My father was furious when I crashed the car.
+4489 | n | * | Poison is a substance that can kill you or make you very ill if you eat, drink or breathe it. | The rat ate the poison and died.
+4489 | v | - | If someone poisons a person or an animal, they kill or harm them with poison.
+4490 | adj | * | Something poisonous contains poison that can kill or harm you. | Some mushrooms are poisonous.
+5567 | adv | * | Undoubtedly means certainly, without any doubt. | She is undoubtedly the best player on the team.
+4264 | v | * | If you omit something, you do not include it. | The report omits some important facts.
+4241 | n | * | An obsession is a thought or an interest that fills your mind all the time. | Football is his obsession.
+4086 | n | * | A microphone is a device that you speak into to record your voice or make it louder. | The singer stepped up to the microphone.
+3999 | n | * | Luxury is great comfort and expensive things; a luxury is something expensive that you do not really need. | They live in luxury in a big house by the sea.
+5320 | v | * | If you summarize something, you give the main points of it in a short form. | Can you summarize the story in a few sentences?
+4311 | n | * | An outline is a short description of the main facts; an outline is also a line that shows the shape of something. | Give me an outline of your plan.
+4311 | v | - | If you outline something, you describe its main facts.
+2997 | n | * | Disposal is the act of getting rid of something; if something is at your disposal, you can use it when you want. | The city must find a safe way for the disposal of waste.
+1978 | adv | * | If you act accordingly, you act in a way that is suitable for the situation. | We know the rules and behave accordingly.
+2888 | v | * | If you defy someone or something, you refuse to obey them. | The students defy the new school rules.
+4481 | n | * | A plug is the part at the end of a wire that you push into the wall to connect a machine to electricity; a plug is also an object that blocks a hole. | Pull out the plug before you clean the machine.
+4481 | v | - | If you plug something in, you connect it to the electricity.
+3883 | n | * | A lamb is a young sheep; lamb is also the meat of a young sheep. | The lambs are playing in the field.
+5405 | v | * | If something tempts you, it makes you want to do or have it, even if it is wrong or bad for you. | The smell of the cake tempts me.
+5038 | n | * | A shield is a large flat object that soldiers held in the past to protect themselves; a shield is also anything that protects someone. | The knight carried a sword and a shield.
+5038 | v | - | If you shield someone, you protect them.
+4535 | n | * | A precedent is an action or a decision in the past that people use as an example when they decide something new. | The court's decision set a precedent for other cases.
+4044 | n | * | A mat is a small piece of thick material that you put on the floor, for example to clean your shoes on. | Wipe your feet on the mat.
+2166 | adj | * | If you are ashamed, you feel bad because you have done something wrong or embarrassing. | He was ashamed of his bad behavior.
+2859 | n | * | A dean is an important person in a university who is in charge of a faculty or of the students. | She is the dean of the law school.
+5440 | adj | * | A thoughtful person is kind and thinks about what other people need; thoughtful also means thinking deeply. | It was thoughtful of you to send flowers.
+4133 | n | * | A monopoly is complete control of a business or a product by one company or person. | The company has a monopoly on oil in the country.
+4280 | adj | * | Something optional is not necessary; you can choose it if you want. | The course has some optional classes.
+2187 | n | * | An assurance is a promise that something is true or will happen; assurance is also confidence. | He gave me his assurance that he would come.
+3528 | n | * | A guarantee is a promise that something will happen or that something will be repaired if it breaks. | The watch has a two-year guarantee.
+3528 | v | - | If you guarantee something, you promise that it will happen or that it is true.
+3167 | v | * | If you ensure that something happens, you make certain that it happens. | Please ensure that the door is locked.
+5626 | v | * | If you weep, you cry. | She weeps when she hears the sad news.
+3955 | n | * | Liquor is a strong drink with a lot of alcohol in it, such as whisky. | The shop does not sell liquor.
+5160 | n | * | A span is the length of time that something lasts; the span of a bridge is the distance between its two ends. | Children have a short attention span.
+5160 | v | - | If something spans a period or an area, it covers all of it.
+5662 | adj | * | Worldwide means happening or existing in all parts of the world. | The song was a worldwide success.
+2823 | n | * | A cube is a solid shape with six square sides of the same size. | Put two ice cubes in my drink.
+4565 | v | * | If you presume something, you believe that it is true without being certain. | I presume that you are tired after the journey.
+3308 | n | * | Fate is a power that some people believe controls what happens; your fate is what happens to you. | Nobody knows what fate has in store for us.
+3307 | adj | * | Something fatal causes death or very serious problems. | He had a fatal accident on the motorway.
+3220 | n | * | An excess of something is more of it than is needed or wanted. | An excess of sugar is bad for you.
+3220 | adj | - | Excess means more than is needed or allowed.
+2706 | n | * | A constituent is one of the parts that something is made of; a constituent is also a voter in an area that a politician represents. | Water is the main constituent of the human body.
+2113 | n | * | An antique is an old object that is valuable because of its age and beauty. | The house is full of antiques.
+2113 | adj | - | Antique things are old and valuable.
+4495 | v | * | If you polish something, you rub it to make it clean and bright. | He polishes his shoes every morning.
+4495 | n | - | Polish is a substance that you rub on something to make it shine.
+2843 | n | * | A dairy is a place where milk is kept and made into butter and cheese. | The farm has a small dairy.
+2843 | adj | - | Dairy products are food made from milk, such as butter and cheese.
+2836 | v | * | If you curse, you say rude or angry words; if you curse someone, you wish that something bad will happen to them. | He curses when he drops the hammer.
+2836 | n | - | A curse is a word or a wish that brings bad luck or evil.
+5031 | v | * | If you shave, you cut hair off your face or body with a razor. | My father shaves every morning.
+3774 | n | * | An institute is an organization for study, teaching or research. | She works at the institute of technology.
+3774 | v | - | If you institute something, you start it.
+5415 | n | * | A terminal is a building at an airport or a station where people start or end their journey; a terminal is also a computer screen and keyboard. | Our flight leaves from terminal two.
+5415 | adj | - | A terminal illness will cause death.
+2243 | n | * | A balcony is a platform on the outside of a building, above the ground, with a wall or rail around it. | We had breakfast on the balcony.
+5663 | v | * | If you worship God or a god, you show respect and love for them, often by praying. | They worship at the temple every week.
+5663 | n | - | Worship is the act of worshipping God or a god.
+2576 | n | * | A coincidence is an event that happens by chance at the same time as another, in a surprising way. | What a coincidence to meet you here!
+3326 | adj | * | Feminine means typical of women or girls. | She has a soft, feminine voice.
+2937 | adj | * | Something destructive causes great damage. | Wars are very destructive.
+5538 | n | * | Tuition is the money that you pay for teaching at a school or a university; tuition is also teaching. | The university raised its tuition fees.
+4873 | v | * | If you revise something, you change it to make it better or more correct; if you revise for an exam, you study again what you have learned. | The author revises the book every few years.
+2258 | n | * | Bark is the hard outer cover of a tree. | The bark of the old tree is very rough.
+2258 | v | - | When a dog barks, it makes a short, loud sound.
+5207 | v | * | If someone stabs a person, they push a knife into their body. | The man tried to stab the guard with a knife.
+4483 | v | * | If you plunge into water, you jump or fall into it; if something plunges, it falls quickly. | He plunges into the cold lake.
+4483 | n | - | A plunge is a sudden fall or dive.
+3698 | n | * | The incidence of something is how often it happens. | There is a high incidence of crime in this area.
+3410 | n | * | Frequency is the rate at which something happens; the frequency of a sound or a radio wave is the number of waves that pass each second. | The frequency of accidents on this road is worrying.
+4619 | n | * | Propaganda is information, often false, that a government or a group spreads to make people think in a certain way. | The newspapers were full of war propaganda.
+5173 | n | * | A specimen is a single example of something, or a small amount of something that is tested. | The doctor took a blood specimen.
+4238 | adj | * | Something obscure is not well known or is hard to understand. | The poem is full of obscure words.
+4238 | v | - | If something obscures a thing, it hides it or makes it hard to see.
+4466 | n | * | A pitch is a piece of ground where football or other games are played; the pitch of a sound is how high or low it is. | The players ran onto the pitch.
+4466 | v | - | If you pitch something, you throw it.
+5475 | n | * | The tone of a voice or a sound is its quality; the tone of a piece of writing is its general feeling. | She spoke in an angry tone.
+2000 | adj | * | Something acute is very serious or severe; an acute sense is very sharp. | There is an acute shortage of water.
+4312 | n | * | Your outlook is your general attitude to life; the outlook is what will probably happen in the future. | She has a positive outlook on life.
+4629 | n | * | A prospect is the chance that something will happen, or a possible future situation. | There is little prospect of finding the missing boy alive.
+5580 | adj | * | Something unlikely will probably not happen or is probably not true. | It is unlikely to rain today.
+4630 | adj | * | Prospective means likely to be or to happen in the future. | The prospective buyers came to see the house.
+5282 | v | * | If you stroll, you walk slowly in a relaxed way. | We stroll along the beach in the evening.
+5282 | n | - | A stroll is a slow, relaxed walk.
+3783 | adj | * | Something integral is a necessary and important part of a whole. | Music is an integral part of the film.
+4848 | adj | * | Respective means belonging or relating to each one of the people or things that you have just mentioned. | The students went back to their respective classrooms.
+3377 | n | * | A forecast is a statement about what will probably happen, especially about the weather. | The weather forecast says it will rain tomorrow.
+3377 | v | - | If you forecast something, you say what will probably happen.
+2541 | n | * | Classification is the act of putting things into groups by their type. | The classification of plants is a difficult task.
+5451 | v | * | If you thrust something somewhere, you push it there quickly and with force. | He thrusts his hands into his pockets.
+5451 | n | - | Thrust is the force that pushes a plane or a rocket forward.
+1957 | adj | * | Something absurd is completely silly and not sensible. | It is absurd to wear a coat in this heat.
+5406 | n | * | Temptation is the feeling that you want to do or have something that you know is wrong or bad for you. | I could not resist the temptation to eat the cake.
+3998 | v | * | If you lure someone, you make them go somewhere or do something by promising them something nice. | Big cities lure young people with the promise of jobs.
+3998 | n | - | A lure is something that attracts people or animals.
+4835 | n | * | A reservoir is a large lake, often made by people, where water is stored for a city. | The city gets its water from a reservoir in the hills.
+2093 | n | * | An analogy is a comparison between two things that shows how they are similar. | The teacher used the analogy of a pump to explain the heart.
+3742 | n | * | The inhabitants of a place are the people or animals that live there. | The town has about five thousand inhabitants.
+5359 | v | * | If something sways, it moves slowly from side to side. | The trees sway in the wind.
+5583 | v | * | If you upgrade something, you make it better or newer. | I need to upgrade my computer.
+5583 | n | - | An upgrade is an improvement, or a newer and better form of something.
+4021 | v | * | If something manifests itself, it appears or becomes clear. | The illness manifests itself as a high fever.
+4021 | adj | - | Something manifest is clear and easy to see.
+3655 | n | * | An idiot is a very stupid person. | Only an idiot would drive so fast in the rain.
+5292 | adj | * | Something subjective is based on personal feelings and opinions, not on facts. | Taste in music is very subjective.
+1980 | n | * | An accountant is a person whose job is to keep and check financial records. | My mother works as an accountant.
+4440 | n | * | A petition is a written request signed by many people and sent to a government or an organization. | Thousands of people signed a petition against the new road.
+4530 | v | * | When people pray, they speak to God or a god to give thanks or to ask for help. | She prays every night before she goes to sleep.
+2159 | n | * | An artery is one of the tubes that carry blood from the heart to the rest of the body; an artery is also a main road. | Smoking can damage an artery.
+4205 | n | * | Nonsense is words or ideas that are silly or not true. | Don't talk nonsense!
+2206 | adj | * | Audio means to do with sound or with recording sound. | The museum offers an audio guide.
+4501 | v | * | If you ponder something, you think about it deeply for a long time. | She ponders the meaning of life.
+2634 | v | * | If something complicates a situation, it makes it more difficult. | The rain will complicate our plans.
+2636 | n | * | A complication is something that makes a situation more difficult; a complication is also a new medical problem during an illness. | There were complications after the operation.
+2903 | v | * | If you denounce someone or something, you criticize them strongly in public. | The leaders denounce the attack.
+2854 | n | * | Daylight is the natural light of the day. | We must finish the work before the daylight goes.
+5611 | n | * | A warrant is an official paper from a court that allows the police to do something, such as arrest someone. | The police have a warrant for his arrest.
+5611 | v | - | If something warrants an action, it makes it necessary or right.
+3125 | v | * | If something is embedded in a thing, it is fixed inside it and is hard to remove. | The workers embed the steel bars in concrete.
+3949 | n | * | Linen is a strong cloth made from a plant; linen is also sheets and the cloths that cover tables. | She bought a linen dress.
+3055 | v | * | If a liquid drips, it falls in small drops. | Water drips from the roof.
+3055 | n | - | A drip is a small drop of liquid that falls.
+3986 | n | * | A lottery is a game in which people buy tickets with numbers and win money if their numbers are chosen. | He won a million dollars in the lottery.
+3414 | n | * | The fringe of something is its outer edge; a fringe is also hair cut short across the forehead. | They live on the fringe of the city.
+3917 | n | * | A lease is a legal agreement to rent a building or land for a period of time. | We signed a two-year lease on the flat.
+3917 | v | - | If you lease a building or land, you rent it for a period of time.
+2495 | n | * | A charter is an official document that gives rights to a group or explains its aims. | The city received its charter from the king.
+2495 | v | - | If you charter a plane or a boat, you rent it for your own use.
+2131 | n | * | An appliance is a machine used in the house, such as a washing machine or a fridge. | The kitchen has all the modern appliances.
+3741 | v | * | If people or animals inhabit a place, they live there. | Many birds inhabit the island.
+5407 | n | * | A tenant is a person who pays rent to live in a house or a flat. | The tenants pay their rent every month.
+4677 | n | * | A quota is a fixed amount or number of something that is allowed or expected. | The country has a quota on imports of cars.
+3219 | n | * | An excerpt is a short part taken from a book, a film or a piece of music. | We read an excerpt from his new novel.
+2759 | n | * | Copyright is the legal right to be the only person to print, copy or sell a book, a song or a film. | The writer owns the copyright to the book.
+4097 | adj | * | Something miniature is very small, or a small copy of something larger. | He collects miniature cars.
+4097 | n | - | A miniature is a very small copy of something, or a very small painting.
+5107 | n | * | A slogan is a short, easy phrase used in advertising or politics. | The company has a new slogan.
+2221 | n | * | An avenue is a wide street in a town, often with trees on both sides; an avenue is also a way of doing something. | They live on Park Avenue.
+4030 | adj | * | Something marginal is small and not very important. | There was a marginal increase in sales.
+4155 | n | * | A mug is a large, deep cup with a handle. | He drank a mug of hot tea.
+3719 | adj | * | Indoor means happening or used inside a building. | The school has an indoor swimming pool.
+4171 | adj | * | A naive person has little experience of life and believes things too easily. | It is naive to think that everyone tells the truth.
+3870 | n | * | A kindergarten is a school for children between about three and six years old. | My little brother goes to kindergarten.
+2475 | n | * | Cereal is a plant such as wheat or rice that produces grain; cereal is also a breakfast food made from grain. | I eat cereal with milk for breakfast.
+2314 | n | * | A blade is the flat, sharp part of a knife or a tool; a blade of grass is a single thin leaf of it. | The knife has a sharp blade.
+5005 | adj | * | A sensible person makes good decisions based on reason. | It is sensible to save some money.
+5545 | n | * | The turnover of a company is the total amount of business that it does in a period; turnover is also the rate at which workers leave a company. | The company has a turnover of ten million dollars a year.
+3400 | n | * | A fracture is a crack or a break, especially in a bone. | He has a fracture in his arm.
+3400 | v | - | If a bone fractures, it cracks or breaks.
+2233 | n | * | A bachelor is a man who has never married; a bachelor's degree is the first degree that you get from a university. | He stayed a bachelor all his life.
+4268 | adj | * | Something operational is working or ready to use. | The new airport will be operational next year.
+2921 | n | * | Your descendants are your children, their children and all the people who live after them in your family. | He is a descendant of the emperor.
+3671 | v | * | If you imitate someone or something, you copy the way they speak or behave. | Children imitate their parents.
+5244 | n | * | A stereo is a machine for playing music that has two speakers. | He turned up the stereo.
+2265 | n | * | A basin is a large bowl for liquids; a basin is also the land around a river from which water flows into it. | She washed her hands in the basin.
+3359 | v | * | If you fling something, you throw it with a lot of force. | Children fling stones into the river.
+3359 | n | - | A fling is a short romantic relationship.
+3370 | n | * | Foam is a mass of very small bubbles on the surface of a liquid. | The waves left white foam on the beach.
+4261 | v | * | If one thing offsets another, it balances it so that it has no effect. | Higher prices offset the rise in wages.
+2244 | adj | * | A bald person has little or no hair on their head. | My uncle is going bald.
+5260 | adj | * | Something straightforward is easy to understand or do; a straightforward person is honest. | The instructions are very straightforward.
+2808 | adj | * | Something crisp is firm and makes a pleasant sound when you break or bite it; crisp air is cold and fresh. | I like crisp apples.
+4971 | n | * | A scrap is a small piece of something; scrap is also old metal or other waste. | He wrote her number on a scrap of paper.
+3484 | adj | * | Something glorious is very beautiful or wonderful, or brings great honor. | It was a glorious sunny day.
+5223 | n | * | A standpoint is a way of looking at things. | From a business standpoint, the plan is good.
+5537 | v | * | If you tug something, you pull it quickly and hard. | The child tugs at her mother's sleeve.
+5537 | n | - | A tug is a sudden pull; a tug is also a small strong boat that pulls ships.
+4616 | adj | * | If someone is prone to something bad, they are likely to do it or suffer from it. | He is prone to headaches.
+3621 | n | * | A hose is a long rubber tube that water flows through. | He watered the garden with a hose.
+3542 | n | * | A hammer is a tool with a heavy metal head, used for hitting nails. | He hit the nail with a hammer.
+3542 | v | - | If you hammer something, you hit it with a hammer.
+3387 | adj | * | Something formidable is very difficult, strong or impressive, and makes people a little afraid. | The team faced a formidable opponent.
+5342 | n | * | A surplus is an amount that is more than is needed. | The country has a surplus of rice.
+5412 | adj | * | If you are tense, you are nervous and not able to relax; a tense situation makes people nervous. | She felt tense before the exam.
+5412 | n | - | In grammar, the tense of a word such as "go" or "went" shows the time of an action, such as the past or the present.
+5413 | n | * | Tension is a feeling of worry and stress; tension is also the state of being pulled tight. | There is a lot of tension between the two countries.
+3924 | n | * | Leisure is the time when you are not working and can do what you enjoy. | What do you do in your leisure time?
+4126 | n | * | A module is one of the separate parts of a course of study, a machine or a building. | The course has six modules.
+2088 | adj | * | If there is an ample amount of something, there is enough of it or more than enough. | There is ample time to finish the work.
+5158 | adj | * | A spacious room or building is large and has a lot of space. | The flat has a spacious living room.
+5279 | n | * | A stripe is a long, narrow band of colour. | The flag has red and white stripes.
+3225 | v | * | If you exclaim, you say something suddenly and loudly because you are surprised, excited or angry. | "What a lovely surprise!" she exclaims.
+5152 | n | * | Sorrow is a feeling of being very sad, especially when someone dies or something bad happens. | She felt deep sorrow when her dog died.
+5370 | n | * | Sympathy is the feeling of being sorry for someone who is in trouble, or of understanding their problems. | I have a lot of sympathy for people who lose their jobs.
+4191 | n | * | Your neighbor is a person who lives near you. | Our neighbor helped us move the sofa.
+5368 | adj | * | A sympathetic person shows that they understand and care about other people's problems. | The teacher was very sympathetic when I was ill.
+2868 | adj | * | A decisive person can make decisions quickly; a decisive event decides the result of something. | It was a decisive victory for the army.
+2146 | n | * | An arch is a curved structure that supports a bridge or forms the top of a door or a gate. | We walked under the old stone arch.
+3515 | n | * | A greeting is something that you say or do when you meet someone, such as "hello". | They exchanged greetings and sat down.
+3847 | adj | * | If you are jealous, you feel angry or sad because someone has something that you want, or because you think someone you love likes another person. | She is jealous of her sister's new dress.
+4722 | n | * | A rebellion is a violent attempt by a group of people to change their government. | The army crushed the rebellion.
+5151 | adj | * | If a part of your body is sore, it hurts. | My legs are sore after the long walk.
+3187 | v | * | If people erect a building or a statue, they build it or put it up. | They erect a statue in the square.
+3187 | adj | - | Something erect stands up straight.
+4231 | n | * | An oath is a formal promise, for example to tell the truth in court. | The witness took an oath to tell the truth.
+5420 | v | * | If you testify, you give evidence in a court of law. | She agreed to testify against the robber.
+5360 | v | * | If you swear, you use rude words; if you swear to do something, you promise strongly to do it. | I swear that I will never lie to you again.
+2062 | v | * | If you allege something, you say that it is true without giving proof. | The police allege that he stole the car.
+2331 | v | * | If something blurs, it becomes hard to see clearly. | Tears blur her eyes.
+2331 | n | - | A blur is a shape that you can not see clearly.
+2075 | n | * | The altitude of something is its height above the level of the sea. | The plane is flying at a high altitude.
+2959 | v | * | If you differentiate between things, you see or show how they are different. | It is hard to differentiate between the twins.
+2577 | v | * | If people collaborate, they work together to achieve something. | The two scientists collaborate on many projects.
+4801 | n | * | A remnant is a small part of something that is left after the rest has gone. | These walls are the remnant of an old castle.
+4730 | v | * | If you recite a poem or a piece of writing, you say it aloud from memory. | The children recite a poem every morning.
+3799 | n | * | Interference is the act of getting involved in other people's affairs when you are not wanted. | She hates interference in her private life.
+2236 | n | * | Bacon is salted meat from the back or sides of a pig, usually cut into thin slices. | I had bacon and eggs for breakfast.
+5192 | v | * | If you spoil something, you damage it or make it less good; if you spoil a child, you give them everything they want. | The rain will spoil our picnic.
+5557 | v | * | If you underestimate someone or something, you think they are smaller, weaker or less important than they really are. | Don't underestimate the power of the sea.

@@ -1,0 +1,200 @@
+2488 | n | * | A chapter is one of the main parts of a book; a chapter is also a period of time in someone's life or in history. | Read the first chapter for homework.
+3024 | n | * | A divorce is the legal ending of a marriage. | Her parents got a divorce when she was ten.
+4461 | n | * | A pipe is a long tube that carries water or gas; a pipe is also a tube with a bowl at one end for smoking tobacco. | The water pipe under the sink is broken.
+5101 | adj | * | Something slight is small and not important or serious. | There is a slight problem with the car.
+4802 | adj | * | A remote place is far away from towns and cities; a remote chance is very small. | They live in a remote village in the mountains.
+4802 | n | - | A remote is a small device for controlling a television from a distance.
+5354 | v | * | If you sustain something, you keep it going; if you sustain an injury, you suffer it. | The planet cannot sustain life without water.
+5617 | adj | * | A wealthy person has a lot of money. | He comes from a wealthy family.
+3945 | n | * | A limitation is a limit, or a weak point that stops someone or something from doing more. | Old age has its limitations.
+4546 | n | * | A preference is a liking for one thing more than another. | I have a preference for tea over coffee.
+3107 | v | * | If people elect someone, they choose them for an official position by voting. | The people will elect a new president next year.
+4497 | n | * | A politician is a person whose job is in politics, such as a member of the government. | Many politicians made speeches before the election.
+2016 | n | * | Admission is the right to enter a place, or the money that you pay to enter it; an admission is also a statement that something bad is true. | Admission to the museum is free.
+3171 | n | * | Entertainment is shows, films, music and other things that people enjoy watching or listening to. | The hotel has live entertainment every night.
+3727 | n | * | An infant is a baby or a very young child. | The mother held her infant in her arms.
+5462 | adj | * | Something tiny is very small. | The baby has tiny hands.
+3097 | n | * | Efficiency is the quality of doing something well without wasting time, money or energy. | The new machine has improved the efficiency of the factory.
+4663 | v | * | If you qualify for something, you have the right skills or conditions to do it or to get it; if you qualify, you pass the exams for a job. | You must be over eighteen to qualify for the job.
+2919 | v | * | If you derive something from a thing, you get it from that thing; if something derives from a thing, it comes from it. | He derives great pleasure from his garden.
+3574 | n | * | Your heel is the back part of your foot; the heel of a shoe is the raised part under the back of it. | She hurt her heel while running.
+3531 | n | * | A guideline is a piece of advice or a rule about how to do something. | Follow the safety guidelines when you use the machine.
+4886 | n | * | A rifle is a long gun that you hold against your shoulder to shoot. | The soldier cleaned his rifle.
+4012 | n | * | Maintenance is the work of keeping something in good condition. | The car needs regular maintenance.
+2750 | n | * | A conviction is a strong belief; a conviction is also a decision in a court that someone is guilty. | He spoke with great conviction.
+5519 | n | * | A trick is a clever action that fools someone, or a clever way of doing something; a trick is also a clever action done to entertain people. | The magician showed us a card trick.
+5519 | v | - | If you trick someone, you make them believe something that is not true.
+5149 | adj | * | Something sophisticated is complicated and advanced; a sophisticated person knows a lot about the world and about culture. | The plane has very sophisticated equipment.
+5411 | n | * | Tennis is a game in which two or four players hit a ball over a net with rackets. | They play tennis every Saturday.
+4176 | n | * | A narrative is a story or a description of events. | The book is a narrative of his life in China.
+4124 | adj | * | A modest person does not boast about what they have done; something modest is not large or expensive. | He is very modest about his success.
+3616 | n | * | The horizon is the line far away where the sky seems to meet the land or the sea. | The sun went down below the horizon.
+3617 | adj | * | Something horizontal is flat and level with the ground. | Draw a horizontal line across the page.
+5661 | n | * | A workshop is a room or a building where things are made or repaired; a workshop is also a meeting where people learn a skill together. | My father fixes bikes in his workshop.
+5286 | n | * | A studio is a room where an artist or a photographer works, or where films or radio shows are made. | The singer is recording a new album in the studio.
+5311 | v | * | If you sue someone, you take them to court to get money from them because they have harmed you. | He plans to sue the company for the accident.
+3353 | n | * | The flavor of food or drink is its taste. | This ice cream comes in many flavors.
+3849 | n | * | A jet is a fast plane; a jet is also a strong, thin stream of water or gas coming out of a small hole. | The jet took off from the airport.
+2175 | v | * | If you assert something, you say it strongly and clearly; if you assert yourself, you speak and act with confidence. | She asserts that she is innocent.
+5404 | adj | * | Something temporary lasts or is used only for a short time. | He found a temporary job for the summer.
+3601 | v | * | If you hire someone, you pay them to work for you; if you hire something, you pay money to use it for a short time. | The company will hire ten new workers.
+3965 | n | * | A loan is money that you borrow and must pay back. | He got a loan from the bank to buy a car.
+3139 | v | * | If a company employs someone, it pays them to work for it; if you employ something, you use it. | The factory employs five hundred people.
+2567 | n | * | A coalition is a group of people, parties or countries that join together for a common purpose. | The two parties formed a coalition government.
+3141 | n | * | An employer is a person or a company that pays people to work for them. | The hospital is the largest employer in the town.
+3091 | n | * | An edition is one of the forms in which a book is published, or all the copies printed at one time. | This is the third edition of the dictionary.
+5295 | v | * | If you submit something, you give it to someone officially to be judged; if you submit to someone, you accept their power. | The student submits her homework online.
+5592 | v | * | If you vote, you show your choice of a person or a plan, for example by marking a paper. | Everyone over eighteen can vote.
+5592 | n | - | A vote is the choice that one person shows when a group decides something.
+2246 | n | * | A ballot is a secret way of voting, or the piece of paper that you vote on. | The members will choose their leader by ballot.
+2424 | n | * | A candidate is a person who is trying to get a job or to be elected. | There are three candidates for the job.
+2860 | n | * | A debate is a discussion in which people express different opinions about something. | There was a debate about the new tax.
+2860 | v | - | If people debate a subject, they discuss it and give different opinions.
+2227 | n | * | An award is a prize given to someone for something good that they have done. | She won an award for her first novel.
+2227 | v | - | If someone awards you a prize, they give it to you.
+2740 | n | * | Controversy is a strong public quarrel among many people who do not agree about something. | The new law caused a lot of controversy.
+4965 | n | * | A scholarship is money that a school or an organization gives to a student to pay for their studies. | She won a scholarship to study in America.
+2739 | adj | * | Something controversial causes strong public arguments because people have very different opinions about it. | The plan to close the school is very controversial.
+4172 | adj | * | If someone is naked, they are not wearing any clothes. | The baby was naked in the bath.
+2255 | adj | * | Something bare is not covered by anything; a bare room has no furniture. | She walked across the beach with bare feet.
+4226 | n | * | A nut is a dry fruit with a hard shell; a nut is also a small piece of metal with a hole that is screwed onto a bolt. | Squirrels collect nuts for the winter.
+3923 | adj | * | Something legitimate is allowed by law, or is fair and reasonable. | He has a legitimate reason for being late.
+4294 | n | * | Orientation is the direction that something faces, or the beliefs and interests that someone has; orientation is also training that new students or workers get. | There is a week of orientation for new students.
+3733 | n | * | Inflation is a general rise in prices. | High inflation makes life hard for poor people.
+2912 | adj | * | If you are dependent on someone or something, you need them to live or to succeed. | Children are dependent on their parents.
+3432 | adv | * | Furthermore means also, and is used to add more information. | The house is too small; furthermore, it is too expensive.
+4142 | n | * | A mortgage is a loan from a bank that you use to buy a house. | They took out a mortgage to buy their first home.
+5625 | adj | * | Something weekly happens once a week or every week. | She writes a weekly report for her boss.
+1998 | n | * | An actress is a woman whose job is acting in plays or films. | She is a famous film actress.
+5322 | n | * | The summit of a mountain is its top; a summit is also an important meeting between leaders of countries. | They reached the summit at noon.
+1988 | n | * | An acid is a chemical substance that can burn or damage things. | The acid burned a hole in the cloth.
+3997 | n | * | Your lungs are the two parts inside your chest that you use for breathing. | Smoking damages your lungs.
+5552 | adj | * | Something ugly is unpleasant to look at; an ugly situation is dangerous or unpleasant. | The old building is very ugly.
+4509 | v | * | If a picture, a film or a book portrays someone or something, it shows or describes them in a certain way. | The film portrays the life of a famous singer.
+3471 | n | * | A ghost is the spirit of a dead person that some people believe they can see. | The children believe that the old house has a ghost.
+2443 | n | * | A carrier is a person or a thing that carries something, such as a company that carries people or things. | The airline is a major carrier in Asia.
+2493 | n | * | A charity is an organization that collects money to help people in need; charity is also kindness and help given to the poor. | She gives money to a children's charity.
+4976 | n | * | A script is the written words of a play, a film or a speech. | The actors read the script together.
+3651 | n | * | Identification is the act of finding out who or what someone or something is; identification is also an official paper that shows who you are. | You need some form of identification to open a bank account.
+3568 | n | * | A headline is the title of a news story, printed in large letters. | The headline read "Peace at Last".
+3823 | n | * | An invasion is the act of an army entering a country to attack it. | The invasion began at dawn.
+4029 | n | * | A margin is the empty space at the side of a page; a margin is also the amount by which one thing is bigger than another. | Write your notes in the margin.
+2256 | adv | * | Barely means almost not, or only just. | He could barely walk after the long run.
+4556 | n | * | A prescription is a piece of paper on which a doctor writes the medicine that you need. | The doctor gave me a prescription for some pills.
+4743 | v | * | If you recruit people, you get them to join an organization, a company or an army. | The army recruits young men and women.
+4384 | n | * | A patch is a small area that is different from the area around it; a patch is also a piece of cloth used to cover a hole. | There was a patch of ice on the road.
+2689 | n | * | Consensus is general agreement among a group of people. | There is a consensus that the plan should go ahead.
+2879 | v | * | If you defeat someone, you beat them in a war, a game or a competition. | Our team defeated the champions.
+2879 | n | - | A defeat is the act of being beaten in a war or a competition.
+2562 | n | * | A clue is a piece of information that helps you solve a problem or a mystery. | The police found an important clue.
+4776 | v | * | If you reinforce something, you make it stronger. | They reinforced the walls with steel.
+5099 | n | * | A slice is a thin, flat piece cut from something larger. | Would you like a slice of cake?
+5099 | v | - | If you slice something, you cut it into thin pieces.
+4928 | adj | * | Something sacred is holy and connected with God or a religion, or is very important and respected. | The river is sacred to many people.
+2303 | n | * | The Bible is the holy book of the Christian religion. | He reads the Bible every night.
+4499 | n | * | Pollution is the process of making air, water or land dirty and harmful, or the harmful things themselves. | Air pollution is a big problem in many cities.
+2571 | adj | * | Cognitive means to do with thinking, learning and understanding. | Children's cognitive abilities develop quickly.
+2582 | adj | * | Collective means done or shared by every member of a group. | It was a collective decision.
+3197 | n | * | An estate is a large area of land in the country owned by one person or family; your estate is also all the money and property that you leave when you die. | The family lives on a large estate.
+5129 | n | * | Soccer is a game played by two teams who try to kick a ball into the other team's goal. | The boys play soccer after school.
+5469 | n | * | Your toes are the five small parts at the end of your foot. | I hurt my toe on the table.
+3761 | n | * | An inquiry is a question that you ask to get information; an inquiry is also an official study of a problem. | The government ordered an inquiry into the accident.
+2873 | v | * | If something decreases, it becomes smaller or less. | The number of students decreases every year.
+2873 | n | - | A decrease is a fall in the amount or number of something.
+2018 | n | * | An adolescent is a young person who is between being a child and being an adult. | Many adolescents worry about how they look.
+2018 | adj | - | Adolescent means to do with young people between the ages of about thirteen and nineteen.
+4838 | v | * | If you resign, you officially leave your job. | The minister will resign next week.
+3899 | n | * | Laughter is the act or sound of laughing. | We heard laughter from the next room.
+5243 | n | * | A stem is the long, thin part of a plant that holds the leaves and flowers. | Cut the stems of the roses before you put them in water.
+5338 | n | * | A surgeon is a doctor who does operations. | The surgeon removed the bullet from his leg.
+4699 | n | * | Rape is the crime of forcing someone to have sex against their will. | Rape is a very serious crime.
+3975 | n | * | A log is a thick piece of wood cut from a tree; a log is also an official written record of events. | We put another log on the fire.
+3082 | n | * | An echo is a sound that comes back to you after it hits a surface such as a wall. | We heard the echo of our voices in the cave.
+3082 | v | - | If a sound echoes, it comes back after hitting a surface.
+5195 | n | * | A sponsor is a person or a company that pays for an event or a show, often to advertise their products. | The company is the main sponsor of the football team.
+5195 | v | - | If someone sponsors something, they pay for it.
+4982 | adj | * | Secondary means less important than something else; secondary school is the school for children between eleven and eighteen. | The cost is of secondary importance.
+3785 | n | * | Integrity is the quality of being honest and having strong moral principles. | He is a man of great integrity.
+3175 | v | * | If something entitles you to a thing, it gives you the right to have it or do it. | This ticket entitles you to a free drink.
+3226 | v | * | If you exclude someone or something, you do not let them take part or you do not include them. | The price excludes tax.
+2559 | n | * | A closet is a small room or a cupboard where you keep clothes or other things. | She hung her coat in the closet.
+2411 | n | * | A cabinet is a piece of furniture with shelves and doors for storing things; the cabinet is also the most important group of ministers in a government. | The medicine is in the bathroom cabinet.
+2540 | adj | * | Classical means traditional and long established; classical music is serious music, often for the piano or the violin, that was written long ago. | She loves classical music.
+2531 | n | * | A civilization is a society that has developed its own culture, government and way of life. | The ancient Egyptian civilization lasted for thousands of years.
+4872 | v | * | If you reverse something, you change it to the opposite; if you reverse a car, you drive it backwards. | The court reversed its decision.
+3350 | n | * | A flash is a sudden, bright light that lasts only a moment. | There was a flash of lightning.
+3350 | v | - | If a light flashes, it shines with a bright light for a moment.
+5096 | n | * | A slave is a person who is owned by another person and has to work for them without pay. | In the past, many people were sold as slaves.
+4136 | adj | * | Something monthly happens once a month or every month. | We pay the rent on a monthly basis.
+3040 | n | * | A dose is the amount of a medicine that you take at one time. | Take one dose of medicine every four hours.
+3918 | n | * | A lecture is a talk given to a group of people, especially students, about a subject. | The professor gave a lecture on Chinese history.
+5305 | n | * | A suburb is an area where people live on the edge of a city. | They live in a quiet suburb of London.
+4468 | adj | * | Something plain is simple, with nothing added to make it pretty; plain also means clear and easy to understand. | She wore a plain white dress.
+4468 | n | - | A plain is a large area of flat land.
+3407 | n | * | Fraud is the crime of cheating people to get money. | He went to prison for fraud.
+2614 | n | * | A companion is someone who spends time with you or travels with you. | The dog was his only companion.
+4135 | n | * | A monster is a large, ugly and frightening creature in stories. | The children were afraid of the monster in the film.
+3584 | n | * | An herb is a plant whose leaves are used in cooking to add flavor or in medicine. | Add some fresh herbs to the soup.
+4336 | adj | * | Something overwhelming is very great or very strong. | She felt an overwhelming desire to sleep.
+2822 | n | * | A crystal is a small piece of a solid substance with a regular shape; crystal is also very clear glass of high quality. | Salt forms small white crystals.
+2712 | v | * | If you consult someone, you ask them for advice or information. | You should consult a doctor.
+2713 | n | * | A consultant is an expert who gives advice to people or companies. | The company hired a consultant to help with the new project.
+2263 | n | * | A basement is the part of a building that is below the ground. | We keep our bikes in the basement.
+3047 | v | * | If you drain a liquid, you let it flow away; if something drains you, it makes you very tired. | Drain the water from the rice.
+3047 | n | - | A drain is a pipe that carries dirty water away.
+4675 | n | * | A questionnaire is a list of questions that many people answer to give information. | Please fill in this questionnaire.
+5402 | n | * | A temple is a building where people pray to a god or gods. | The old temple is on top of the hill.
+4306 | adj | * | Outdoor means happening or used outside, not in a building. | The hotel has an outdoor swimming pool.
+3914 | v | * | If you leap, you jump high or far. | The cat leaps onto the wall.
+3914 | n | - | A leap is a big jump, or a big change.
+4695 | adj | * | Something random happens or is chosen without a plan or a pattern. | The winners were chosen at random.
+5672 | n | * | Your wrist is the part of your body between your hand and your arm. | She wears a watch on her left wrist.
+4099 | adj | * | Minimum means the smallest amount or number that is possible or allowed. | The minimum age for driving is eighteen.
+4099 | n | - | The minimum is the smallest amount or number that is possible or allowed.
+3064 | v | * | If you dump something, you put it down or throw it away in a careless way. | People dump rubbish in the river.
+3064 | n | - | A dump is a place where rubbish is left.
+2852 | n | * | A database is a large amount of information stored in a computer in an organized way. | The police checked his name in their database.
+3943 | n | * | A limb is an arm or a leg; a limb is also a large branch of a tree. | He was lucky to escape with no broken limbs.
+3470 | n | * | A gesture is a movement of your hand or head that shows a meaning or a feeling; a gesture is also an action that shows your feelings. | He made a gesture for me to sit down.
+3105 | n | * | Your elbow is the place in the middle of your arm where it bends. | He hurt his elbow when he fell.
+3431 | n | * | Furniture is things such as chairs, tables and beds that you put in a room. | They bought new furniture for the living room.
+2519 | adj | * | A chronic illness or problem lasts for a long time. | She suffers from chronic back pain.
+3758 | n | * | Innovation is the use of new ideas or methods; an innovation is a new idea or invention. | The company is famous for innovation.
+5261 | n | * | Strain is worry and pressure, or a force that pulls or stretches something; a strain is also an injury to a muscle. | The strain of the job made him ill.
+5261 | v | - | If you strain something, you hurt it by using it too much, or you make a great effort with it.
+4348 | n | * | A pad is a thick, soft piece of material used to protect something; a pad is also a set of sheets of paper fixed together. | He wrote her number on a pad of paper.
+5521 | n | * | The trigger of a gun is the part that you pull to shoot it; a trigger is also something that causes an event. | He pulled the trigger.
+5521 | v | - | If something triggers an event, it causes it to start.
+3930 | n | * | A lever is a bar that you use to lift something heavy, or a handle that you move to make a machine work. | Pull the lever to open the door.
+3498 | n | * | Grace is a smooth and beautiful way of moving; grace is also a short prayer before a meal. | She dances with great grace.
+2749 | v | * | If a court convicts someone, it decides officially that they are guilty of a crime. | The jury convicted him of murder.
+2341 | v | * | If you boost something, you increase it or make it better. | The good news boosted his confidence.
+2341 | n | - | A boost is something that helps or improves a situation.
+2057 | n | * | An alarm is a device that warns people of danger by making a loud noise; alarm is also a sudden feeling of fear. | The fire alarm went off at midnight.
+3618 | n | * | A horn is one of the hard, pointed parts that grow on the heads of some animals; a horn is also a device in a car that makes a loud noise. | The bull has two sharp horns.
+3521 | v | * | If you grip something, you hold it very hard. | He grips the rope with both hands.
+3521 | n | - | A grip is a firm hold on something.
+3788 | adj | * | An intelligent person is clever and able to learn and understand things quickly. | Dolphins are very intelligent animals.
+1971 | v | * | If a place accommodates people, it has enough space for them; if you accommodate someone, you give them a place to stay or help them. | The hotel can accommodate two hundred guests.
+2486 | n | * | Chaos is a state of complete confusion and disorder. | The snow caused chaos on the roads.
+2426 | n | * | Canvas is strong, rough cloth used for making tents and bags and for painting on. | The artist painted on a large canvas.
+4834 | v | * | If you reserve something, you arrange for it to be kept for you; if you reserve something, you keep it for a special purpose. | I would like to reserve a table for two.
+4834 | n | - | A reserve is a supply of something that is kept for future use.
+4833 | n | * | A reservation is an agreement that a seat, a room or a table will be kept for you; a reservation is also a feeling of doubt. | We made a reservation at the hotel.
+4949 | n | * | Your savings are money that you have saved; a saving is an amount of money that you do not have to spend. | She used her savings to buy a car.
+2648 | n | * | A compromise is an agreement in which each side gives up a little. | After months of talks, the two sides finally reached a compromise.
+2648 | v | - | If people compromise, each side gives up a little so that they can agree.
+3227 | adj | * | Something exclusive is only for one person or a small group; an exclusive place is expensive and only for rich people. | They stayed at an exclusive hotel.
+4959 | v | * | If you scatter things, you throw or drop them so that they spread over a wide area. | The wind scatters the leaves across the garden.
+5352 | n | * | Suspicion is a feeling that someone has done something wrong, or a feeling that something is true. | The police have suspicions about the man.
+5027 | n | * | Shame is the bad feeling that you have when you know you have done something wrong; a shame is also something that is sad or disappointing. | He felt shame for lying to his mother.
+4413 | n | * | A pension is money that you get every month from the government or a company after you stop working because you are old. | My grandfather lives on his pension.
+4859 | v | * | If you resume something, you start it again after a pause. | The game will resume after the rain stops.
+5428 | adj | * | Theoretical means based on ideas and theories, not on practice or experience. | The course is mostly theoretical.
+2348 | v | * | If something bounces, it hits a surface and moves away from it again. | The ball bounces off the wall.
+2348 | n | - | A bounce is the action of bouncing.
+3614 | n | * | A hook is a curved piece of metal or plastic used for hanging things or for catching fish. | He hung his coat on a hook.
+2625 | n | * | Compensation is money that someone pays you because they have hurt you or damaged your property. | The workers received compensation for their injuries.
+3238 | n | * | An exit is a door or a way out of a place. | Where is the nearest exit?
+3238 | v | - | If you exit a place, you leave it.
+2286 | n | * | Your belly is your stomach, or the front part of your body below your chest. | The cat lay on its back and showed its belly.

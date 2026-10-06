@@ -1,0 +1,139 @@
+2290 | n | * | A bench is a long seat for two or more people, often made of wood, that you find in parks. | We sat on a bench in the park and ate our lunch.
+3988 | n | * | A lover is someone who loves another person in a deep way, or someone who loves a certain thing, such as music. | The two lovers walked hand in hand along the beach.
+4707 | adj | * | Raw food has not been cooked. | You can eat these carrots raw.
+5655 | v | * | If you withdraw money, you take it out of a bank; if you withdraw from something, you stop taking part in it. | I need to withdraw some money from the bank.
+2023 | adj | * | Advanced machines or ideas are new and modern; advanced students already know a lot. | This hospital uses the most advanced machines in the country.
+2780 | n | * | A counter is a long table in a shop or a kitchen where people pay, are served, or make food. | Please pay at the counter.
+3310 | n | * | If something bad is your fault, it happened because of something you did. | It's my fault that we are late; I lost the keys.
+2813 | v | * | If you criticize someone, you say what you think is wrong or bad about them. | Her boss criticized her for being late again.
+2315 | v | * | If you blame someone for something bad, you say that they caused it. | Don't blame me for the mistake; I wasn't even there.
+4767 | adv | * | If you do something regardless of a problem, you do it anyway and do not let the problem stop you. | She went to work regardless of her cold.
+3106 | adj | * | An elderly person is old. | He helped an elderly woman carry her bags.
+3355 | v | * | If you flee, you run away from a place or a person because you are afraid. | Thousands of people fled the city when the war began.
+3903 | n | * | A lawn is an area of short grass around a house or in a park. | Dad cuts the lawn every Saturday.
+4643 | n | * | Psychology is the study of the mind and of how people think and feel. | She is studying psychology because she wants to help people.
+2714 | v | * | If you consume something, you eat, drink or use it. | Large cars consume a lot of oil.
+2790 | n | * | A crack is a thin line where something has broken but has not come apart. | There is a long crack in the wall of the old house.
+5118 | v | * | If something snaps, it breaks all at once with a short, loud sound. | Be careful, or the branch will snap under your weight.
+5118 | n | - | A snap is a short, loud sound of something breaking or closing.
+5468 | n | * | Tobacco is a plant whose leaves are dried and smoked. | The farmers grow tobacco and corn.
+3437 | n | * | A galaxy is a very large group of stars. | Our sun is one of billions of stars in the Milky Way galaxy.
+5484 | n | * | A trace of something is a mark or a very small sign or piece of it that shows it was there. | The police found no trace of the missing boy.
+3094 | v | * | If you educate someone, you teach them, usually at a school or a college. | Her parents worked hard to educate all five children.
+5281 | n | * | A stroke is a sudden illness in the brain that can stop a person from moving or speaking. | My grandfather had a stroke last year, but he can walk again now.
+5281 | v | - | If you stroke an animal, you move your hand over its fur again and again in a kind way.
+4615 | v | * | If something prompts you to do something, it makes you decide to do it. | The cold weather prompted us to buy a new heater.
+4615 | adj | - | A prompt action is done at once, without waiting.
+2715 | n | * | Consumption is the use of something such as food, oil or water, or how much of it people use. | The country's oil consumption has doubled in ten years.
+2310 | v | * | If you bite something, you cut into it with your teeth. | Be careful: that dog bites.
+2310 | n | - | A bite is a piece that you bite off something, or a mark that teeth leave on your skin.
+4258 | adj | * | Something offensive is rude and makes people angry or hurts their feelings. | He said sorry for his offensive joke.
+4770 | v | * | If you register for something, you put your name on a list so that you can join it or take part in it. | You must register for the course before the end of May.
+4770 | n | - | A register is a list of names or facts that a school or an office keeps.
+3586 | n | * | A country's heritage is the history, buildings and traditions that its people get from the past and want to keep. | The old town is an important part of our national heritage.
+2112 | v | * | If you anticipate something, you expect it to happen and are ready for it. | We did not anticipate so many guests, so we ran out of food.
+2157 | n | * | Your arrival is the act of coming to a place. | The arrival of the train was late because of the snow.
+4269 | n | * | An operator is a person whose job is to work a machine. | He works as a machine operator in a factory.
+4427 | n | * | If you have permission to do something, someone has said that you may do it. | You need your parents' permission to go on the school trip.
+4255 | n | * | The odds of something happening are the chance that it will happen. | The odds of winning the game are very small.
+4810 | adv | * | If you do something repeatedly, you do it many times. | He knocked on the door repeatedly, but no one answered.
+3411 | adj | * | Something that is frequent happens often. | There are frequent buses to the city centre.
+2015 | v | * | If you admire someone or something, you think they are very good and you like them very much. | I admire my father for his hard work.
+3214 | v | * | If one thing exceeds another, it is bigger or more than the other. | Drivers must not exceed the speed limit.
+2718 | n | * | A container is something such as a box or a bottle that you keep things in. | Keep the sugar in a container with a lid.
+3712 | n | * | An indication is a sign that shows that something is true or might happen. | There is every indication that the weather will get better.
+2777 | n | * | A couch is a long, soft seat for two or more people. | He fell asleep on the couch while he was watching TV.
+4206 | n | * | The norm is what is usual or normal. | Working from home has become the norm for many people.
+3258 | n | * | Exports are things that one country sells to other countries. | Coffee is the country's most important export.
+3258 | v | - | If a country exports things, it sells them to other countries.
+3248 | adj | * | Something that is experimental is new, and people are still testing it. | The drug is still experimental and is not sold in shops.
+4860 | n | * | Retail is the business of selling things in shops to the people who will use them. | She has worked in retail for ten years.
+5569 | n | * | Unemployment is the state of not having a job, or the number of people without jobs. | Unemployment rose when the factory closed.
+4111 | adj | * | If someone or something is missing, no one knows where they are. | The police are looking for a missing child.
+5355 | v | * | When you swallow something, you make it go from your mouth down into your stomach. | Chew your food well before you swallow it.
+4806 | v | * | If something renders a person or thing a certain way, it makes them that way. | The heavy rain rendered the road useless.
+2173 | v | * | If people assemble, they come together in a group; if you assemble something, you fit its parts together. | It took us two hours to assemble the new bookshelf.
+2680 | n | * | A congress is a large meeting of people from different groups or countries; Congress is the group of people who make laws in America. | Congress passed a new law on taxes.
+3726 | adj | * | If something is inevitable, it is certain to happen and nobody can stop it. | With so many cars on the road, accidents are inevitable.
+4243 | n | * | An obstacle is something that stands in your way and stops you from moving on. | The horse jumped over every obstacle on the course.
+3282 | v | * | If you facilitate something, you make it easier to do or to happen. | The new bridge will facilitate trade between the two towns.
+4891 | v | * | If you rip something, you tear it hard. | Be careful not to rip the paper.
+4891 | n | - | A rip is a long hole where something has been torn.
+4340 | n | * | Ownership is the fact of owning something. | The ownership of the house passed to his daughter.
+2533 | v | * | If you claim that something is true, you say that it is true, although others may not believe you. | He claims that he saw a ghost in the old house.
+2533 | n | - | A claim is something that someone says is true, or a demand for something that you think is yours.
+4513 | v | * | If you possess something, you have it or own it. | He possesses a large collection of old coins.
+4199 | n | * | A nightmare is a very bad dream that frightens you. | The child woke up crying after a nightmare.
+3053 | v | * | If something drifts, the wind or the water carries it along, and it does not go where anyone plans. | The empty boat drifted out to sea.
+4154 | n | * | Mud is soft, wet earth. | The children came home covered in mud.
+3532 | n | * | Guilt is the bad feeling that you have when you know you have done something wrong. | She felt a lot of guilt about lying to her friend.
+3582 | adv | * | Hence means for this reason or as a result. | The car is old and slow; hence the low price.
+3654 | n | * | An ideology is a set of ideas that a group of people have about how society should work. | Each political party has its own ideology.
+3934 | adj | * | A liberal person is open to new ideas and believes that people should be free to live as they want. | My grandparents have quite liberal opinions.
+2226 | v | * | If you await something, you wait for it. | The family is awaiting news from the doctor.
+4125 | v | * | If you modify something, you change it a little to make it better or different. | We need to modify the plan after hearing their ideas.
+2267 | n | * | A bat is a wooden stick used to hit the ball in some sports; a bat is also a small animal like a mouse with wings that flies at night. | He hit the ball hard with his bat.
+2748 | v | * | If you convey an idea or a feeling, you make it known to other people. | Her face conveyed how tired she was.
+3334 | n | * | A figure is a written number, or the shape of a person that you can see but not clearly. | The sales figures for this year are very good.
+2851 | n | * | Data is facts and numbers that are collected so that they can be studied. | The scientists collected data from hundreds of patients.
+2897 | n | * | A delivery is the act of taking things such as letters or food to a person or a place. | We are waiting for the delivery of our new sofa.
+4836 | n | * | Your residence is the house or the place where you live. | The palace is the official residence of the king.
+5351 | v | * | If you suspend something, you stop it for a while; if you suspend something from a place, you hang it there. | The game was suspended because of the rain.
+3378 | n | * | Your forehead is the part of your face above your eyes. | She kissed the baby on the forehead.
+2874 | v | * | If you dedicate your life to something, you spend most of your time and work on it because you think it is important. | She dedicated her life to helping poor children.
+2446 | v | * | If you carve something, you cut wood or stone to make a shape, or you cut cooked meat into pieces. | He carved a small bird out of wood.
+5055 | n | * | A shuttle is a bus, a train or a plane that goes again and again between two places. | A free shuttle takes guests from the hotel to the airport.
+5055 | v | - | If you shuttle between two places, you travel between them again and again.
+2115 | adj | * | If you are anxious, you are worried and nervous about something. | She was anxious about her first day at a new school.
+3038 | n | * | A doorway is the space in a wall where a door opens. | He stood in the doorway and waved goodbye.
+5432 | adv | * | Thereby means as a result of the action that you have just talked about. | He worked longer hours, thereby earning more money.
+2423 | v | * | If you cancel something that was planned, you stop it from happening. | They had to cancel the flight because of the storm.
+4728 | n | * | The recipient of something is the person who receives it. | The recipient of the prize will be named tonight.
+3113 | adj | * | Something elegant is beautiful in a simple way and shows good taste. | She wore an elegant black dress to the party.
+4726 | n | * | A reception is a big party to welcome someone or to celebrate something, such as a wedding. | After the wedding, there was a reception at the hotel.
+3166 | v | * | If you enroll in a class or a school, you put your name on a list to join it. | She enrolled in an evening class to learn Spanish.
+2967 | v | * | If something diminishes, it becomes smaller or weaker. | The pain diminished after she took the medicine.
+3840 | v | * | If you isolate someone or something, you keep them apart from others. | The sick child was isolated from the other children.
+5288 | v | * | If you stumble, you almost fall while you are walking or running. | She stumbled on the stairs and dropped her books.
+2853 | n | * | Dawn is the time early in the morning when the sky starts to get light. | The fishermen set off at dawn.
+2955 | n | * | A diamond is a hard, clear stone that costs a lot of money and is often used in rings. | He gave her a diamond ring when he asked her to marry him.
+4168 | adj | * | Something mysterious is strange and hard to understand or explain. | A mysterious man in a black coat was waiting outside.
+5365 | n | * | A sword is a long, sharp metal knife that soldiers used for fighting in the past. | The soldier pulled out his sword.
+3887 | n | * | A lane is a narrow road in the country, or one part of a wide road for one line of cars. | Cars in the left lane were moving very slowly.
+4277 | adj | * | If you are optimistic, you believe that good things will happen. | The doctors are optimistic that he will get well soon.
+5577 | v | * | If people or things unite, they join together and act as one. | The two villages united to build a new school.
+5575 | n | * | A union is a group of workers who join together to protect their rights and their pay; it is also the act of joining things together. | The workers joined a union to fight for better pay.
+5189 | n | * | If you do something in spite of a problem, you do it even though the problem is there. | In spite of the rain, we went for a walk.
+3677 | adj | * | If you are immune to a disease, you will not get it. | After you have had the disease once, you are immune to it.
+2069 | prep | * | If something is alongside another thing, it is next to it or beside it. | The children ran alongside the horse.
+2406 | n | * | A bush is a plant that looks like a small, round tree and grows close to the ground. | A rabbit was hiding under the bush.
+2933 | n | * | Dessert is sweet food that you eat at the end of a meal. | We had ice cream for dessert.
+2773 | adj | * | Something that is costly costs a lot of money or causes a lot of problems. | Repairing the old roof will be costly.
+3004 | v | * | If something dissolves in water, it mixes with the water and you can no longer see it. | Stir the coffee until the sugar dissolves.
+3580 | n | * | A helmet is a hard hat that protects your head. | Always wear a helmet when you ride a bike.
+5599 | n | * | Your waist is the narrow part in the middle of your body. | She tied a ribbon around her waist.
+2550 | n | * | A cliff is a high, steep wall of rock, often next to the sea. | The house stands at the edge of a cliff.
+3664 | n | * | An illusion is something that seems real or true but is not. | Mirrors on the wall give the illusion of a bigger room.
+3795 | v | * | When people interact, they talk to each other and do things together. | Teachers should interact with every student in the class.
+4457 | n | * | A pin is a very thin, short piece of metal with a sharp point that holds pieces of cloth or paper together. | She held the papers together with a pin.
+4432 | v | * | If something persists, it goes on and does not stop. | If the pain persists, you should see a doctor.
+2692 | adv | * | Consequently means as a result. | He missed the bus and consequently was late for work.
+3254 | v | * | If you exploit something, you use it to get as much as you can from it; if you exploit people, you use them in an unfair way. | The factory exploited children by paying them very little.
+4549 | adj | * | Preliminary things come before the main part of something and prepare for it. | The preliminary results of the study look good.
+4229 | n | * | An oak is a large tree with hard wood; oak is also the wood of this tree. | There is an old oak in the middle of the field.
+2281 | n | * | If you do something on behalf of someone, you do it for them or in their place. | I am writing on behalf of my father, who is ill.
+3767 | n | * | Installation is the act of putting something such as a machine in place and making it ready to use. | The installation of the new heating took two days.
+5250 | v | * | If you stimulate something, you make it more active or help it to grow. | The government lowered taxes to stimulate the economy.
+4595 | v | * | If you proclaim something, you say it in public in a loud or important way. | The new king was proclaimed in front of a large crowd.
+3596 | n | * | A hike is a long walk in the country or in the mountains. | We went for a hike in the hills on Sunday.
+2465 | v | * | If something ceases, it stops. | The fighting ceased at midnight.
+5052 | v | * | If something shrinks, it becomes smaller. | Wool sweaters can shrink in hot water.
+2056 | n | * | An aisle is a long, narrow path between rows of seats or shelves. | The bride walked slowly down the aisle.
+5584 | adj | * | Vocal means to do with the voice; if you are vocal about something, you say what you think about it loudly and often. | She has been very vocal about the need for change.
+3819 | v | * | If an army invades a country, it enters the country in order to attack it and take it. | The enemy invaded the country in 1940.
+2542 | v | * | If you classify things, you put them into groups by their type. | Librarians classify books by subject.
+4383 | v | * | If you pat someone or something, you touch them several times with your open hand to show that you like them. | He likes to pat the dog on the head.
+5242 | v | * | If you steer a car, a boat or a bike, you turn it so that it goes the way you want. | She steered the boat between the rocks.
+3938 | n | * | A lid is the top of a box or a pot that you can take off. | Put the lid back on the jar.
+4401 | n | * | A peasant is a poor farmer who works on a small piece of land. | In the past, most peasants could not read or write.
+5643 | n | * | A widow is a woman whose husband has died. | She became a widow at the age of forty.

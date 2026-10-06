@@ -1,0 +1,195 @@
+5349 | adj | * | If you are susceptible to something, it can affect or harm you very easily. | Old people are more susceptible to the flu.
+4072 | n | * | Merchandise is things that are bought and sold, especially in a shop. | The shop sells football merchandise such as shirts and hats.
+3216 | v | * | If you excel at something, you are very good at it. | She excels at maths and science.
+2842 | n | * | A cylinder is a shape or an object with flat round ends and long straight sides, like a tin of food. | A gas cylinder stands in the corner of the kitchen.
+3153 | adj | * | An energetic person is very active and has a lot of energy. | The children are very energetic in the morning.
+3069 | v | * | If you dwell somewhere, you live there; if you dwell on something, you keep thinking about it. | Don't dwell on your mistakes.
+2999 | n | * | Your disposition is your usual way of feeling and behaving. | She has a cheerful disposition.
+2073 | v | * | If two things alternate, one happens after the other again and again. | Sunny days alternate with rainy days.
+2073 | adj | - | Alternate means happening every second time, or one after the other.
+4878 | v | * | If something revolves, it moves in a circle around a central point; if things revolve around a person or a subject, that is the most important part of them. | The earth revolves around the sun.
+4478 | n | * | Someone's plight is the bad or difficult situation that they are in. | The film shows the plight of poor children in big cities.
+3608 | adj | * | Something hollow has an empty space inside it. | The children hid inside a hollow tree.
+2768 | adj | * | Something corresponding matches or is connected with another thing. | Prices rose, and there was a corresponding rise in wages.
+3679 | v | * | If something impairs a thing, it damages it or makes it weaker. | Drinking alcohol impairs your ability to drive.
+3328 | adj | * | Fertile land is good for growing plants; a fertile person or animal can have babies. | The valley has rich, fertile soil.
+5459 | adj | * | Something timely happens at the right time. | His timely warning saved many lives.
+3037 | n | * | Doom is a terrible fate, such as death, that nobody is able to avoid. | The sailors knew they were sailing to their doom.
+3037 | v | - | If something is doomed, it is certain to fail or to end badly.
+1969 | adj | * | Something accidental happens by chance, without being planned. | The police believe the fire was accidental.
+3731 | adj | * | Something inferior is not as good as other things of the same kind. | These shoes are inferior to the ones I bought last year.
+2681 | n | * | A conjunction is a word such as "and" or "but" that joins words or sentences; if things happen in conjunction, they happen together. | "Because" is a conjunction.
+2637 | n | * | A compliment is something nice that you say to praise someone. | She paid me a compliment on my new dress.
+2637 | v | - | If you compliment someone, you say something nice to praise them.
+2943 | v | * | When something deteriorates, it slowly becomes worse. | His health deteriorates every winter.
+2468 | n | * | A cellar is a room under a house, often used for keeping things. | We keep the wine in the cellar.
+5414 | adj | * | Something tentative is not certain or final, or is done without confidence. | We made a tentative plan to meet next week.
+2709 | v | * | If something constrains you, it limits what you can do. | Lack of money constrains our plans.
+5328 | n | * | Superiority is the quality of being better or stronger than others. | The team showed its superiority in the second half.
+2650 | v | * | If you compute something, you calculate it. | The program helps you compute your taxes.
+5171 | n | * | A specification is a detailed description of how something should be made or what it should do. | The house was built to our specifications.
+2863 | v | * | When something decays, it slowly breaks down and becomes bad or weak. | Sugar makes your teeth decay.
+2863 | n | - | Decay is the process of decaying.
+3066 | adj | * | Something durable lasts for a long time and is not easily damaged. | These boots are made of durable leather.
+2349 | adj | * | If something is bound to happen, it is certain to happen; if you are bound for a place, you are going there. | The plan is bound to fail.
+3897 | n | * | Latitude is the distance of a place north or south of the line around the middle of the earth; latitude is also freedom to do what you want. | The city is at a latitude of thirty degrees north.
+5156 | adj | * | A sovereign country rules itself and is not controlled by another country. | The island became a sovereign state in 1960.
+5156 | n | - | A sovereign is a king or a queen.
+4450 | adj | * | Physiological means to do with the way the bodies of living things work. | Hunger is a physiological need.
+1976 | n | * | If you do something in accordance with a rule or a wish, you do it in the way that the rule or the wish says. | The money was shared in accordance with his will.
+5251 | v | * | If an insect or a plant stings you, it pricks your skin and causes pain. | Bees sting when they are afraid.
+5251 | n | - | A sting is a pain caused by an insect or a plant, or the sharp part that causes it.
+3044 | adj | * | Downward means moving or pointing towards a lower place or level. | There is a downward trend in prices.
+5325 | adj | * | Something superficial is only on the surface and not deep; a superficial person does not think about serious things. | The cut on his arm is only superficial.
+4087 | n | * | A microscope is an instrument that makes very small things look bigger. | We looked at the cells under a microscope.
+2865 | v | * | If you deceive someone, you make them believe something that is not true. | He tried to deceive his parents about his grades.
+1946 | v | * | If you abide by a rule, you obey it; if you will not abide someone or something, you dislike them very much. | All players must abide by the rules of the game.
+3144 | v | * | If you enclose an area, you put a wall or a fence around it; if you enclose something in a letter, you put it in the envelope. | I enclose a photo of my family with this letter.
+3838 | v | * | If something irritates you, it makes you a little angry; if something irritates your skin, it makes it red and painful. | His loud voice irritates me.
+4732 | v | * | If you reckon that something is true, you think that it is true; if you reckon an amount, you calculate it. | I reckon it will rain tomorrow.
+4318 | adj | * | Outward means on the outside, or going away from a place. | Her outward calm hid her fear.
+4318 | adv | - | If something moves outward, it moves away from the centre or towards the outside.
+2596 | v | * | If you commemorate a person or an event, you do something special to remember them. | We commemorate the soldiers who died in the war.
+4998 | n | * | A semiconductor is a material that carries electricity under some conditions and is used to make computer chips. | The factory makes semiconductors for phones.
+3267 | adj | * | Exterior means on the outside of something. | We painted the exterior walls of the house white.
+3267 | n | - | The exterior of something is its outside part.
+5470 | n | * | A token is a small object or act that stands for a feeling or a fact; a token is also a round piece of metal used instead of money. | He gave her a ring as a token of his love.
+5138 | adj | * | Something solemn is very serious and not funny. | The funeral was a solemn occasion.
+5076 | adj | * | Singular means only one; a singular word refers to one person or thing; something singular is also very unusual. | "Child" is singular and "children" is plural.
+2364 | n | * | The breadth of something is how wide it is, or how many different things it includes. | The book shows the breadth of her knowledge.
+3684 | n | * | An impetus is something that gives a reason or energy for doing something. | The new law gave impetus to the growth of business.
+2703 | adj | * | Something conspicuous is easy to see or notice. | He felt conspicuous in his bright red suit.
+2965 | v | * | If you dilute a liquid, you make it weaker by adding water or another liquid. | Dilute the juice with water.
+4437 | n | * | Persuasion is the act of making someone believe or do something by giving them reasons. | After a lot of persuasion, he agreed to come.
+4007 | v | * | If you magnify something, you make it look bigger; if you magnify a problem, you make it seem more serious. | A magnifying glass will magnify the small print.
+2164 | v | * | If you ascertain something, you find out the truth about it. | The police are trying to ascertain the cause of the fire.
+3974 | adj | * | Something lofty is very high; lofty ideas are noble and important. | The castle has lofty towers.
+3341 | adj | * | Something finite has a limit or an end. | The world has a finite supply of oil.
+3680 | v | * | If you impart information or a quality, you give it to someone or something. | A good teacher can impart a love of learning.
+5530 | adj | * | Something troublesome causes problems or worry. | He has a troublesome cough.
+3145 | n | * | An enclosure is an area surrounded by a wall or a fence. | The animals are kept in a large enclosure.
+2107 | v | * | If someone or something annoys you, they make you a little angry. | The noise of the traffic annoys me.
+3311 | adj | * | Something faulty does not work well because it has a fault. | The fire was caused by a faulty electrical wire.
+3345 | adj | * | Something fitting is right or suitable for a situation. | It was a fitting end to a great career.
+4222 | adj | * | Numerical means to do with numbers or shown in numbers. | The files are in numerical order.
+4084 | adj | * | Metric means using the system of measuring based on metres and kilograms. | Most countries use the metric system.
+2988 | n | * | Disgrace is the loss of other people's respect because you have done something bad. | He left the company in disgrace.
+2988 | v | - | If you disgrace someone, you make people lose respect for them.
+3274 | adj | * | An extravagant person spends too much money; something extravagant costs a lot or is more than is needed. | They had an extravagant wedding with five hundred guests.
+2280 | adv | * | If you do something beforehand, you do it before something else happens. | Please tell me beforehand if you can't come.
+2598 | v | * | If you commend someone, you praise them, often officially. | The mayor commended the firemen for their courage.
+3215 | adv | * | Exceedingly means very or extremely. | The food was exceedingly good.
+3915 | adj | * | A learned person has a lot of knowledge from studying. | Her father was a learned man who read many books.
+5275 | n | * | Strife is angry quarrels or fighting between people. | The country was torn by political strife.
+4914 | v | * | If you rouse someone, you wake them up or make them active or excited. | The noise roused me from sleep.
+3101 | v | * | If you eject something, you push it out with force; if you eject someone, you make them leave a place. | Press this button to eject the disc.
+3610 | adj | * | Something homogeneous is made of parts that are all the same kind. | The population of the island is quite homogeneous.
+4286 | n | * | Ore is rock or earth from which metal can be taken. | The mine produces iron ore.
+4105 | n | * | Mischief is behavior, especially of children, that is a little bad but not serious. | The boys are always getting into mischief.
+4188 | adj | * | Something negligible is so small that it is not important. | The damage to the car was negligible.
+4338 | prep | * | If something happens owing to a thing, it happens because of it. | The game was cancelled owing to the rain.
+5086 | adj | * | A skillful person is very good at doing something. | He is a skillful driver.
+2960 | v | * | If something diffuses, it spreads over a wide area. | The perfume diffuses through the room.
+3189 | adj | * | Something erroneous is wrong or not correct. | The report was based on erroneous information.
+3701 | v | * | If you are inclined to do something, you often do it or want to do it. | I am inclined to agree with you.
+3701 | n | - | An incline is a slope.
+2573 | adj | * | Something cohesive forms a whole whose parts fit well together. | The team is a cohesive group of players.
+4423 | n | * | A periodical is a magazine that is published every week, every month or at other regular times. | The library has many scientific periodicals.
+3931 | v | * | If a government levies a tax, it makes people pay it. | The government will levy a new tax on fuel.
+3931 | n | - | A levy is a tax.
+2049 | adj | * | Something agreeable is pleasant; if you are agreeable to something, you are willing to agree to it. | We spent an agreeable evening with our friends.
+4745 | v | * | If you rectify something that is wrong, you correct it. | We must rectify the mistake at once.
+3856 | n | * | Judgement is the ability to make good decisions; a judgement is an opinion or a decision. | I trust your judgement.
+3715 | adj | * | If you are indignant, you are angry because you think something is unfair. | She was indignant at the way she was treated.
+4842 | adj | * | A resolute person is determined and does not change their mind. | He was resolute in his decision to leave.
+2864 | n | * | Deceit is behavior that makes people believe things that are not true. | The friendship was built on lies and deceit.
+2525 | n | * | The circumference of a circle is the distance around it. | The circumference of the earth is about 40,000 kilometres.
+3906 | n | * | A layman is a person who is not an expert in a subject, or who is not a priest. | Explain it in words that a layman can understand.
+4484 | adj | * | A plural word refers to more than one person or thing. | "Mice" is the plural form of "mouse".
+4484 | n | - | The plural is the form of a word that refers to more than one person or thing.
+4592 | n | * | Proceedings are a series of events, especially in a court of law. | The proceedings of the court were open to the public.
+5080 | adj | * | If something is situated in a place, it is in that place. | The hotel is situated near the beach.
+3967 | adj | * | Local means to do with the area where you live or a particular area. | She works at the local hospital.
+3967 | n | - | The locals are the people who live in a particular place.
+4014 | adj | * | Major means very important, serious or large. | Smoking is a major cause of heart disease.
+4014 | n | - | Your major is the main subject that you study at university.
+4704 | n | * | A rate is a speed or the number of times something happens in a period; a rate is also a price. | The birth rate in the country is falling.
+5079 | n | * | A site is a place where something happens, happened or will be built; a site is also a place on the internet. | This is the site of the old castle.
+4609 | n | * | A project is a planned piece of work that takes time and effort. | The students are working on a science project.
+4609 | v | - | If you project something, you plan it or predict it; if you project an image, you show it on a screen.
+3724 | n | * | Industry is the work of making things in factories; an industry is all the businesses that make the same kind of product. | The car industry employs thousands of people.
+3088 | n | * | The economy of a country is its system of making, buying and selling things and services. | The economy grew by five percent last year.
+3085 | adj | * | Economic means to do with the economy of a country, or with money and business. | The country is in an economic crisis.
+2834 | adj | * | Current means happening or existing now. | What is your current address?
+2834 | n | - | A current is a steady flow of water, air or electricity.
+4986 | n | * | Security is the state of being safe, or the things that are done to keep a person or a place safe. | There is tight security at the airport.
+2324 | n | * | Blood is the red liquid that flows through your body. | He lost a lot of blood in the accident.
+2042 | n | * | An agency is a business that provides a service; an agency is also a government organization. | She got the job through an employment agency.
+2862 | n | * | A decade is a period of ten years. | Prices have doubled in the last decade.
+4960 | n | * | A scene is a part of a play or a film; a scene is also the place where something happens, or a view. | The police arrived at the scene of the accident.
+2437 | n | * | A career is the job or the series of jobs that you do during your working life. | She has had a long career in teaching.
+2095 | n | * | Analysis is the careful study of something to understand it or explain it. | The analysis of the data took three months.
+5018 | n | * | Your sex is whether you are male or female; sex is also the physical act of love between two people. | Please write your name, age and sex on the form.
+5264 | n | * | A strategy is a plan for achieving a goal. | The company needs a new strategy to sell more cars.
+5450 | prep | * | Throughout means in every part of a place, or during the whole of a period of time. | It rained throughout the night.
+3772 | adv | * | If you do one thing instead of another, you do it in place of the other. | There was no coffee, so I had tea instead.
+5287 | n | * | Stuff is things, or a substance, when you do not know or do not need to say their name. | Put your stuff in the bedroom.
+5287 | v | - | If you stuff something into a place, you push it in quickly.
+2566 | n | * | A coach is a person who trains a sports team or a player; a coach is also a comfortable bus for long journeys. | The coach told the players to run faster.
+2566 | v | - | If you coach someone, you train them in a sport or a skill.
+2389 | n | * | A budget is a plan of how much money you have and how you will spend it. | We are on a tight budget this month.
+5442 | n | * | A threat is a statement that someone will hurt you or do something bad; a threat is also a danger. | Pollution is a threat to wild animals.
+2205 | n | * | An audience is the group of people who watch or listen to a show, a film or a speech. | The audience clapped at the end of the play.
+4371 | n | * | A participant is a person who takes part in something. | All the participants in the race got a medal.
+3481 | adj | * | Global means to do with the whole world. | Global warming is a serious problem.
+4757 | n | * | Reform is the act of changing a system to make it better. | The government promised reform of the tax system.
+4757 | v | - | If you reform something, you change it to make it better.
+1967 | n | * | Access is the right or the way to enter a place or to use something. | Students have free access to the library.
+2811 | adj | * | Critical means very important or serious; a critical person points out what is bad about something. | The next few days are critical for his recovery.
+4723 | v | * | If you recall something, you remember it. | I can't recall his name.
+3703 | n | * | Your income is the money that you get from your job or from other sources. | Half of his income goes on rent.
+5169 | n | * | A species is a group of animals or plants of the same kind that can breed together. | There are many species of birds in the forest.
+2549 | n | * | A client is a person who pays a lawyer, an architect or another professional for a service. | The lawyer met her client in court.
+5433 | adv | * | Therefore means for that reason, or as a result. | He was ill and therefore could not come.
+4814 | v | * | If you replace something, you put a new thing in its place; if one person replaces another, they take their place. | We need to replace the broken window.
+4837 | n | * | A resident of a place is a person who lives there. | The residents of the town were angry about the new road.
+2896 | v | * | If you deliver something, you take it to a person or a place; if you deliver a speech, you give it. | The postman delivers letters every morning.
+3128 | v | * | If something emerges, it comes out from a place or becomes known. | The sun emerges from behind the clouds.
+3909 | n | * | Leadership is the position or the ability of being a leader. | The team did well under her leadership.
+5015 | v | * | If you settle an argument, you end it by agreeing; if you settle somewhere, you go to live there. | They settled in Canada after the war.
+2005 | adj | * | Additional means extra or more. | There is an additional charge for breakfast.
+4590 | n | * | A procedure is a correct or usual way of doing something; a procedure is also a medical operation. | Follow the safety procedure if there is a fire.
+2116 | phrase | * | Anybody means any person. | Is anybody at home?
+3092 | n | * | An editor is a person who corrects and changes texts, or who is in charge of a newspaper or a magazine. | The editor changed the title of my article.
+5443 | v | * | If you threaten someone, you say that you will hurt them or do something bad to them; if something threatens a thing, it puts it in danger. | The storm threatens the crops.
+3787 | n | * | Intelligence is the ability to learn, understand and think; intelligence is also secret information about an enemy. | She is a woman of great intelligence.
+2508 | adj | * | Chief means most important or highest in rank. | The chief cause of the fire was a cigarette.
+2508 | n | - | A chief is the leader of a group or an organization.
+4579 | n | * | A principal is the head of a school or a college. | The principal spoke to the students in the hall.
+4579 | adj | - | Principal means most important.
+3579 | n | * | Hell is a place where some religions believe bad people go after death; hell is also a very bad situation. | Living with him was hell.
+4800 | v | * | If someone reminds you of something, they make you remember it; if a person reminds you of another, they are similar. | Please remind me to buy milk.
+3079 | adj | * | Eastern means in or from the east. | The sun rises in the eastern sky.
+2580 | n | * | A colleague is a person you work with. | I had lunch with a colleague from my office.
+3323 | n | * | A fellow is a man; your fellows are the people who are like you or are in the same situation. | He is a nice fellow.
+3323 | adj | - | Fellow describes people who are in the same situation or group as you.
+1960 | n | * | Abuse is cruel or unfair treatment of someone; abuse is also the wrong use of something. | The child suffered abuse from his father.
+1960 | v | - | If you abuse someone or something, you treat them in a cruel way or use them in a wrong way.
+5425 | n | * | A theater is a building where plays and shows are performed. | We went to the theater to see a play.
+3240 | v | * | If something expands, it becomes larger. | Metal expands when it is heated.
+3705 | adv | * | Increasingly means more and more. | It is becoming increasingly hard to find a job.
+4542 | v | * | If you predict something, you say that it will happen. | The weather report predicts rain for tomorrow.
+2242 | n | * | Balance is the state of having your weight spread so that you do not fall; a balance is also the amount of money that you have in a bank. | She lost her balance and fell off the bike.
+4103 | n | * | A minority is a smaller part of a group, or a group of people of a different race or religion from most people in a country. | Only a minority of the students voted against the plan.
+3861 | n | * | A jury is a group of people in a court who decide if someone is guilty or not guilty. | The jury found the man guilty.
+2366 | n | * | A woman's breasts are the two soft round parts on her chest that can make milk; a breast is also the chest of a bird. | The baby is feeding at its mother's breast.
+4575 | adj | * | Prime means most important or of the best quality. | Price is the prime reason for buying this car.
+4575 | n | - | Your prime is the time in your life when you are strongest or most successful.
+3891 | adv | * | Largely means mostly or mainly. | The success of the plan is largely due to her.
+5039 | n | * | A shift is a change in position or direction; a shift is also a period of time worked by a group of workers. | He works the night shift at the hospital.
+5039 | v | - | If something shifts, it moves or changes.
+4871 | n | * | Revenue is money that a company or a government receives. | Tourism brings in a lot of revenue.
+4737 | v | * | If you recommend someone or something, you say that they are good or suitable; if you recommend something, you advise it. | The doctor recommends that I rest for a week.
+3460 | v | * | If you generate something, you produce it or make it happen. | The wind turbines generate electricity.
+4160 | n | * | A muscle is one of the parts of your body that make it move. | Exercise makes your muscles stronger.
+4211 | n | * | A notion is an idea or a belief. | I have no notion of what he means.

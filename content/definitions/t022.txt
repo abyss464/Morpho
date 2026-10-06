@@ -1,0 +1,160 @@
+3183 | n | * | The equator is the imaginary line around the middle of the earth, at an equal distance from the North Pole and the South Pole. | Singapore is very close to the equator.
+5619 | adj | * | If you are weary, you are very tired. | The weary travellers finally reached the hotel.
+4941 | adj | * | A sarcastic person says the opposite of what they mean in order to make fun of someone or to show that they are annoyed. | "Oh, great idea," he said in a sarcastic voice.
+3893 | v | * | If you lash someone, you hit them hard with a whip; if wind or rain lashes something, it hits it hard. | The rain lashes against the windows.
+3893 | n | - | A lash is a hit with a whip; your lashes are the short hairs that grow around your eyes.
+3503 | n | * | A gramme is a small unit of weight; there are one thousand grammes in a kilogram. | You need two hundred grammes of flour for this cake.
+4435 | n | * | A perspective is a particular way of thinking about something; in art, perspective is a way of drawing things so that they seem to be far away or near. | Try to see the problem from my perspective.
+2855 | v | * | If a bright light dazzles you, it makes you unable to see for a short time; if someone dazzles you, they impress you very much. | The car's headlights dazzle me.
+3477 | v | * | If you glare at someone, you look at them in an angry way; if the sun glares, it shines with a very strong light. | She glares at him across the table.
+3477 | n | - | A glare is an angry look, or a very bright light that hurts your eyes.
+3277 | n | * | Your eyesight is your ability to see. | My grandfather has poor eyesight.
+2964 | adj | * | A diligent person works hard and with great care. | She is a diligent student.
+5123 | n | * | A snowstorm is a storm with a lot of snow and strong winds. | The snowstorm closed all the roads.
+2127 | n | * | Your appendix is a small organ in your body that has no known use; an appendix is also an extra part at the end of a book. | He had an operation to remove his appendix.
+5418 | n | * | A territory is an area of land that a country or a ruler controls; an animal's territory is the area that it defends. | The island is British territory.
+3137 | n | * | An empire is a group of countries ruled by one ruler or one country; an empire is also a very large group of businesses. | The Roman Empire was very large.
+3243 | n | * | An expedition is a long journey made by a group of people for a special purpose, such as to explore a place. | They went on an expedition to the South Pole.
+3683 | adj | * | Imperial means to do with an empire or an emperor. | The emperor lived in the imperial palace.
+3134 | n | * | An emperor is a man who rules an empire. | The emperor ruled for forty years.
+2560 | v | * | If you clothe someone, you give them clothes to wear. | She works hard to feed and clothe her children.
+4898 | n | * | A robe is a long, loose piece of clothing. | The judge wore a black robe.
+5019 | adj | * | Something shabby is old and in bad condition; a shabby person wears old, worn clothes. | He wore a shabby old coat.
+5593 | n | * | A vowel is a sound such as "a", "e", "i", "o" or "u" that you make with your mouth open. | The word "book" has two vowels.
+2470 | n | * | A cemetery is a place where dead people are buried. | His grandparents are buried in the cemetery.
+3789 | adj | * | Something intelligible can be understood. | His speech was hardly intelligible.
+5635 | n | * | Whisky is a strong drink with a lot of alcohol, made from grain. | He drank a glass of whisky.
+3978 | n | * | Longitude is the distance of a place east or west of a line that runs from the North Pole to the South Pole through London. | The ship's position is given by latitude and longitude.
+5464 | adj | * | Something tiresome is boring or annoying. | Filling in forms is a tiresome job.
+5398 | adj | * | Something tedious is long, boring and tiring. | The work was tedious.
+1995 | n | * | An acrobat is a performer who does difficult jumps and balances, for example in a circus. | The acrobat walked on a rope high above the crowd.
+2526 | n | * | A circus is a show with acrobats, funny men in strange clothes and trained animals that travels from place to place. | The children went to the circus.
+4460 | n | * | A pint is a unit for measuring liquids, a little more than half a litre. | He drank a pint of milk.
+4669 | n | * | A quart is a unit for measuring liquids, equal to two pints. | She bought a quart of milk.
+3439 | n | * | A gallon is a unit for measuring liquids, equal to about four litres. | The car uses a gallon of petrol every thirty miles.
+3960 | n | * | A litre is a unit for measuring liquids. | We need two litres of water.
+4451 | n | * | A pickup is a small truck with an open back. | He drives an old pickup.
+3443 | n | * | Gaol is an old British word for a prison. | He spent three years in gaol.
+2521 | n | * | A cigaret is a thin roll of tobacco in paper that people smoke. | He lit a cigaret.
+3992 | v | * | If you lubricate a machine, you put oil on its parts so that they move easily. | Lubricate the wheels of the bike every month.
+4736 | v | * | If you recollect something, you remember it. | I recollect meeting her at a party.
+2237 | n | * | A bacterium is a very small living thing; some bacteria cause disease. | This bacterium causes food poisoning.
+4485 | n | * | Pneumonia is a serious illness of the lungs. | The old man died of pneumonia.
+2239 | n | * | Badminton is a game in which players hit a light object with feathers over a high net with rackets. | We play badminton every weekend.
+4554 | n | * | A preposition is a word such as "in", "on" or "under" that shows the relation between two things. | "Under" is a preposition.
+5614 | n | * | A watt is a unit for measuring electrical power. | The bulb uses sixty watts.
+3620 | n | * | Horsepower is a unit for measuring the power of an engine. | The car has a two-hundred horsepower engine.
+5588 | n | * | A volt is a unit for measuring the force of an electric current. | The battery gives nine volts.
+5589 | n | * | Voltage is the force of an electric current, measured in volts. | Be careful: the voltage is very high.
+2894 | adj | * | Something deliberate is done on purpose; deliberate movements are slow and careful. | It was a deliberate attack.
+2894 | v | - | If you deliberate, you think about something with great care before you decide.
+2668 | v | * | If people confer, they discuss something; if someone confers an honor on you, they give it to you. | The doctors confer before they decide.
+4189 | v | * | If people negotiate, they talk to each other to reach an agreement. | The workers negotiate with the managers for higher pay.
+2664 | v | * | If you condemn something, you say strongly that it is bad; if someone is condemned to a punishment, they must suffer it. | World leaders condemn the attack.
+4203 | v | * | If you nominate someone, you suggest them officially for a job, a position or a prize. | The party will nominate her for president.
+3027 | n | * | A doctorate is the highest degree from a university. | She has a doctorate in physics.
+3660 | v | * | If you ignore someone or something, you pay no attention to them. | He ignores my advice.
+3497 | v | * | If you grab something, you take hold of it suddenly and roughly. | The thief grabs her bag and runs.
+2433 | v | * | If you capture a person or an animal, you catch them; if you capture a place, you take control of it by force. | The soldiers capture the enemy's city.
+2433 | n | - | Capture is the act of capturing someone or something.
+4992 | v | * | If you seize something, you take hold of it quickly and strongly; if you seize a chance, you take it at once. | Seize every chance that you get.
+5119 | v | * | If you snatch something, you take it quickly and roughly. | The monkey snatches the banana from my hand.
+3867 | v | * | If someone kidnaps a person, they take them away by force and keep them until money is paid. | The gang kidnaps rich children.
+2538 | v | * | If you clasp something, you hold it in your hands or arms and do not let it go. | She clasps her hands together.
+2538 | n | - | A clasp is a small metal fastener on a bag or a necklace.
+3127 | v | * | If you embrace someone, you put your arms around them; if you embrace an idea, you accept it with enthusiasm. | The two friends embrace at the station.
+3127 | n | - | An embrace is a hug.
+2555 | n | * | A clip is a small metal or plastic object that holds things together; a clip is also a short part of a film. | She held the papers together with a clip.
+2555 | v | - | If you clip something, you cut it, or you fix it with a clip.
+2553 | v | * | If you cling to someone or something, you hold onto them and do not let them go; if you cling to an idea, you continue to believe it. | The child clings to her mother.
+3595 | v | * | If someone hijacks a plane or a vehicle, they take control of it by force. | Terrorists hijack the plane.
+3831 | n | * | An invitation is a request for someone to come to an event, or the card on which this is written. | Thank you for your invitation to the party.
+5480 | n | * | Torture is the act of causing great pain to someone on purpose, for example to make them give information. | The prisoners suffered torture.
+5480 | v | - | If someone tortures a person, they cause them great pain on purpose.
+2397 | n | * | A bully is a person who uses their strength or power to hurt or frighten weaker people. | The bully took his lunch money.
+2397 | v | - | If someone bullies you, they hurt or frighten you.
+2161 | adj | * | Something artificial is made by people and is not natural. | She wore artificial flowers in her hair.
+4380 | n | * | Paste is a soft, wet mixture; paste is also a thick glue. | She mixed flour and water to make a paste.
+4380 | v | - | If you paste something, you stick it with paste, or you put text into a document on a computer.
+4897 | v | * | If you roast meat or vegetables, you cook them in an oven or over a fire. | We roast a chicken every Sunday.
+4897 | adj | - | Roast meat has been cooked in an oven or over a fire.
+3205 | v | * | If a liquid evaporates, it turns into gas and disappears; if a feeling evaporates, it disappears. | The water evaporates in the sun.
+4239 | n | * | Observation is the act of watching something with great care; an observation is also a remark. | The doctors kept him in hospital for observation.
+2812 | n | * | Criticism is the act of saying what is wrong with something; criticism is also the act of judging works of art. | He can not accept criticism.
+3763 | n | * | Insight is the ability to understand something deeply; an insight is a deep understanding of something. | The book gives us insight into his life.
+3551 | n | * | Harassment is behavior that annoys or threatens someone again and again. | She complained about harassment at work.
+4820 | n | * | Reproach is the act of showing that you do not approve of someone's behavior. | His mother looked at him with reproach.
+4820 | v | - | If you reproach someone, you tell them that you are disappointed with their behavior.
+2756 | n | * | A cop is a police officer. | A cop stopped him for driving too fast.
+2758 | n | * | Copper is a soft red-brown metal. | The pipes are made of copper.
+2381 | n | * | Bronze is a brown metal made by mixing copper and tin. | There is a bronze statue in the square.
+2361 | n | * | Brass is a bright yellow metal made by mixing copper and zinc. | The door has a brass handle.
+4867 | n | * | In retrospect means when you think about something that happened in the past. | In retrospect, I made the wrong decision.
+4823 | n | * | A republic is a country without a king or a queen, whose leader is elected by the people. | France is a republic.
+4824 | n | * | A republican is a person who supports a republic; a Republican is a member of one of the two main political parties in America. | He has always voted Republican.
+4824 | adj | - | Republican means to do with a republic.
+3208 | adj | * | Something evident is easy to see or understand. | It was evident that she was tired.
+2123 | adj | * | Something apparent is easy to see or understand; apparent also means seeming to be true but perhaps not true. | For no apparent reason, he started to cry.
+5503 | adj | * | Something transparent lets light through so that you can see through it; transparent also means easy to understand. | The bottle is made of transparent plastic.
+5100 | v | * | If something slides, it moves easily over a surface. | The children slide down the snowy hill.
+5100 | n | - | A slide is a structure that children climb up and slide down; a slide is also a picture shown on a screen.
+5452 | n | * | Your thumb is the short, thick finger at the side of your hand. | He hurt his thumb.
+5034 | adj | * | Sheer means complete or very great; a sheer cliff is very steep; sheer cloth is very thin. | We won by sheer luck.
+5196 | adj | * | Something spontaneous is done because you suddenly want to, without planning. | The crowd burst into spontaneous applause.
+3888 | n | * | A lantern is a lamp in a case that you can carry. | He carried a lantern into the dark cave.
+4687 | n | * | The radius of a circle is the distance from its centre to its edge. | The radius of the circle is five centimetres.
+3894 | adj | * | Something latent exists but is not yet active or easy to see. | She has a latent talent for music.
+2942 | n | * | A detector is a machine that finds or shows something, such as metal, smoke or gas. | Every house should have a smoke detector.
+5219 | adj | * | Stale food is no longer fresh; stale air is not fresh. | The bread is stale.
+5233 | adj | * | Statistical means to do with numbers and data. | We need statistical evidence.
+3382 | v | * | If you forgive someone, you stop being angry with them for something that they did wrong. | Please forgive me for being late.
+3018 | adj | * | Something diverse includes many different kinds of people or things. | London is a very diverse city.
+5598 | n | * | A wagon is a vehicle with four wheels that is pulled by horses; a wagon is also part of a train that carries heavy things. | The farmer loaded the hay onto the wagon.
+2444 | n | * | A cart is a vehicle with two or four wheels that is pulled by a horse; a cart is also a small vehicle that you push in a supermarket. | A horse was pulling a cart.
+5500 | n | * | A translation is something that has been changed from one language into another, or the act of doing this. | I read the book in translation.
+4028 | n | * | Marble is a hard, smooth stone used for buildings and statues; a marble is a small glass ball used in a children's game. | The floor is made of marble.
+2629 | v | * | If you compile a list or a book, you make it by collecting information from many places. | The teacher compiles a list of useful words.
+5516 | n | * | A triangle is a shape with three straight sides. | Draw a triangle on the board.
+5623 | n | * | A wedge is a piece of wood or metal that is thick at one end and thin at the other. | Put a wedge under the door to keep it open.
+2469 | n | * | Cement is a grey powder that becomes hard when it is mixed with water, used for building. | The workers mixed cement and sand.
+4462 | n | * | A pirate is a person who attacks and robs ships at sea; a pirate is also a person who copies films or music against the law. | The pirates attacked the ship.
+5615 | n | * | Wax is a solid substance made by bees or from oil that melts when it is heated, used for candles. | The candle is made of wax.
+3147 | n | * | An encyclopedia is a book or a set of books that gives information about many subjects. | Look it up in the encyclopedia.
+5491 | n | * | A tram is an electric vehicle that runs on rails along the streets of a town. | We took the tram to the city centre.
+3984 | n | * | A lorry is a large vehicle for carrying heavy things by road. | The lorry was carrying fruit to the market.
+4341 | n | * | An ox is a large male cow used for pulling things on farms. | The farmer used an ox to pull the plough.
+4093 | n | * | A millimeter is a small unit of length; there are a thousand millimeters in a metre. | The insect is only a few millimeters long.
+2473 | n | * | A centimetre is a unit of length; there are a hundred centimetres in a metre. | The line is ten centimetres long.
+2722 | n | * | Contempt is a strong feeling that someone or something is not worth any respect. | She looked at him with contempt.
+2158 | adj | * | An arrogant person thinks they are better or more important than other people. | He is too arrogant to listen to advice.
+3635 | adj | * | A humble person does not think that they are better than others; something humble is simple and not important. | He is a humble man who never boasts.
+2931 | v | * | If you despise someone or something, you dislike them very much and think they are not worth any respect. | She despises people who lie.
+2806 | v | * | If something cripples a person, it injures them so that they can not walk or move well; if something cripples a system, it seriously damages it. | The strike cripples the country's economy.
+2972 | v | * | If you disable a machine or a system, you stop it from working; if an injury disables someone, it makes them unable to use part of their body. | Disable the alarm before you open the door.
+5030 | v | * | If something shatters, it breaks into many small pieces; if something shatters your hopes, it destroys them. | The glass shatters on the floor.
+5542 | n | * | A tunnel is a long passage under the ground or through a mountain. | The train went through a long tunnel.
+5293 | n | * | A submarine is a ship that can travel under water. | The submarine stayed under water for weeks.
+3129 | n | * | An emergency is a sudden dangerous situation that needs action at once. | Call this number in an emergency.
+2083 | n | * | An ambulance is a vehicle that takes sick or injured people to hospital. | The ambulance arrived in ten minutes.
+5517 | n | * | A tribe is a group of people with the same language and customs who live together, especially in a traditional way. | The tribe lives in the forest.
+3372 | n | * | Folks are people; your folks are your parents or your family. | I am going home to see my folks.
+3372 | adj | - | Folk music and art are traditional and come from ordinary people.
+3201 | adj | * | Ethnic means to do with a group of people who share the same race, culture or language. | The country has many ethnic groups.
+4159 | v | * | If you murmur, you speak in a very low, soft voice. | She murmurs something in her sleep.
+4159 | n | - | A murmur is a quiet sound of voices.
+2638 | v | * | If you comply with a rule or a request, you obey it. | All visitors must comply with the rules.
+4233 | adj | * | An obedient person or animal does what they are told to do. | The dog is very obedient.
+5186 | n | * | Your spine is the row of bones down the middle of your back. | He hurt his spine in the accident.
+4018 | n | * | A mammal is an animal that feeds its young with milk, such as a cow or a person. | Whales are mammals, not fish.
+4822 | n | * | A reptile is an animal with cold blood and a skin covered in scales, such as a snake. | Snakes and lizards are reptiles.
+3692 | v | * | If someone or something impresses you, you admire them. | Her singing impresses everyone.
+4979 | n | * | A seal is a large sea animal with thick fur that lives near the coast; a seal is also an official mark on a document. | We saw a seal on the rocks.
+4979 | v | - | If you seal an envelope or a container, you close it so that nothing can get in or out.
+3694 | adj | * | Something impressive makes you admire it because it is very good, large or important. | The building is very impressive.
+5630 | n | * | A whale is a very large animal that lives in the sea. | We saw a whale from the boat.
+4563 | n | * | Prestige is the respect that someone or something gets because they are successful or important. | The job brings a lot of prestige.
+4201 | adj | * | A noble person is honest, brave and kind; noble also means belonging to a high social class. | It was a noble thing to do.
+3587 | adj | * | Something heroic is very brave. | The firemen made a heroic effort to save the children.
+3348 | n | * | A flap is a flat piece of cloth or paper that covers an opening. | He opened the flap of the envelope.
+3348 | v | - | If a bird flaps its wings, it moves them up and down.
+4410 | n | * | A pendulum is a weight that swings from side to side, for example in an old clock. | The pendulum of the old clock swings slowly.
