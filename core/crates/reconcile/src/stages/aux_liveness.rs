@@ -1,9 +1,11 @@
 //! Auxiliary word liveness (README Part 3 §"辅助词生命周期").
 //!
-//! An auxiliary exists only because something points at it: a dependency edge
-//! from a selected definition, or a distractor binding. When the last reference
-//! goes it is retired — it leaves `active_words`, the plan, the TTS desired set
-//! and every release. When a reference comes back it is reactivated, assets
+//! An auxiliary exists only because something live points at it: a dependency
+//! edge from an enabled definition, or a distractor binding, of a word that a
+//! target reaches. A reference from a retired word, or a cycle of auxiliaries
+//! nothing live points into, does not count. When the last live reference goes
+//! the word is retired — it leaves `active_words`, the plan, the TTS desired
+//! set and every release. When one comes back it is reactivated, assets
 //! intact.
 //!
 //! Both directions are reversible and destroy nothing. The `aux_liveness` view

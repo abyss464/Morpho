@@ -401,13 +401,26 @@ CREATE TABLE distractors (
 );
 CREATE INDEX ix_distractor_ref ON distractors(distractor_word_id);
 
--- Auxiliary liveness (pure view; reconciler flips aux_status from it)
+-- Auxiliary liveness (pure view; reconciler flips aux_status from it).
+-- An auxiliary is live when a target reaches it: through a dependency edge of an
+-- enabled definition, or a distractor binding, of a word that is itself live.
+-- A reference from a retired word, or a cycle among auxiliaries nothing live
+-- points into, keeps nothing alive.
 CREATE VIEW aux_liveness AS
-SELECT w.word_id,
-       EXISTS (SELECT 1 FROM def_dependencies d WHERE d.depends_on_word_id = w.word_id)
-    OR EXISTS (SELECT 1 FROM distractors x WHERE x.distractor_word_id = w.word_id)
-       AS is_live
-FROM words w WHERE w.role = 'auxiliary';
+WITH RECURSIVE
+    edge(src, dst) AS (
+        SELECT word_id, depends_on_word_id FROM def_dependencies
+        UNION
+        SELECT word_id, distractor_word_id FROM distractors
+    ),
+    live(word_id) AS (
+        SELECT word_id FROM words WHERE role = 'target'
+        UNION
+        SELECT e.dst FROM edge e JOIN live l ON l.word_id = e.src
+    )
+SELECT w.word_id, l.word_id IS NOT NULL AS is_live
+FROM words w LEFT JOIN live l ON l.word_id = w.word_id
+WHERE w.role = 'auxiliary';
 
 -- ----------------------------------------------------------------------------
 -- Orchestration state (queue itself is derived & in-memory; see README Part 4)

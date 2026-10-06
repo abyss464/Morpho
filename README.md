@@ -317,7 +317,8 @@ ready(W)      =  core_ready(W)
 ## 辅助词生命周期与媒体 GC
 
 ```
-VIEW aux_liveness = 存在依赖边指向它 ∨ 存在干扰项绑定引用它
+VIEW aux_liveness = 从目标词出发可达：沿存活词的已启用释义依赖边或干扰项绑定传递
+           （已退役词的引用、无存活入口的辅助词环都不算）
 ```
 
 对账规则：active 且不再被引用 → `aux_status='retired'`（离开 active_words、计划、tts_desired 和发布，候选/选择/媒体全部原地保留）；retired 且重新被引用 → `active`，资产完好归队。全程可逆，永不删除。

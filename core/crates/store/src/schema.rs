@@ -203,7 +203,28 @@ pub struct Migration {
     /// there is nothing to carry across — so "create it if it is not there" is
     /// the entire forward step, and dropping it is the exact inverse.
     pub creates: &'static [&'static str],
+    /// Views this rung redefines. The new text comes from the contract; a view
+    /// is pure metadata, so replacing one is a drop and a create.
+    pub views: &'static [ViewReplace],
 }
+
+/// One view a rung redefines.
+#[derive(Debug, Clone, Copy)]
+pub struct ViewReplace {
+    pub view: &'static str,
+    /// The view's `CREATE VIEW` statement exactly as it stood before this rung.
+    /// Used only by [`Migration::revert`].
+    pub previous_ddl: &'static str,
+}
+
+/// `aux_liveness` before liveness became reachability from the targets: any
+/// reference counted, including one from a retired word.
+const AUX_LIVENESS_V8: &str = "CREATE VIEW aux_liveness AS
+SELECT w.word_id,
+       EXISTS (SELECT 1 FROM def_dependencies d WHERE d.depends_on_word_id = w.word_id)
+    OR EXISTS (SELECT 1 FROM distractors x WHERE x.distractor_word_id = w.word_id)
+       AS is_live
+FROM words w WHERE w.role = 'auxiliary'";
 
 pub const MIGRATIONS: &[Migration] = &[
     Migration {
@@ -214,6 +235,7 @@ pub const MIGRATIONS: &[Migration] = &[
         add_columns: &[("words", "core_ready", "INTEGER NOT NULL DEFAULT 0")],
         rebuilds: &[],
         creates: &[],
+        views: &[],
     },
     Migration {
         from: 2,
@@ -225,6 +247,7 @@ pub const MIGRATIONS: &[Migration] = &[
         add_columns: &[("releases", "word_count", "INTEGER NOT NULL DEFAULT 0")],
         rebuilds: &[],
         creates: &[],
+        views: &[],
     },
     Migration {
         from: 3,
@@ -246,6 +269,7 @@ pub const MIGRATIONS: &[Migration] = &[
             },
         ],
         creates: &[],
+        views: &[],
     },
     Migration {
         from: 4,
@@ -263,6 +287,7 @@ pub const MIGRATIONS: &[Migration] = &[
         ],
         rebuilds: &[],
         creates: &[],
+        views: &[],
     },
     Migration {
         from: 5,
@@ -276,6 +301,7 @@ pub const MIGRATIONS: &[Migration] = &[
             previous_ddl: OOS_QUEUE_V5,
         }],
         creates: &[],
+        views: &[],
     },
     Migration {
         from: 6,
@@ -290,6 +316,7 @@ pub const MIGRATIONS: &[Migration] = &[
             previous_ddl: IMAGE_CANDIDATES_V6,
         }],
         creates: &["clip_scores"],
+        views: &[],
     },
     Migration {
         from: 7,
@@ -302,6 +329,20 @@ pub const MIGRATIONS: &[Migration] = &[
         add_columns: &[],
         rebuilds: &[],
         creates: &["tag_category", "tag", "candidate_tag"],
+        views: &[],
+    },
+    Migration {
+        from: 8,
+        // Auxiliary liveness becomes reachability from the targets. The old view
+        // counted any reference, so a retired auxiliary's definitions, or a cycle
+        // of auxiliaries, kept words alive that nothing shipped needed.
+        add_columns: &[],
+        rebuilds: &[],
+        creates: &[],
+        views: &[ViewReplace {
+            view: "aux_liveness",
+            previous_ddl: AUX_LIVENESS_V8,
+        }],
     },
 ];
 
@@ -348,6 +389,15 @@ impl Migration {
             }
             rebuild_table(tx, rebuild.table, &want.create, &want.indexes)?;
         }
+        for replace in self.views {
+            let want = contract_view(replace.view)?;
+            if same_shape(&live_view(tx, replace.view)?, &want) {
+                tracing::debug!(view = replace.view, "view already has the contract shape; skipped");
+                continue;
+            }
+            tx.execute_batch(&format!("DROP VIEW IF EXISTS \"{}\"", replace.view))?;
+            tx.execute_batch(&want)?;
+        }
         Ok(())
     }
 
@@ -382,6 +432,10 @@ impl Migration {
         }
         for table in self.creates {
             tx.execute_batch(&format!("DROP TABLE IF EXISTS \"{table}\""))?;
+        }
+        for replace in self.views {
+            tx.execute_batch(&format!("DROP VIEW IF EXISTS \"{}\"", replace.view))?;
+            tx.execute_batch(replace.previous_ddl)?;
         }
         Ok(())
     }
@@ -490,6 +544,32 @@ fn contract_ddl(table: &str) -> Result<ContractDdl> {
         .filter(|statement| is_index_on(statement, table))
         .collect();
     Ok(ContractDdl { create, indexes })
+}
+
+/// The contract's `CREATE VIEW` statement for `view`.
+fn contract_view(view: &str) -> Result<String> {
+    statements(WORKING_DB_SQL)
+        .into_iter()
+        .find(|statement| {
+            statement
+                .strip_prefix("CREATE VIEW ")
+                .and_then(|rest| rest.trim_start().strip_prefix(view))
+                .is_some_and(|rest| rest.trim_start().starts_with("AS"))
+        })
+        .ok_or_else(|| StoreError::conflict(format!("the contract has no CREATE VIEW for {view}")))
+}
+
+/// The `CREATE VIEW` text this database actually holds for `view` (empty when
+/// it has none).
+fn live_view(conn: &Connection, view: &str) -> Result<String> {
+    let sql: Option<String> = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'view' AND name = ?1",
+            rusqlite::params![view],
+            |row| row.get(0),
+        )
+        .ok();
+    Ok(sql.unwrap_or_default())
 }
 
 /// The `CREATE TABLE` text this database actually holds for `table`.

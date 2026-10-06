@@ -102,7 +102,9 @@ pub const RELEASE_SCHEMA_VER: &str = "2";
 ///   `candidate_tag`), a data-driven provenance vocabulary that replaces
 ///   overloading `source = 'manual'`. Purely additive — the `source` columns and
 ///   their CHECK unions are untouched, so no candidate table is rebuilt.
-pub const SCHEMA_USER_VERSION: i32 = 8;
+/// * 9 — `aux_liveness` becomes reachability from the targets, so a reference
+///   from a retired word or a cycle of auxiliaries no longer keeps a word alive.
+pub const SCHEMA_USER_VERSION: i32 = 9;
 
 /// Version the embedded `docs/contracts/working-db.sql` describes.
 ///
@@ -118,7 +120,7 @@ pub const SCHEMA_USER_VERSION: i32 = 8;
 /// never exceed [`SCHEMA_USER_VERSION`]; `store::schema` asserts that at compile
 /// time.
 ///
-/// It is level with the code: the contract file ships the candidate tagging
-/// tables, so a freshly created database is stamped 8 and the ladder runs
-/// nothing.
-pub const CONTRACT_SCHEMA_VERSION: i32 = 8;
+/// It is level with the code: the contract file ships the reachability form of
+/// `aux_liveness`, so a freshly created database is stamped 9 and the ladder
+/// runs nothing.
+pub const CONTRACT_SCHEMA_VERSION: i32 = 9;
