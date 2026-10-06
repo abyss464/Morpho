@@ -9,9 +9,11 @@ import { primarySense } from './parts';
 const norm = (s: string) => s.trim().toLowerCase();
 
 /**
- * Rebuild the meaning: the learner taps the definition's pieces in order, decoys mixed in.
- * Placing the last piece checks it; misplaced pieces turn red and go back with a tap; after a
- * failed check a hint can place the next correct piece. Reports clean, shaky or failed once.
+ * Rebuild the meaning: the definition stands with its blanks open, the part that names the word,
+ * its prepositions and punctuation already in place; the learner taps pieces into the blanks in
+ * order, decoys mixed in. Filling the last blank checks it; wrong pieces turn red and go back with
+ * a tap; after a failed check a hint fills the first wrong or open blank. Reports clean, shaky or
+ * failed once.
  */
 export function Rebuild({
   w,
@@ -25,22 +27,23 @@ export function Rebuild({
   onSolved: (outcome: Outcome) => void;
 }) {
   const puzzle = useMemo(() => buildPuzzle(w, pool, difficulty), [w, pool, difficulty]);
-  const [placed, setPlaced] = useState<number[]>([]);
+  const [filled, setFilled] = useState<(number | null)[]>(() => puzzle?.answer.map(() => null) ?? []);
   const [checked, setChecked] = useState(false);
   const [misses, setMisses] = useState(0);
   const [hinted, setHinted] = useState(false);
   const [solved, setSolved] = useState(false);
 
   if (!puzzle) return null;
-  const answer = puzzle.answer.map((id) => norm(puzzle.pieces.find((p) => p.id === id)!.text));
   const textOf = (id: number) => puzzle.pieces.find((p) => p.id === id)!.text;
-  const right = (k: number) => norm(textOf(placed[k]!)) === answer[k];
-  const full = placed.length === answer.length;
+  const answer = puzzle.answer.map((id) => norm(textOf(id)));
+  const right = (k: number, slots = filled) => slots[k] != null && norm(textOf(slots[k]!)) === answer[k];
+  const used = (id: number) => filled.includes(id);
+  const nextOpen = filled.indexOf(null);
 
-  const check = (next: number[], usedHint: boolean) => {
-    if (next.length !== answer.length) return;
+  const check = (next: (number | null)[], usedHint: boolean) => {
+    if (next.includes(null)) return;
     setChecked(true);
-    if (next.every((id, k) => norm(textOf(id)) === answer[k])) {
+    if (next.every((_, k) => right(k, next))) {
       setSolved(true);
       const def = primarySense(w)?.audio;
       if (def) play(def);
@@ -50,60 +53,73 @@ export function Rebuild({
     }
   };
 
-  const place = (id: number) => {
-    if (solved || placed.includes(id)) return;
-    const next = [...placed, id];
-    setPlaced(next);
+  const update = (next: (number | null)[], usedHint = hinted) => {
+    setFilled(next);
     setChecked(false);
-    check(next, hinted);
+    check(next, usedHint);
   };
-  const unplace = (id: number) => {
+  const place = (id: number) => {
+    if (solved || used(id) || nextOpen < 0) return;
+    update(filled.map((x, k) => (k === nextOpen ? id : x)));
+  };
+  const takeBack = (k: number) => {
     if (solved) return;
-    setPlaced(placed.filter((x) => x !== id));
-    setChecked(false);
+    update(filled.map((x, i) => (i === k ? null : x)));
   };
   const hint = () => {
-    let keep = 0;
-    while (keep < placed.length && right(keep)) keep += 1;
-    const head = placed.slice(0, keep);
-    const piece = puzzle.pieces.find((p) => !head.includes(p.id) && norm(p.text) === answer[keep]);
-    if (!piece) return;
-    const next = [...head, piece.id];
+    const k = filled.findIndex((_, i) => !right(i));
+    const piece = puzzle.pieces.find((p) => norm(p.text) === answer[k] && !filled.some((x, i) => x === p.id && right(i)));
+    if (k < 0 || !piece) return;
     setHinted(true);
-    setPlaced(next);
-    setChecked(false);
-    check(next, true);
+    update(
+      filled.map((x, i) => (i === k ? piece.id : x === piece.id ? null : x)),
+      true,
+    );
   };
 
-  const wrongShown = checked && full && !solved;
+  const wrongShown = checked && !filled.includes(null) && !solved;
 
   return (
     <div className="rebuild">
-      <div className={solved ? 'tray solved' : 'tray'} aria-label="Your explanation" aria-live="polite">
-        {placed.length === 0 && <span className="ph">Your explanation is built here.</span>}
-        {placed.map((id, k) => (
-          <button
-            key={id}
-            type="button"
-            className={wrongShown && !right(k) ? 'piece wrong' : 'piece'}
-            onClick={() => unplace(id)}
-            disabled={solved}
-            aria-label={`${textOf(id)}, remove`}
-          >
-            {textOf(id)}
-          </button>
-        ))}
-      </div>
+      <p className={solved ? 'tray solved' : 'tray'} aria-label="Your explanation" aria-live="polite">
+        {puzzle.template.map((s, i) => {
+          if ('text' in s) {
+            return (
+              <span key={i} className={/^[,;:.!?]/.test(s.text) ? 'given punct' : 'given'}>
+                {s.text}
+              </span>
+            );
+          }
+          const id = filled[s.blank];
+          if (id == null) {
+            return (
+              <span key={i} className={s.blank === nextOpen && !solved ? 'blank next' : 'blank'} aria-label="blank" />
+            );
+          }
+          return (
+            <button
+              key={i}
+              type="button"
+              className={wrongShown && !right(s.blank) ? 'piece wrong' : 'piece'}
+              onClick={() => takeBack(s.blank)}
+              disabled={solved}
+              aria-label={`${textOf(id)}, remove`}
+            >
+              {textOf(id)}
+            </button>
+          );
+        })}
+      </p>
       {!solved && (
         <div className="bank" aria-label="Pieces">
           {puzzle.pieces.map((p) => (
             <button
               key={p.id}
               type="button"
-              className={placed.includes(p.id) ? 'piece used' : 'piece'}
+              className={used(p.id) ? 'piece used' : 'piece'}
               onClick={() => place(p.id)}
-              disabled={placed.includes(p.id)}
-              aria-hidden={placed.includes(p.id) || undefined}
+              disabled={used(p.id)}
+              aria-hidden={used(p.id) || undefined}
             >
               {p.text}
             </button>
@@ -116,17 +132,10 @@ export function Rebuild({
         ) : wrongShown ? (
           <span className="status bad">Not quite. Tap the red pieces to take them back.</span>
         ) : (
-          <span className="status">Some pieces belong to other words.</span>
+          <span className="status">Fill the blanks in order. Some pieces belong to other words.</span>
         )}
-        {!solved && placed.length > 0 && (
-          <button
-            type="button"
-            className="link"
-            onClick={() => {
-              setPlaced([]);
-              setChecked(false);
-            }}
-          >
+        {!solved && filled.some((x) => x != null) && (
+          <button type="button" className="link" onClick={() => update(filled.map(() => null))}>
             Start over
           </button>
         )}

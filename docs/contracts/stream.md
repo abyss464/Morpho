@@ -28,13 +28,15 @@ Picture, word, phonetic, part of speech, definition, example. On arrival the wor
 primary definition and its example are read aloud in that order. Always passes.
 
 ### `explain1` / `explain2` — rebuild the meaning
-"What does *word* mean?" The primary definition is cut into pieces (§4); the learner taps
-them in order into a tray. Decoy pieces from other words are mixed in.
+"What does *word* mean?" The primary definition stands in the tray with blanks (§4): the
+part that names the word, its prepositions and its punctuation are already in place, and the
+learner taps pieces into the blanks. Decoy pieces from other words are mixed in.
 
-- Placing the last piece checks the answer. Misplaced pieces turn red and go back to the bank
-  when tapped. "Start over" clears the tray.
-- After one failed check, "Show the next piece" appears: it keeps the correct opening pieces
-  and places the next correct one.
+- A tapped piece fills the first open blank. Filling the last blank checks the answer. Wrong
+  pieces turn red and go back to the bank when tapped, reopening their blank. "Start over"
+  empties every blank.
+- After one failed check, "Show the next piece" appears: it puts the right piece into the first
+  blank that is open or wrong.
 - `explain1` comes **immediately** after `know`, shows the picture, uses easy pieces and
   decoys drawn from the words currently in the learning window.
 - `explain2` comes later (§5), shows no picture, uses hard pieces and decoys drawn from all
@@ -87,22 +89,41 @@ learning steps was shaky or failed. Its first due date follows from that.
 
 ## 4. Pieces
 
-A definition is split into clause-sized pieces:
+A definition is shown as given text and blanks. Given, never picked:
 
-1. Start a new piece before: that, who, which, where, when, whose, because, but, if, without,
-   such, than, while, until, unless (only when the current piece has at least 2 words).
-2. End a piece after a word ending in `,` `;` `:` (when it has at least 2 words).
-3. The first piece splits right after its copula when one of is / are / means / mean is
-   among its first five words ("A system is" | "a group of …").
-4. A piece longer than MAX words splits nearest its middle, preferring before "or"/"and",
-   then before a preposition (of in on at for from by with about into to over under).
-5. One-word scraps merge into the previous piece; while there are more than 6 pieces, the
-   adjacent pair with the fewest words merges.
+1. **The word itself**, wherever it appears in any of its forms.
+2. **Each sense's opening**: senses are separated by `;`. When a sense names the word within
+   its first 12 words, everything up to the word is given, and it runs on
+   - through a copula right after the word, with an optional "also" before or after it
+     (is / are / means / mean / was / were: "A system is", "a case is also"); or
+   - when the sense starts with "If" or "When", to the first `,` `;` `:` within 8 words after
+     the word ("If you create something,").
 
-MAX is 7 words for easy pieces and 4 for hard pieces. Decoys are pieces of other words'
-primary definitions, never their first piece, never containing that word's headword, never
-equal to a piece of the answer: 2 decoys (3 when the answer has 5 or more pieces) for easy,
-3 (4 when 5 or more) for hard. Shuffles are deterministic per word id.
+   An opening never takes the whole sense.
+3. **Prepositions**: of in on at for from by with about into onto to as over under through
+   between among across against during within without behind below above around along towards
+   toward upon beneath beyond, and the first word of a two-word preposition (because, instead,
+   according, due, apart, such, out before one of them).
+4. **Punctuation** that closes a piece (`,` `;` `:` `.` `!` `?`), so a piece's ending never
+   shows where it goes.
+
+When nothing would be left to fill, prepositions are blanks after all ("Regarding means
+*about*."). Each run of words between given text is cut into blanks:
+
+1. Start a new blank before: that, who, which, where, when, whose, because, but, if, without,
+   such, than, while, until, unless (only when the current one has at least 2 words and does not
+   end on "or"/"and").
+2. End a blank after a word ending in `,` `;` `:` (when it has at least 2 words).
+3. A blank longer than MAX words splits nearest its middle, preferring before "or"/"and".
+4. One-word scraps merge into the previous blank of the same run.
+5. While there are more than MAX_BLANKS blanks, the pair with the fewest words that only
+   prepositions (or nothing) separate merges, taking those prepositions in.
+6. A definition with a single blank of 4 or more words splits it in two.
+
+MAX is 7 words and MAX_BLANKS 6 for easy puzzles; 4 words and 8 blanks for hard ones. Decoys
+are blanks of other words' primary definitions cut the same way, never equal to an answer
+piece: 2 decoys (3 when the answer has 5 or more blanks) for easy, 3 (4 when 5 or more) for
+hard. Shuffles are deterministic per word id.
 
 ## 5. Mixing the stream
 

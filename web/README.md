@@ -5,7 +5,7 @@ A local web app that teaches the whole released vocabulary in the "4000 Essentia
 There is one way in. Today shows how many reviews and new words are waiting; Continue opens the **stream**, which mixes reviews and new words into one sequence of steps:
 
 - **New word**: the full card, read aloud (word, definition, example).
-- **Explain it**: rebuild the definition by clicking its pieces in order, with decoy pieces from other words; once right after the card, then again a few steps later without the picture.
+- **Explain it**: complete the definition by clicking pieces into its blanks, with decoy pieces from other words; the part that names the word, the prepositions and the punctuation are already in place. Once right after the card, then again a few steps later without the picture.
 - **Use it**: pick the word that fills the blank in its example from four look-alike words.
 - **Review**: a graduated word comes back on its FSRS schedule as a rebuild or a fill-in; the rating is derived from how it went and can be changed.
 
@@ -51,7 +51,7 @@ src/types.ts                JSON shapes shared by server and client
 src/api.ts                  fetch + cache for index, units and words
 src/store.ts                localStorage progress
 src/stream.ts               the stream: next step, transitions, derived ratings, FSRS
-src/explain.ts              definition pieces and the rebuild puzzle
+src/explain.ts              definition blanks, pieces and the rebuild puzzle
 src/audio.ts                shared audio player (single files or a word-definition-example run)
 src/router.ts               hash routes: #/ (Today), #/stream, #/unit/:n (word list)
 src/components/             word card pieces, Rebuild, Fill, Search

@@ -142,17 +142,20 @@ textarea:focus { outline: none; border-color: var(--accent); }
 
 /* ---------- explain step ---------- */
 .explain .ask b { font-family: var(--font-display); font-weight: 400; }
-.tray { min-height: 96px; border: 1px dashed var(--line); border-radius: 14px; background: var(--bg); padding: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start; }
+.tray { margin: 0; border: 1px dashed var(--line); border-radius: 14px; background: var(--bg); padding: 12px 14px; font-family: var(--font-text); font-size: 17px; line-height: 2.5; color: var(--ink); }
+.tray .given { margin: 0 3px; }
+.tray .given.punct { margin-left: -6px; }
+.tray .blank { display: inline-block; width: 76px; height: 1.6em; margin: 0 4px; vertical-align: middle; border-bottom: 2px solid var(--line-strong); }
+.tray .blank.next { border-bottom-color: var(--accent); }
+.tray .piece { margin: 0 3px; vertical-align: middle; }
 .tray.solved { border-style: solid; border-color: var(--good); background: var(--good-bg); }
-.tray .ph { color: var(--muted); font-size: 14px; align-self: center; padding: 0 4px; }
 .bank { display: flex; flex-wrap: wrap; gap: 8px; }
 .piece { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 12px; font-family: var(--font-text); font-size: 17px; line-height: 1.3; color: var(--ink); text-align: left; transition: border-color .12s, transform .12s; }
 .piece:hover:not(:disabled) { border-color: var(--muted); }
 .piece:active:not(:disabled) { transform: scale(.97); }
 .piece.wrong { border-color: var(--bad); background: var(--bad-bg); color: var(--bad); }
 .piece.used { color: transparent; background: var(--panel); border-color: transparent; }
-.tray.solved { gap: 2px 6px; }
-.tray.solved .piece { border-color: transparent; background: transparent; padding: 4px 2px; color: var(--ink); }
+.tray.solved .piece { border-color: transparent; background: transparent; padding: 0; margin: 0 3px; color: var(--ink); font-weight: 600; }
 .status { font-size: 14px; color: var(--muted); }
 .status.good { color: var(--good); }
 .status.bad { color: var(--bad); }
