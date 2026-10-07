@@ -59,6 +59,7 @@
     <string name="stream_stage_new">New word · Unit %1$d</string>
     <string name="stream_stage_again">Look again</string>
     <string name="stream_stage_explain">Explain it</string>
+    <string name="stream_stage_spell">Spell it</string>
     <string name="stream_stage_use">Use it</string>
     <string name="stream_stage_review">Review · %1$s time</string>
     <string name="stream_stage_review_plain">Review</string>
@@ -82,13 +83,14 @@
     <string name="stream_show_next_letter">Show the next letter</string>
     <string name="stream_show_word">Show the word</string>
     <string name="stream_verdict_rebuild_clean">Rebuilt with no mistakes</string>
-    <string name="stream_verdict_rebuild_shaky">Rebuilt after one wrong check</string>
-    <string name="stream_verdict_rebuild_failed">Needed help or several tries</string>
+    <string name="stream_verdict_rebuild_shaky">Rebuilt with one mistake</string>
+    <string name="stream_verdict_rebuild_failed">Rebuilt with several mistakes or the answer shown</string>
     <string name="stream_verdict_fill_clean">Filled in first time</string>
-    <string name="stream_verdict_fill_failed">Filled in after a wrong pick</string>
+    <string name="stream_verdict_fill_shaky">Filled in after one wrong pick</string>
+    <string name="stream_verdict_fill_failed">Filled in after several wrong picks</string>
     <string name="stream_verdict_spell_clean">Spelled with no mistakes</string>
-    <string name="stream_verdict_spell_shaky">Spelled after one wrong check</string>
-    <string name="stream_verdict_spell_failed">Needed help or several tries to spell it</string>
+    <string name="stream_verdict_spell_shaky">Spelled with one mistake</string>
+    <string name="stream_verdict_spell_failed">Spelled with several mistakes or the word shown</string>
     <string name="stream_verdict_parts">%1$s · %2$s</string>
     <string name="stream_next_review">next review in %1$s</string>
     <string name="stream_rating_hint">Rated from how it went. Tap another to change it.</string>
@@ -124,7 +126,7 @@
     <string name="stream_done_reviewed">Reviewed</string>
     <string name="stream_done_reviewed_detail">%1$d with no mistakes</string>
     <string name="stream_done_met">Met</string>
-    <string name="stream_done_met_detail">%1$d explained and used first time</string>
+    <string name="stream_done_met_detail">%1$d with no mistakes</string>
     <string name="stream_done_tomorrow">Tomorrow</string>
     <plurals name="stream_done_tomorrow_detail">
         <item quantity="one">reviews due, plus %1$d new word</item>

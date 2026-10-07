@@ -298,11 +298,12 @@ object Pieces {
     /**
      * Builds the puzzle for [word]. Decoys are pieces of the [pool] words' definitions: easy
      * puzzles draw from the words being learned alongside, hard ones from every word met.
+     * Shuffled with the word id, moved on by [attempt] for a step done again.
      */
-    fun puzzle(word: WordBundle, pool: List<WordBundle>, difficulty: Difficulty): Puzzle {
+    fun puzzle(word: WordBundle, pool: List<WordBundle>, difficulty: Difficulty, attempt: Int = 0): Puzzle {
         val parts = cut(word.primarySense.definition, word.word.word, difficulty)
         val answerTexts = blankTexts(parts)
-        val rand = Seeded(word.word.wordId)
+        val rand = Seeded(attemptSeed(word.word.wordId, attempt))
         val own = answerTexts.map { it.lowercase() }.toSet()
         val candidates = pool.filter { it.word.wordId != word.word.wordId }.flatMap { other ->
             val sense = other.senses.firstOrNull { it.isPrimary } ?: other.senses.firstOrNull()

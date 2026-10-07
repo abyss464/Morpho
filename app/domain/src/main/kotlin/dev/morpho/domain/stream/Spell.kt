@@ -4,8 +4,8 @@ package dev.morpho.domain.stream
 data class Tile(val id: Int, val letter: String)
 
 /**
- * The spelling that ends a rebuild review (docs/contracts/stream.md §2): the word's letters
- * as blanks, with some given, and letter tiles to fill them.
+ * The `spell` step, and the spelling that ends a rebuild review (docs/contracts/stream.md §2):
+ * the word's letters as blanks, with some given, and letter tiles to fill them.
  */
 data class SpellPuzzle(
     /** One entry per character: the character when given (a hint letter, a space, a hyphen), else null. */
@@ -29,10 +29,11 @@ object Spelling {
 
     /**
      * Builds the spelling of [word]: spaces and hyphens are given, so is the first letter,
-     * and the last one too for words over five letters. Shuffled with the seed [id] + 13,
-     * decoys first, then the tiles. A faithful port of the web client's `buildSpell`.
+     * and the last one too for words over five letters. Shuffled with the seed [id] + 13
+     * (moved on by [attempt] for a step done again), decoys first, then the tiles. A faithful
+     * port of the web client's `buildSpell`.
      */
-    fun puzzle(word: String, id: Long): SpellPuzzle {
+    fun puzzle(word: String, id: Long, attempt: Int = 0): SpellPuzzle {
         val lower = word.lowercase()
         val chars = lower.codePoints().toArray().map { String(Character.toChars(it)) }
         val letters = chars.indices.filter { isLetter(chars[it]) }
@@ -41,7 +42,7 @@ object Spelling {
         if (letters.size > LONG_WORD) hints += letters.last()
         val slots = chars.mapIndexed { i, c -> if (!isLetter(c) || i in hints) c else null }
         val answer = chars.filterIndexed { i, _ -> slots[i] == null }
-        val rand = Seeded(id + 13)
+        val rand = Seeded(attemptSeed(id + 13, attempt))
         val decoys = rand.shuffle(DECOY_LETTERS.map { it.toString() }.filter { it !in chars }).take(DECOYS)
         val tiles = rand.shuffle(answer + decoys).mapIndexed { k, t -> Tile(k, t) }
         return SpellPuzzle(slots = slots, answer = answer, tiles = tiles)

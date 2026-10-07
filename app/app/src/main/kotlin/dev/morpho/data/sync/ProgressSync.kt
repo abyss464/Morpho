@@ -7,7 +7,6 @@ import dev.morpho.data.stream.StreamStore
 import dev.morpho.data.stream.WordNote
 import dev.morpho.domain.model.CardState
 import dev.morpho.domain.model.FsrsCard
-import dev.morpho.domain.stream.Stage
 import dev.morpho.domain.stream.StepKind
 import dev.morpho.domain.stream.StreamState
 import dev.morpho.domain.stream.WordStage
@@ -151,8 +150,9 @@ class ProgressSync(
         var current = state.current
         var lastReview = state.lastReview
         var changed = 0
-        for ((key, entry) in merged.words) {
+        for ((key, sent) in merged.words) {
             val id = key.toLongOrNull() ?: continue
+            val entry = sent.copy(stage = sent.stage?.normalized())
             val local = SyncEntry(snapshot.cards[id]?.let(::toSync), state.words[id]?.let(::toSync))
             if (sameEntry(entry, local)) continue
             val card = entry.card?.let { runCatching { fromSync(id, it) }.getOrNull() }
@@ -268,12 +268,11 @@ private fun toSync(card: FsrsCard) = SyncCard(
 )
 
 private fun toSync(stage: WordStage) = SyncStage(
-    stage = stage.stage.name.lowercase(),
+    stage = SyncStage.LEARNING,
     next = stage.next.name.lowercase(),
     immediate = stage.immediate,
-    needClean = stage.needClean,
-    thenUse = stage.thenUse,
     flawed = stage.flawed,
+    attempt = stage.attempt,
 )
 
 private fun fromSync(wordId: Long, card: SyncCard) = FsrsCard(
@@ -289,15 +288,13 @@ private fun fromSync(wordId: Long, card: SyncCard) = FsrsCard(
     lastReview = card.lastReview?.let(Instant::parse),
 )
 
-/** An imported stage starts its spacing at the stream position [seq]. */
+/** An imported (normalized) stage starts its spacing at the stream position [seq]. */
 private fun fromSync(stage: SyncStage, seq: Int) = WordStage(
-    stage = Stage.valueOf(stage.stage.uppercase()),
     next = StepKind.valueOf(stage.next.uppercase()).also { require(it != StepKind.REVIEW) },
     immediate = stage.immediate,
     since = seq,
-    needClean = stage.needClean,
-    thenUse = stage.thenUse,
     flawed = stage.flawed,
+    attempt = stage.attempt,
 )
 
 /** Two entries say the same thing, whatever the date format: times compare as instants. */

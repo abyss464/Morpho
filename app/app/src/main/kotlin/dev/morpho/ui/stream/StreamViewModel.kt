@@ -26,6 +26,7 @@ import dev.morpho.domain.stream.Spelling
 import dev.morpho.domain.stream.Step
 import dev.morpho.domain.stream.StepKind
 import dev.morpho.domain.stream.StepResult
+import dev.morpho.domain.stream.attemptSeed
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +42,27 @@ sealed interface TaskState {
 }
 
 /**
+ * What a task has counted against the learner (docs/contracts/stream.md §2): each blank found
+ * wrong at a check, once per piece or letter in it ([counted] holds the (blank, piece) pairs
+ * already counted), and each "Show the next …". [answerShown] fails the task outright.
+ */
+data class Mistakes(
+    val count: Int = 0,
+    val counted: Set<Pair<Int, Int>> = emptySet(),
+    val answerShown: Boolean = false,
+) {
+    val outcome: Outcome get() = Outcome.of(count, answerShown)
+
+    /** A failed check of [filled]: the wrong blanks not counted before are counted now. */
+    fun checked(filled: List<Int?>, right: (Int) -> Boolean): Mistakes {
+        val fresh = filled.indices.filter { !right(it) }.map { it to filled[it]!! }.filter { it !in counted }
+        return copy(count = count + fresh.size, counted = counted + fresh)
+    }
+
+    fun hinted(): Mistakes = copy(count = count + 1)
+}
+
+/**
  * The explain task (docs/contracts/stream.md §2, §4): the definition with its blanks, filled
  * piece by piece. [filled] holds, per blank, the id of the piece in it or null; filling the
  * last blank checks the tray, and [misses] counts failed checks.
@@ -50,6 +72,7 @@ data class RebuildState(
     val filled: List<Int?> = List(puzzle.answer.size) { null },
     val checked: Boolean = false,
     val misses: Int = 0,
+    val mistakes: Mistakes = Mistakes(),
     val hinted: Boolean = false,
     override val solved: Boolean = false,
 ) : TaskState {
@@ -76,14 +99,16 @@ data class RebuildState(
 }
 
 /**
- * The spelling that ends a rebuild review (docs/contracts/stream.md §2): the word's letters
- * as blanks, filled from letter tiles. [filled] holds, per blank, the tile in it or null.
+ * The `spell` step, and the spelling that ends a rebuild review (docs/contracts/stream.md §2):
+ * the word's letters as blanks, filled from letter tiles. [filled] holds, per blank, the tile
+ * in it or null; [misses] counts failed checks.
  */
 data class SpellState(
     val puzzle: SpellPuzzle,
     val filled: List<Int?> = List(puzzle.answer.size) { null },
     val checked: Boolean = false,
     val misses: Int = 0,
+    val mistakes: Mistakes = Mistakes(),
     val hinted: Boolean = false,
     override val solved: Boolean = false,
 ) : TaskState {
@@ -123,7 +148,7 @@ data class RebuiltPart(val outcome: Outcome, val elapsedMs: Long)
 
 /**
  * The use task: the example with the word blanked, and four words to fill it with.
- * [wrong] holds the ids of options already picked wrongly.
+ * [wrong] holds the ids of options already picked wrongly, each one mistake.
  */
 data class FillState(
     val gap: Gap,
@@ -300,22 +325,23 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         val content = container.contentRepository
         val word = content.bundle(step.wordId) ?: return null
         val stream = snap.state
-        val rebuild = step.kind == StepKind.EXPLAIN1 || step.kind == StepKind.EXPLAIN2 ||
-            (step.kind == StepKind.REVIEW && step.task == ReviewTask.REBUILD)
+        val rebuild = step.kind == StepKind.EXPLAIN || (step.kind == StepKind.REVIEW && step.task == ReviewTask.REBUILD)
         val fill = step.kind == StepKind.USE || (step.kind == StepKind.REVIEW && step.task == ReviewTask.FILL)
 
+        // A step done again after a failure is shuffled anew with its attempt number.
         val task: TaskState? = when {
             rebuild -> {
-                val easy = step.kind == StepKind.EXPLAIN1
+                val easy = step.kind == StepKind.EXPLAIN
                 val poolIds = if (easy) easyPool(step.wordId, snap) else hardPool(step.wordId, snap)
                 val pool = content.bundles(poolIds).let { found -> poolIds.mapNotNull { found[it] } }
-                RebuildState(Pieces.puzzle(word, pool, if (easy) Difficulty.EASY else Difficulty.HARD))
+                RebuildState(Pieces.puzzle(word, pool, if (easy) Difficulty.EASY else Difficulty.HARD, step.attempt))
             }
+            step.kind == StepKind.SPELL -> SpellState(Spelling.puzzle(word.word.word, step.wordId, step.attempt))
             fill -> {
                 val others = content.bundles(word.distractorIds).let { found ->
                     word.distractorIds.mapNotNull { found[it] }
                 }.take(3)
-                val options = Seeded(step.wordId + 7).shuffle(listOf(word) + others)
+                val options = Seeded(attemptSeed(step.wordId + 7, step.attempt)).shuffle(listOf(word) + others)
                 FillState(gap = gapOf(word), options = options, answerId = step.wordId)
             }
             else -> null
@@ -420,7 +446,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    /** Puts the right piece into the first blank that is open or wrong. Counts as help. */
+    /** Puts the right piece into the first blank that is open or wrong. Counts as one mistake. */
     fun onShowNextPiece() {
         val rebuild = currentRebuild() ?: return
         if (rebuild.solved) return
@@ -433,18 +459,18 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
                 else -> x
             }
         }
-        update(rebuild.copy(hinted = true), next, usedHint = true)
+        update(rebuild.copy(hinted = true, mistakes = rebuild.mistakes.hinted()), next)
     }
 
-    /** Fills every blank with the answer, which solves the step as failed. */
+    /** Fills every blank with the answer, which fails the step. */
     fun onShowAnswer() {
         val rebuild = currentRebuild() ?: return
         if (rebuild.solved) return
-        update(rebuild.copy(hinted = true), rebuild.puzzle.answer, usedHint = true)
+        update(rebuild.copy(hinted = true, mistakes = rebuild.mistakes.copy(answerShown = true)), rebuild.puzzle.answer)
     }
 
     /** Sets the blanks; filling the last one checks the tray. */
-    private fun update(rebuild: RebuildState, next: List<Int?>, usedHint: Boolean = rebuild.hinted) {
+    private fun update(rebuild: RebuildState, next: List<Int?>) {
         val placed = rebuild.copy(filled = next, checked = false)
         if (null in next) {
             container.tap()
@@ -453,18 +479,14 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         }
         if (!next.indices.all { placed.right(it, next) }) {
             feedback(correct = false)
-            setTask(placed.copy(checked = true, misses = rebuild.misses + 1))
+            val mistakes = rebuild.mistakes.checked(next) { placed.right(it, next) }
+            setTask(placed.copy(checked = true, misses = rebuild.misses + 1, mistakes = mistakes))
             return
         }
         // A tray solved with help gets a plain tap, not the correct chime.
-        if (usedHint) container.tap() else feedback(correct = true)
-        val outcome = when {
-            usedHint || rebuild.misses >= 2 -> Outcome.FAILED
-            rebuild.misses == 1 -> Outcome.SHAKY
-            else -> Outcome.CLEAN
-        }
+        if (rebuild.hinted) container.tap() else feedback(correct = true)
         setTask(placed.copy(checked = true, solved = true))
-        solved(outcome) { view -> container.audioPlayer.play(view.word.primarySense.defAudioFile) }
+        solved(rebuild.mistakes.outcome) { view -> container.audioPlayer.play(view.word.primarySense.defAudioFile) }
     }
 
     // ------------------------------------------------------------- spelling
@@ -484,7 +506,7 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         updateSpell(spell, spell.filled.mapIndexed { k, x -> if (k == blank) null else x })
     }
 
-    /** Puts the right letter into the first blank that is open or wrong. Counts as help. */
+    /** Puts the right letter into the first blank that is open or wrong. Counts as one mistake. */
     fun onShowNextLetter() {
         val spell = currentSpell() ?: return
         if (spell.solved) return
@@ -497,18 +519,18 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
                 else -> x
             }
         }
-        updateSpell(spell.copy(hinted = true), next, usedHint = true)
+        updateSpell(spell.copy(hinted = true, mistakes = spell.mistakes.hinted()), next)
     }
 
-    /** Fills in the whole word, which solves the spelling as failed. */
+    /** Fills in the whole word, which fails the spelling. */
     fun onShowWord() {
         val spell = currentSpell() ?: return
         if (spell.solved) return
-        updateSpell(spell.copy(hinted = true), spell.answerFill(), usedHint = true)
+        updateSpell(spell.copy(hinted = true, mistakes = spell.mistakes.copy(answerShown = true)), spell.answerFill())
     }
 
     /** Sets the word's blanks; filling the last one checks the word. */
-    private fun updateSpell(spell: SpellState, next: List<Int?>, usedHint: Boolean = spell.hinted) {
+    private fun updateSpell(spell: SpellState, next: List<Int?>) {
         val placed = spell.copy(filled = next, checked = false)
         if (null in next) {
             container.tap()
@@ -517,17 +539,13 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         }
         if (!next.indices.all { placed.right(it, next) }) {
             feedback(correct = false)
-            setTask(placed.copy(checked = true, misses = spell.misses + 1))
+            val mistakes = spell.mistakes.checked(next) { placed.right(it, next) }
+            setTask(placed.copy(checked = true, misses = spell.misses + 1, mistakes = mistakes))
             return
         }
-        if (usedHint) container.tap() else feedback(correct = true)
-        val outcome = when {
-            usedHint || spell.misses >= 2 -> Outcome.FAILED
-            spell.misses == 1 -> Outcome.SHAKY
-            else -> Outcome.CLEAN
-        }
+        if (spell.hinted) container.tap() else feedback(correct = true)
         setTask(placed.copy(checked = true, solved = true))
-        solved(outcome) { view -> container.audioPlayer.play(view.word.word.wordAudioFile) }
+        solved(spell.mistakes.outcome) { view -> container.audioPlayer.play(view.word.word.wordAudioFile) }
     }
 
     /** "Now spell it": the rebuild review goes on to spelling the word from its meaning. */
@@ -556,13 +574,12 @@ class StreamViewModel(private val container: AppContainer) : ViewModel() {
         }
         feedback(correct = true)
         setTask(fill.copy(solved = true))
-        val outcome = if (fill.wrong.isEmpty()) Outcome.CLEAN else Outcome.FAILED
-        solved(outcome) { v -> container.audioPlayer.play(v.word.cardExample?.exAudioFile) }
+        solved(Outcome.of(fill.wrong.size, answerShown = false)) { v -> container.audioPlayer.play(v.word.cardExample?.exAudioFile) }
     }
 
     /**
-     * A solved task. Learning steps wait for Continue; a review is applied at once and
-     * turns into its result card, read aloud in full.
+     * A solved task. Learning steps (explain, spell, use) wait for Continue; a review is
+     * applied at once and turns into its result card, read aloud in full.
      */
     private fun solved(outcome: Outcome, playSolved: (StepView) -> Unit) {
         val view = _state.value.view ?: return

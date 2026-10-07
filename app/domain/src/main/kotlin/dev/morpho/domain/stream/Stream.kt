@@ -3,36 +3,52 @@ package dev.morpho.domain.stream
 import dev.morpho.domain.model.FsrsCard
 import dev.morpho.domain.review.FsrsScheduler
 import dev.morpho.domain.review.Grade
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * The stream: one mixed sequence of steps that takes every word from first sight to
  * long-term review. Implements docs/contracts/stream.md; the web client implements the
  * same file in `web/src/stream.ts`.
  */
-enum class StepKind { KNOW, EXPLAIN1, EXPLAIN2, USE, REVIEW }
+enum class StepKind { KNOW, EXPLAIN, SPELL, USE, REVIEW }
 
 enum class ReviewTask { REBUILD, FILL }
 
-enum class Outcome { CLEAN, SHAKY, FAILED }
+enum class Outcome {
+    CLEAN,
+    SHAKY,
+    FAILED,
+    ;
 
-enum class Stage { LEARNING, RELEARNING }
+    val passed: Boolean get() = this != FAILED
 
-/** A word that is Learning (met, not graduated) or Relearning (a review was rated Again). */
+    companion object {
+        /**
+         * A task's outcome from its mistakes (contract §2): none is clean, one is shaky, two or
+         * more fail it, and so does showing the answer.
+         */
+        fun of(mistakes: Int, answerShown: Boolean): Outcome = when {
+            answerShown || mistakes >= 2 -> FAILED
+            mistakes == 1 -> SHAKY
+            else -> CLEAN
+        }
+    }
+}
+
+/** A word that is Learning: met, not graduated. */
 data class WordStage(
-    val stage: Stage,
     val next: StepKind,
-    /** The next step follows at once (know -> explain1, failed -> know) rather than after spacing. */
+    /** The next step follows at once (know -> explain -> spell) rather than after spacing. */
     val immediate: Boolean,
     /** Stream position when [next] was scheduled. */
     val since: Int,
-    /** Clean explain2 results still required before moving on. */
-    val needClean: Int = 1,
-    /** A Learning word goes on to `use` after its explain2 steps. */
-    val thenUse: Boolean = true,
     /** Some step was shaky or failed: graduation rates Hard instead of Good. */
     val flawed: Boolean = false,
+    /** How many times [next] has failed; a step done again is shuffled with this. */
+    val attempt: Int = 0,
 )
 
 data class StreamDay(
@@ -48,7 +64,19 @@ data class StreamDay(
     val cycle: Int = 0,
 )
 
-data class Step(val wordId: Long, val kind: StepKind, val task: ReviewTask? = null)
+/**
+ * One step of the stream. [attempt] is the word's attempt at a learning step: 0 the first
+ * time, more when the step is done again after a failure, so it is shuffled anew.
+ */
+data class Step(val wordId: Long, val kind: StepKind, val task: ReviewTask? = null, val attempt: Int = 0)
+
+/**
+ * The seed a step's shuffle uses: the task's own seed for the first attempt, moved on by a
+ * fixed stride for each later one (the web client seeds the same way).
+ */
+fun attemptSeed(seed: Long, attempt: Int): Long = seed + attempt * ATTEMPT_STRIDE
+
+private const val ATTEMPT_STRIDE = 7919L
 
 /** The last review, so its derived rating can be replaced. */
 data class LastReview(val wordId: Long, val prev: FsrsCard, val grade: Grade)
@@ -71,12 +99,19 @@ data class StepResult(
     val cards: List<FsrsCard> = emptyList(),
     val graduated: Boolean = false,
     val reviewed: Boolean = false,
-    /** The step was a graded task (explain, use, review), and whether it was clean. */
+    /** The step was a graded task (explain, spell, use, review), and whether it was clean. */
     val graded: Boolean = false,
     val clean: Boolean = false,
 )
 
-class StreamEngine(private val fsrs: FsrsScheduler) {
+/**
+ * @param zone the learner's time zone: a graduated word's first review and a review rated
+ *   Again are due at the start of the next local day (contract §6)
+ */
+class StreamEngine(
+    private val fsrs: FsrsScheduler,
+    private val zone: ZoneId = ZoneId.systemDefault(),
+) {
 
     companion object {
         /** Learning window, spacing between a word's steps, backlog guard (contract §5). */
@@ -108,6 +143,8 @@ class StreamEngine(private val fsrs: FsrsScheduler) {
     private fun reviewTask(card: FsrsCard?): ReviewTask =
         if (((card?.reps ?: 1) - 1) % 2 == 0) ReviewTask.REBUILD else ReviewTask.FILL
 
+    private fun stepOf(id: Long, w: WordStage) = Step(id, w.next, attempt = w.attempt)
+
     /** Chooses the next step, or null when today's stream is done (contract §5). */
     fun next(
         input: StreamState,
@@ -120,7 +157,7 @@ class StreamEngine(private val fsrs: FsrsScheduler) {
         val s = today(input, date)
         val learning = s.words.entries.sortedBy { it.value.since }
 
-        learning.firstOrNull { it.value.immediate }?.let { return Step(it.key, it.value.next) }
+        learning.firstOrNull { it.value.immediate }?.let { return stepOf(it.key, it.value) }
 
         val delayed = learning.filter { !it.value.immediate }
         val ready = delayed.filter { s.seq - it.value.since >= SPACING }
@@ -136,7 +173,7 @@ class StreamEngine(private val fsrs: FsrsScheduler) {
         val meet = listOfNotNull(fresh?.let { Step(it, StepKind.KNOW) })
         val mixed = if (s.day.cycle % 3 < 2) reviews + meet else meet + reviews
 
-        val candidates = ready.map { Step(it.key, it.value.next) } + mixed + waiting.map { Step(it.key, it.value.next) }
+        val candidates = ready.map { stepOf(it.key, it.value) } + mixed + waiting.map { stepOf(it.key, it.value) }
         if (candidates.isEmpty()) return null
 
         // Guards: never the same word twice in a row; never four of one step type in a row.
@@ -144,14 +181,12 @@ class StreamEngine(private val fsrs: FsrsScheduler) {
         return candidates.firstOrNull(::fine) ?: candidates.first()
     }
 
-    private fun stepsLeft(w: WordStage): Int {
-        val after = if (w.stage == Stage.LEARNING && w.thenUse) 1 else 0
-        return when (w.next) {
-            StepKind.KNOW, StepKind.EXPLAIN1 -> 1 + w.needClean + after
-            StepKind.EXPLAIN2 -> w.needClean + after
-            StepKind.USE -> 1
-            StepKind.REVIEW -> 1
-        }
+    /** Steps a Learning word still has to take, each passed once. */
+    private fun stepsLeft(w: WordStage): Int = when (w.next) {
+        StepKind.KNOW -> 4
+        StepKind.EXPLAIN -> 3
+        StepKind.SPELL -> 2
+        StepKind.USE, StepKind.REVIEW -> 1
     }
 
     /** Steps done today and the estimated total (contract §5). */
@@ -198,49 +233,38 @@ class StreamEngine(private val fsrs: FsrsScheduler) {
         var graduated = false
         var reviewed = false
         var lastReview = s0.lastReview
-        fun later(next: StepKind, base: WordStage) = base.copy(next = next, immediate = false, since = seq)
 
         when (step.kind) {
-            StepKind.KNOW -> if (w == null) {
-                words[id] = WordStage(Stage.LEARNING, StepKind.EXPLAIN1, immediate = true, since = seq)
-                day = day.copy(introduced = day.introduced + 1, cycle = day.cycle + 1)
-            } else {
-                words[id] = later(StepKind.EXPLAIN2, w)
+            StepKind.KNOW -> {
+                if (w == null) day = day.copy(introduced = day.introduced + 1, cycle = day.cycle + 1)
+                words[id] = WordStage(StepKind.EXPLAIN, immediate = true, since = seq, flawed = w?.flawed ?: false)
             }
 
-            StepKind.EXPLAIN1 -> words[id] = when (outcome) {
-                Outcome.FAILED -> later(StepKind.EXPLAIN2, w!!).copy(needClean = 2, flawed = true)
-                Outcome.SHAKY -> later(StepKind.EXPLAIN2, w!!).copy(flawed = true)
-                Outcome.CLEAN -> later(StepKind.EXPLAIN2, w!!)
-            }
-
-            StepKind.EXPLAIN2 -> when (outcome) {
-                Outcome.CLEAN -> {
-                    val need = w!!.needClean - 1
-                    when {
-                        need > 0 -> words[id] = later(StepKind.EXPLAIN2, w).copy(needClean = need)
-                        w.stage == Stage.LEARNING && w.thenUse -> words[id] = later(StepKind.USE, w).copy(needClean = 1)
-                        else -> words.remove(id)
+            StepKind.EXPLAIN, StepKind.SPELL, StepKind.USE -> {
+                val stage = w ?: error("${step.kind} of word $id, which is not being learned")
+                val flawed = stage.flawed || outcome != Outcome.CLEAN
+                when {
+                    // Done again a few steps later, shuffled anew.
+                    !outcome.passed ->
+                        words[id] = stage.copy(immediate = false, since = seq, flawed = true, attempt = stage.attempt + 1)
+                    step.kind == StepKind.EXPLAIN ->
+                        words[id] = WordStage(StepKind.SPELL, immediate = true, since = seq, flawed = flawed)
+                    step.kind == StepKind.SPELL ->
+                        words[id] = WordStage(StepKind.USE, immediate = false, since = seq, flawed = flawed)
+                    else -> {
+                        val first = fsrs.newCard(id, now, if (flawed) Grade.HARD else Grade.GOOD)
+                        changed = listOf(dueTomorrow(first, date))
+                        words.remove(id)
+                        graduated = true
+                        day = day.copy(met = day.met + 1, metClean = day.metClean + if (flawed) 0 else 1)
                     }
                 }
-                Outcome.SHAKY -> words[id] = later(StepKind.EXPLAIN2, w!!).copy(flawed = true)
-                Outcome.FAILED -> words[id] = w!!.copy(next = StepKind.KNOW, immediate = true, since = seq, flawed = true)
-            }
-
-            StepKind.USE -> if (outcome == Outcome.CLEAN) {
-                val grade = if (w!!.flawed) Grade.HARD else Grade.GOOD
-                changed = listOf(fsrs.newCard(id, now, grade))
-                words.remove(id)
-                graduated = true
-                day = day.copy(met = day.met + 1, metClean = day.metClean + if (w.flawed) 0 else 1)
-            } else {
-                words[id] = later(StepKind.EXPLAIN2, w!!).copy(needClean = 1, thenUse = true, flawed = true)
             }
 
             StepKind.REVIEW -> {
                 val prev = cards[id] ?: error("review of word $id without a card")
                 val grade = deriveGrade(outcome, elapsedMs, step.task ?: ReviewTask.REBUILD)
-                changed = listOf(fsrs.review(prev, grade, now))
+                changed = listOf(schedule(prev, grade, now))
                 reviewed = true
                 day = day.copy(
                     reviewed = day.reviewed + 1,
@@ -248,7 +272,6 @@ class StreamEngine(private val fsrs: FsrsScheduler) {
                     cycle = day.cycle + 1,
                 )
                 lastReview = LastReview(id, prev, grade)
-                if (grade == Grade.AGAIN) words[id] = relearning(seq)
             }
         }
 
@@ -265,27 +288,35 @@ class StreamEngine(private val fsrs: FsrsScheduler) {
         return StepResult(state, changed, graduated, reviewed, graded, graded && outcome == Outcome.CLEAN)
     }
 
-    private fun relearning(seq: Int) = WordStage(
-        Stage.RELEARNING, StepKind.KNOW, immediate = true, since = seq, needClean = 1, thenUse = false, flawed = true,
-    )
-
     /** Replaces the derived rating of the last review with the learner's own choice. */
     fun override(state: StreamState, grade: Grade, now: Instant): StepResult {
         val last = state.lastReview ?: return StepResult(state)
         if (last.grade == grade) return StepResult(state)
-        val words = state.words.toMutableMap()
-        if (grade == Grade.AGAIN) words[last.wordId] = relearning(state.seq)
-        else if (words[last.wordId]?.stage == Stage.RELEARNING) words.remove(last.wordId)
         return StepResult(
-            state = state.copy(words = words, lastReview = last.copy(grade = grade)),
-            cards = listOf(fsrs.review(last.prev, grade, now)),
+            state = state.copy(lastReview = last.copy(grade = grade)),
+            cards = listOf(schedule(last.prev, grade, now)),
         )
     }
 
-    /** Days until the next review for each grade, from the card as it was before the review. */
+    /**
+     * Whole days until the next review for each grade, at least 1, from the card as it was
+     * before the review (contract §6).
+     */
     fun intervals(prev: FsrsCard, now: Instant): Map<Grade, Long> =
         Grade.entries.associateWith { g ->
-            val next = fsrs.review(prev, g, now)
-            java.time.Duration.between(now, next.due).toDays()
+            val ms = Duration.between(now, schedule(prev, g, now).due).toMillis()
+            Math.round(ms / DAY_MS).coerceAtLeast(1L)
         }
+
+    /** A review of [prev] rated [grade]: FSRS's card, due the next day when rated Again. */
+    private fun schedule(prev: FsrsCard, grade: Grade, now: Instant): FsrsCard {
+        val card = fsrs.review(prev, grade, now)
+        return if (grade == Grade.AGAIN) dueTomorrow(card, now.atZone(zone).toLocalDate()) else card
+    }
+
+    /** [card] due at the start of the local day after [date]. */
+    private fun dueTomorrow(card: FsrsCard, date: LocalDate): FsrsCard =
+        card.copy(due = date.plusDays(1).atStartOfDay(zone).toInstant(), scheduledDays = 1)
 }
+
+private const val DAY_MS = 86_400_000.0

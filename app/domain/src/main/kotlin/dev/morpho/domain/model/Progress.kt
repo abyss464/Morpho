@@ -10,7 +10,7 @@ import java.time.LocalDate
  * groups are re-cut per release (README, "组的短暂性" / groups are ephemeral).
  */
 
-/** FSRS v5 card state enum, persisted in `fsrs_cards.state`. */
+/** FSRS card state, persisted in `fsrs_cards.state`. The long-term scheduler leaves every card in [REVIEW]. */
 enum class CardState(val code: Int) {
     NEW(0),
     LEARNING(1),

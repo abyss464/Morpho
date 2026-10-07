@@ -271,7 +271,7 @@ private fun KnowContent(view: StepView, nowPlaying: String?, viewModel: StreamVi
     )
 }
 
-// ------------------------------------------------------------------ explain, use, review task
+// ------------------------------------------------------------------ explain, spell, use, review task
 
 @Composable
 private fun TaskContent(view: StepView, nowPlaying: String?, viewModel: StreamViewModel) {
@@ -279,7 +279,8 @@ private fun TaskContent(view: StepView, nowPlaying: String?, viewModel: StreamVi
     val word = view.word
     val review = view.step.kind == StepKind.REVIEW
     Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-        if (review) {
+        // A review, and spelling the word, keep the picture behind its button.
+        if (review || view.step.kind == StepKind.SPELL) {
             if (view.pictureShown) {
                 WordPicture(word, Modifier.fillMaxWidth().height(MorphoTheme.sizes.coverHeight))
             } else {
@@ -291,7 +292,8 @@ private fun TaskContent(view: StepView, nowPlaying: String?, viewModel: StreamVi
         StageLabel(
             mark = if (review) StageMark.REVIEW else StageMark.LEARN,
             text = when (view.step.kind) {
-                StepKind.EXPLAIN1, StepKind.EXPLAIN2 -> stringResource(R.string.stream_stage_explain)
+                StepKind.EXPLAIN -> stringResource(R.string.stream_stage_explain)
+                StepKind.SPELL -> stringResource(R.string.stream_stage_spell)
                 StepKind.USE -> stringResource(R.string.stream_stage_use)
                 else -> reviewLabel(view.reps)
             },
@@ -302,7 +304,7 @@ private fun TaskContent(view: StepView, nowPlaying: String?, viewModel: StreamVi
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                 ) {
-                    if (view.step.kind == StepKind.EXPLAIN1) {
+                    if (view.step.kind == StepKind.EXPLAIN) {
                         WordPicture(
                             word,
                             Modifier.size(MorphoTheme.sizes.thumbnailWidth, MorphoTheme.sizes.thumbnailHeight),

@@ -10,7 +10,6 @@ import dev.morpho.domain.model.UserMetaKeys
 import dev.morpho.domain.review.Grade
 import dev.morpho.domain.stream.LastReview
 import dev.morpho.domain.stream.ReviewTask
-import dev.morpho.domain.stream.Stage
 import dev.morpho.domain.stream.Step
 import dev.morpho.domain.stream.StepKind
 import dev.morpho.domain.stream.StepResult
@@ -69,7 +68,7 @@ class StreamStore(
     /**
      * The saved stream, or a fresh one built from what the app already knows: words with an
      * FSRS card stay in review, and words the learning ladder left mid-way (`learning` with a
-     * round passed) continue as Learning, due for a delayed `explain2`.
+     * round passed) continue as Learning, due for a delayed `explain`.
      */
     private suspend fun load(shipped: Set<Long>, cards: Map<Long, FsrsCard>, today: LocalDate): StreamState {
         progress.metaValue(UserMetaKeys.STREAM_STATE)?.let { raw ->
@@ -79,7 +78,7 @@ class StreamStore(
         }
         val carried = progress.inFlightWordIds()
             .filter { it in shipped && it !in cards }
-            .associateWith { WordStage(Stage.LEARNING, StepKind.EXPLAIN2, immediate = false, since = 0) }
+            .associateWith { WordStage(StepKind.EXPLAIN, immediate = false, since = 0) }
         val state = StreamState(words = carried, day = StreamDay(today))
         save(state)
         return state
@@ -153,16 +152,41 @@ class StreamStore(
 @Serializable
 private data class StoredNote(val text: String, val at: String)
 
+/**
+ * A word's stage as saved. A state saved before the one-pass flow may hold `RELEARNING`
+ * stages and `EXPLAIN1` / `EXPLAIN2` steps; [toDomain] reads them as sync.md §2 does.
+ */
 @Serializable
 private data class StoredStage(
-    val stage: String,
+    val stage: String = LEARNING,
     val next: String,
     val immediate: Boolean,
     val since: Int,
-    val needClean: Int = 1,
-    val thenUse: Boolean = true,
     val flawed: Boolean = false,
-)
+    val attempt: Int = 0,
+) {
+    /** The stage, or null for a relearning stage: that word stays in review with its card. */
+    fun toDomain(): WordStage? {
+        if (stage != LEARNING) return null
+        val legacy = next in LEGACY_EXPLAIN
+        return WordStage(
+            next = if (legacy) StepKind.EXPLAIN else StepKind.valueOf(next),
+            immediate = immediate && !legacy,
+            since = since,
+            flawed = flawed,
+            attempt = attempt,
+        )
+    }
+
+    companion object {
+        const val LEARNING = "LEARNING"
+    }
+}
+
+/** Step names saved before the one-pass flow: both are read as a delayed `explain`. */
+private val LEGACY_EXPLAIN = setOf("EXPLAIN1", "EXPLAIN2")
+
+private fun stepKind(name: String): StepKind = if (name in LEGACY_EXPLAIN) StepKind.EXPLAIN else StepKind.valueOf(name)
 
 @Serializable
 private data class StoredDay(
@@ -178,7 +202,7 @@ private data class StoredDay(
 )
 
 @Serializable
-private data class StoredStep(val wordId: Long, val kind: String, val task: String? = null)
+private data class StoredStep(val wordId: Long, val kind: String, val task: String? = null, val attempt: Int = 0)
 
 @Serializable
 private data class StoredCard(
@@ -207,40 +231,36 @@ private data class StoredState(
     val current: StoredStep? = null,
     val lastReview: StoredLastReview? = null,
 ) {
-    fun toDomain() = StreamState(
-        words = words.mapValues { (_, w) ->
-            WordStage(
-                stage = Stage.valueOf(w.stage),
-                next = StepKind.valueOf(w.next),
-                immediate = w.immediate,
-                since = w.since,
-                needClean = w.needClean,
-                thenUse = w.thenUse,
-                flawed = w.flawed,
-            )
-        },
-        seq = seq,
-        recent = recent.map(StepKind::valueOf),
-        lastWord = lastWord,
-        day = StreamDay(
-            date = LocalDate.parse(day.date),
-            introduced = day.introduced,
-            extra = day.extra,
-            steps = day.steps,
-            reviewed = day.reviewed,
-            reviewedClean = day.reviewedClean,
-            met = day.met,
-            metClean = day.metClean,
-            cycle = day.cycle,
-        ),
-        current = current?.let { Step(it.wordId, StepKind.valueOf(it.kind), it.task?.let(ReviewTask::valueOf)) },
-        lastReview = lastReview?.let { LastReview(it.wordId, it.prev.toDomain(), Grade.valueOf(it.grade)) },
-    )
+    fun toDomain(): StreamState {
+        val stages = words.mapValues { (_, w) -> w.toDomain() }
+        val kept = buildMap { stages.forEach { (id, w) -> if (w != null) put(id, w) } }
+        // A saved step of an old kind, or of a word whose relearning stage was dropped, is chosen again.
+        val step = current?.takeIf { it.kind !in LEGACY_EXPLAIN && !(it.wordId in stages && it.wordId !in kept) }
+        return StreamState(
+            words = kept,
+            seq = seq,
+            recent = recent.map(::stepKind),
+            lastWord = lastWord,
+            day = StreamDay(
+                date = LocalDate.parse(day.date),
+                introduced = day.introduced,
+                extra = day.extra,
+                steps = day.steps,
+                reviewed = day.reviewed,
+                reviewedClean = day.reviewedClean,
+                met = day.met,
+                metClean = day.metClean,
+                cycle = day.cycle,
+            ),
+            current = step?.let { Step(it.wordId, StepKind.valueOf(it.kind), it.task?.let(ReviewTask::valueOf), it.attempt) },
+            lastReview = lastReview?.let { LastReview(it.wordId, it.prev.toDomain(), Grade.valueOf(it.grade)) },
+        )
+    }
 
     companion object {
         fun of(s: StreamState) = StoredState(
             words = s.words.mapValues { (_, w) ->
-                StoredStage(w.stage.name, w.next.name, w.immediate, w.since, w.needClean, w.thenUse, w.flawed)
+                StoredStage(StoredStage.LEARNING, w.next.name, w.immediate, w.since, w.flawed, w.attempt)
             },
             seq = s.seq,
             recent = s.recent.map { it.name },
@@ -248,7 +268,7 @@ private data class StoredState(
             day = with(s.day) {
                 StoredDay(date.toString(), introduced, extra, steps, reviewed, reviewedClean, met, metClean, cycle)
             },
-            current = s.current?.let { StoredStep(it.wordId, it.kind.name, it.task?.name) },
+            current = s.current?.let { StoredStep(it.wordId, it.kind.name, it.task?.name, it.attempt) },
             lastReview = s.lastReview?.let { StoredLastReview(it.wordId, it.prev.stored(), it.grade.name) },
         )
     }

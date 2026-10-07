@@ -117,8 +117,7 @@ private fun Verdict(task: ReviewTask, outcome: Outcome, parts: ReviewParts?, con
             stringResource(spellCaption(parts.spell)),
         )
         task == ReviewTask.REBUILD -> stringResource(rebuildCaption(outcome))
-        outcome == Outcome.CLEAN -> stringResource(R.string.stream_verdict_fill_clean)
-        else -> stringResource(R.string.stream_verdict_fill_failed)
+        else -> stringResource(fillCaption(outcome))
     }
     Column(
         modifier = Modifier
@@ -142,6 +141,12 @@ private fun rebuildCaption(outcome: Outcome): Int = when (outcome) {
     Outcome.CLEAN -> R.string.stream_verdict_rebuild_clean
     Outcome.SHAKY -> R.string.stream_verdict_rebuild_shaky
     Outcome.FAILED -> R.string.stream_verdict_rebuild_failed
+}
+
+private fun fillCaption(outcome: Outcome): Int = when (outcome) {
+    Outcome.CLEAN -> R.string.stream_verdict_fill_clean
+    Outcome.SHAKY -> R.string.stream_verdict_fill_shaky
+    Outcome.FAILED -> R.string.stream_verdict_fill_failed
 }
 
 private fun spellCaption(outcome: Outcome): Int = when (outcome) {

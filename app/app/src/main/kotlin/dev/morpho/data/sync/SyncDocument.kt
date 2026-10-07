@@ -17,11 +17,10 @@ data class SyncDocument(
     }
 }
 
-/** A word's card once it has graduated, and its stage while it is being learned or relearned. */
+/** A word's card once it has graduated, and its stage while it is being learned. */
 @Serializable
 data class SyncEntry(val card: SyncCard? = null, val stage: SyncStage? = null)
 
-/** An FSRS card, field for field; times are ISO-8601 UTC, state 0 New … 3 Relearning. */
 @Serializable
 data class SyncCard(
     val due: String,
@@ -35,18 +34,36 @@ data class SyncCard(
     val lastReview: String? = null,
 )
 
-/** A stream stage without its stream position, which is per client. */
+/**
+ * A stream stage without its stream position, which is per client. An older document's
+ * `needClean` and `thenUse` are ignored; its other old forms are read by [normalized].
+ */
 @Serializable
 data class SyncStage(
-    /** "learning" or "relearning". */
-    val stage: String,
-    /** "know", "explain1", "explain2" or "use". */
+    /** "learning"; "relearning" only in an older document. */
+    val stage: String = LEARNING,
+    /** "know", "explain", "spell" or "use"; "explain1" / "explain2" in an older document. */
     val next: String,
-    val immediate: Boolean,
-    val needClean: Int,
-    val thenUse: Boolean,
-    val flawed: Boolean,
-)
+    val immediate: Boolean = false,
+    val flawed: Boolean = false,
+    val attempt: Int = 0,
+) {
+    /**
+     * This stage as the current format reads it (sync.md §2): `explain1` / `explain2` become a
+     * delayed `explain`, and a relearning stage is dropped (null), so its word stays in review.
+     */
+    fun normalized(): SyncStage? = when {
+        stage != LEARNING -> null
+        next in LEGACY_EXPLAIN -> copy(next = EXPLAIN, immediate = false)
+        else -> this
+    }
+
+    companion object {
+        const val LEARNING = "learning"
+        private const val EXPLAIN = "explain"
+        private val LEGACY_EXPLAIN = setOf("explain1", "explain2")
+    }
+}
 
 @Serializable
 data class SyncNote(val text: String, val at: String)

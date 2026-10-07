@@ -2,112 +2,59 @@ package dev.morpho.domain.review
 
 import dev.morpho.domain.model.CardState
 import dev.morpho.domain.model.FsrsCard
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
-import kotlin.math.exp
-import kotlin.math.ln
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.pow
-import kotlin.math.roundToLong
+import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 
 /**
- * FSRS v5 (Free Spaced Repetition Scheduler), implemented from the published algorithm.
+ * FSRS-6 with the long-term scheduler: a port of ts-fsrs 5.4.2's `FSRSAlgorithm` and
+ * `LongTermScheduler` as the web client runs them, `generatorParameters({ enable_short_term:
+ * false, enable_fuzz: false })` (docs/contracts/stream.md §6). For the same card, grade and
+ * time both clients give the same card.
  *
- * Reference: open-spaced-repetition, "The Algorithm" (FSRS-5). All formulas below are
- * written out in the comments so the implementation can be audited without leaving the file.
+ * What the port keeps from ts-fsrs, so the numbers agree to the last digit:
+ *  * every intermediate value is rounded as `roundTo(x, 8)` with JavaScript's `Math.round`;
+ *  * `exp`, `pow` and `log` go through [StrictMath] (fdlibm), as V8's do;
+ *  * days since the last review are UTC calendar days for a review, and whole 24 h periods
+ *    for retrievability;
+ *  * with short-term off there are no learning steps and no same-day formula: every review
+ *    takes the long-term path, every card is in [CardState.REVIEW] afterwards, and a lapse
+ *    never raises stability (the Again floor `S / e^(w17 * w18)` is `S / e^0`).
  *
- * ## Memory state
- *
- * A card carries two latent variables:
- *  * **S** (stability) — days until retrievability decays to 90%.
- *  * **D** (difficulty) — intrinsic hardness in `[1, 10]`.
- *
- * ## Forgetting curve (power law, FSRS-4.5+)
- *
- * ```
- * DECAY  = -0.5
- * FACTOR = 0.9^(1/DECAY) - 1 = 19/81
- * R(t, S) = (1 + FACTOR * t / S)^DECAY
- * ```
- *
- * ## Interval for a desired retention r
+ * ## Formulas (w = the 21 weights, G = grade 1..4)
  *
  * ```
- * I(r, S) = (S / FACTOR) * (r^(1/DECAY) - 1)
+ * DECAY  = -w20,  FACTOR = 0.9^(1/DECAY) - 1
+ * R(t, S)  = (1 + FACTOR * t / S)^DECAY
+ * I(S)     = S * (0.9^(1/DECAY) - 1) / FACTOR, rounded, in [1, 36500]
+ * S0(G)    = max(w[G-1], 0.1)
+ * D0(G)    = w4 - e^((G-1) * w5) + 1
+ * D'       = clamp(w7 * D0(4) + (1 - w7) * (D + (-w6 * (G-3)) * (10 - D) / 9), 1, 10)
+ * S'r      = S * (1 + e^w8 * (11 - D) * S^-w9 * (e^((1-R) * w10) - 1) * (w15 if Hard) * (w16 if Easy))
+ * S'f      = min(S, w11 * D^-w12 * ((S+1)^w13 - 1) * e^((1-R) * w14))
  * ```
  *
- * ## First review (grade G in 1..4)
- *
- * ```
- * S_0(G) = w[G-1]                              , clamped to >= 0.1
- * D_0(G) = w[4] - e^(w[5] * (G - 1)) + 1       , clamped to [1, 10]
- * ```
- *
- * ## Difficulty update (linear damping + mean reversion, new in FSRS-5)
- *
- * ```
- * dD    = -w[6] * (G - 3)
- * D'    = D + dD * (10 - D) / 9                 // linear damping
- * D''   = w[7] * D_0(4) + (1 - w[7]) * D'       // mean reversion towards "Easy" difficulty
- * ```
- *
- * ## Stability on successful recall (G in 2..4)
- *
- * ```
- * S'_r = S * (1 + e^(w[8]) * (11 - D) * S^(-w[9]) * (e^((1 - R) * w[10]) - 1)
- *              * hardPenalty * easyBonus)
- * hardPenalty = w[15] if G == 2 else 1
- * easyBonus   = w[16] if G == 4 else 1
- * ```
- *
- * ## Stability on lapse (G == 1)
- *
- * ```
- * S'_f = min(
- *          w[11] * D^(-w[12]) * ((S + 1)^w[13] - 1) * e^((1 - R) * w[14]),
- *          S / e^(w[17] * w[18])                   // FSRS-5 cap: a lapse never raises S
- *        )
- * ```
- *
- * ## Same-day re-review (FSRS-5 short-term stability)
- *
- * ```
- * S'_s = S * e^(w[17] * (G - 3 + w[18]))
- * ```
- *
- * ## Deviation from the reference scheduler
- *
- * The reference implementation keeps sub-day learning/relearning *steps* on the card.
- * `docs/contracts/user-db.sql` has no `step` column, and Morpho only reviews at
- * day granularity (a word becomes a card only after it has cleared the three-round
- * learning ladder). This scheduler therefore runs with empty learning/relearning
- * steps, which is a supported configuration of the reference algorithm: a card goes
- * straight to [CardState.REVIEW] and a lapse re-enters [CardState.RELEARNING] with a
- * day-based interval. Interval fuzzing is likewise off, so scheduling is deterministic
- * and testable.
+ * The four intervals of one review are kept apart: Again <= Hard < Good < Easy.
  */
 object Fsrs {
 
-    const val DECAY: Double = -0.5
-
-    /** `0.9^(1/DECAY) - 1`, i.e. 19/81. */
-    val FACTOR: Double = 0.9.pow(1.0 / DECAY) - 1.0
-
-    /** FSRS-5 default weights w0..w18. */
+    /** FSRS-6 default weights w0..w20 (ts-fsrs `default_w`). */
     val DEFAULT_PARAMETERS: DoubleArray = doubleArrayOf(
-        0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046,
-        1.54575, 0.1192, 1.01925, 1.9395, 0.11, 0.29605, 2.2698, 0.2315,
-        2.9898, 0.51655, 0.6621,
+        0.212, 1.2931, 2.3065, 8.2956, 6.4133, 0.8334, 3.0194, 0.001,
+        1.8722, 0.1666, 0.796, 1.4835, 0.0614, 0.2629, 1.6483, 0.6014,
+        1.8729, 0.5425, 0.0912, 0.0658, 0.1542,
     )
 
-    const val MIN_STABILITY: Double = 0.1
-    const val MIN_DIFFICULTY: Double = 1.0
-    const val MAX_DIFFICULTY: Double = 10.0
+    const val MIN_STABILITY: Double = 0.001
+    const val MAX_STABILITY: Double = 36500.0
     const val MAX_INTERVAL_DAYS: Long = 36500
+    const val DEFAULT_RETENTION: Double = 0.9
 }
 
-/** The four FSRS grades. Morpho maps a binary answer onto AGAIN / GOOD. */
+/** The four FSRS grades. */
 enum class Grade(val value: Int) {
     AGAIN(1),
     HARD(2),
@@ -116,184 +63,169 @@ enum class Grade(val value: Int) {
 }
 
 /**
- * Stateless FSRS v5 scheduler.
+ * Stateless FSRS-6 long-term scheduler.
  *
- * @param parameters the 19 model weights
- * @param desiredRetention target recall probability at review time (0.9 by default)
+ * @param parameters the 21 weights, used as given (the defaults lie within ts-fsrs's clamps)
+ * @param requestRetention target recall probability at review time
+ * @param maximumInterval the longest interval in days
  */
 class FsrsScheduler(
     private val parameters: DoubleArray = Fsrs.DEFAULT_PARAMETERS,
-    private val desiredRetention: Double = 0.9,
-    private val maximumIntervalDays: Long = Fsrs.MAX_INTERVAL_DAYS,
+    private val requestRetention: Double = Fsrs.DEFAULT_RETENTION,
+    private val maximumInterval: Long = Fsrs.MAX_INTERVAL_DAYS,
 ) {
     init {
-        require(parameters.size == 19) { "FSRS v5 needs 19 parameters, got ${parameters.size}" }
-        require(desiredRetention > 0.0 && desiredRetention < 1.0) {
-            "desiredRetention must be in (0, 1)"
-        }
+        require(parameters.size == 21) { "FSRS-6 needs 21 parameters, got ${parameters.size}" }
+        require(requestRetention > 0.0 && requestRetention <= 1.0) { "requestRetention must be in (0, 1]" }
     }
 
     private fun w(i: Int) = parameters[i]
 
+    private val decay: Double = -w(20)
+    private val factor: Double = roundTo(StrictMath.exp(StrictMath.pow(decay, -1.0) * StrictMath.log(0.9)) - 1, 8)
+    private val intervalModifier: Double =
+        roundTo((StrictMath.pow(requestRetention, 1 / decay) - 1) / factor, 8)
+
     // ------------------------------------------------------------ core formulas
 
-    /** `R(t, S) = (1 + FACTOR * t / S)^DECAY` */
-    fun retrievability(elapsedDays: Double, stability: Double): Double {
-        if (stability <= 0.0) return 0.0
-        val t = max(0.0, elapsedDays)
-        return (1.0 + Fsrs.FACTOR * t / stability).pow(Fsrs.DECAY)
-    }
+    /** `R(t, S)`, rounded to 8 decimals. */
+    fun forgettingCurve(elapsedDays: Double, stability: Double): Double =
+        roundTo(StrictMath.pow(1 + factor * elapsedDays / stability, decay), 8)
 
-    /** Retrievability of [card] as of [now]; 0 for a card that has never been reviewed. */
+    /** Retrievability of [card] at [now], from whole days since its last review; 0 for a new card. */
     fun retrievability(card: FsrsCard, now: Instant): Double {
-        val last = card.lastReview ?: return 0.0
-        val elapsed = max(0L, Duration.between(last, now).toDays())
-        return retrievability(elapsed.toDouble(), card.stability)
+        val last = card.lastReview
+        if (card.state == CardState.NEW || last == null) return 0.0
+        val t = maxOf(Math.floorDiv(Duration.between(last, now).toMillis(), DAY_MS), 0L)
+        return forgettingCurve(t.toDouble(), toFixed8(card.stability))
     }
 
-    /** `I(r, S) = (S / FACTOR) * (r^(1/DECAY) - 1)`, rounded to whole days, min 1. */
-    fun intervalDays(stability: Double): Long {
-        val raw = (stability / Fsrs.FACTOR) * (desiredRetention.pow(1.0 / Fsrs.DECAY) - 1.0)
-        return raw.roundToLong().coerceIn(1L, maximumIntervalDays)
+    private fun initStability(g: Int): Double = maxOf(w(g - 1), 0.1)
+
+    private fun initDifficulty(g: Int): Double = roundTo(w(4) - StrictMath.exp((g - 1) * w(5)) + 1, 8)
+
+    private fun nextInterval(stability: Double): Long =
+        minOf(maxOf(1.0, jsRound(stability * intervalModifier)), maximumInterval.toDouble()).toLong()
+
+    private fun linearDamping(deltaD: Double, oldD: Double): Double = roundTo(deltaD * (10 - oldD) / 9, 8)
+
+    private fun meanReversion(init: Double, current: Double): Double = roundTo(w(7) * init + (1 - w(7)) * current, 8)
+
+    private fun nextDifficulty(d: Double, g: Int): Double {
+        val deltaD = -w(6) * (g - 3)
+        val nextD = d + linearDamping(deltaD, d)
+        return clamp(meanReversion(initDifficulty(Grade.EASY.value), nextD), 1.0, 10.0)
     }
 
-    /** `S_0(G) = w[G-1]`, floored at 0.1. */
-    fun initialStability(grade: Grade): Double =
-        max(w(grade.value - 1), Fsrs.MIN_STABILITY)
-
-    /** `D_0(G) = w[4] - e^(w[5] * (G - 1)) + 1`, clamped to [1, 10]. */
-    fun initialDifficulty(grade: Grade): Double =
-        (w(4) - exp(w(5) * (grade.value - 1)) + 1.0)
-            .coerceIn(Fsrs.MIN_DIFFICULTY, Fsrs.MAX_DIFFICULTY)
-
-    /** Linear damping followed by mean reversion towards `D_0(EASY)`. */
-    fun nextDifficulty(difficulty: Double, grade: Grade): Double {
-        val delta = -(w(6) * (grade.value - 3))
-        val damped = difficulty + (10.0 - difficulty) * delta / 9.0
-        val reverted = w(7) * initialDifficulty(Grade.EASY) + (1.0 - w(7)) * damped
-        return reverted.coerceIn(Fsrs.MIN_DIFFICULTY, Fsrs.MAX_DIFFICULTY)
+    private fun nextRecallStability(d: Double, s: Double, r: Double, g: Int): Double {
+        val hardPenalty = if (g == Grade.HARD.value) w(15) else 1.0
+        val easyBound = if (g == Grade.EASY.value) w(16) else 1.0
+        return roundTo(
+            clamp(
+                s * (1 + StrictMath.exp(w(8)) * (11 - d) * StrictMath.pow(s, -w(9)) *
+                    (StrictMath.exp((1 - r) * w(10)) - 1) * hardPenalty * easyBound),
+                Fsrs.MIN_STABILITY,
+                Fsrs.MAX_STABILITY,
+            ),
+            8,
+        )
     }
 
-    fun nextRecallStability(
-        difficulty: Double,
-        stability: Double,
-        retrievability: Double,
-        grade: Grade,
-    ): Double {
-        val hardPenalty = if (grade == Grade.HARD) w(15) else 1.0
-        val easyBonus = if (grade == Grade.EASY) w(16) else 1.0
-        return stability * (
-            1.0 + exp(w(8)) *
-                (11.0 - difficulty) *
-                stability.pow(-w(9)) *
-                (exp((1.0 - retrievability) * w(10)) - 1.0) *
-                hardPenalty *
-                easyBonus
-            )
-    }
+    private fun nextForgetStability(d: Double, s: Double, r: Double): Double = roundTo(
+        clamp(
+            w(11) * StrictMath.pow(d, -w(12)) * (StrictMath.pow(s + 1, w(13)) - 1) *
+                StrictMath.exp((1 - r) * w(14)),
+            Fsrs.MIN_STABILITY,
+            Fsrs.MAX_STABILITY,
+        ),
+        8,
+    )
 
-    fun nextForgetStability(
-        difficulty: Double,
-        stability: Double,
-        retrievability: Double,
-    ): Double {
-        val longTerm = w(11) *
-            difficulty.pow(-w(12)) *
-            ((stability + 1.0).pow(w(13)) - 1.0) *
-            exp((1.0 - retrievability) * w(14))
-        val shortTermCap = stability / exp(w(17) * w(18))
-        return min(longTerm, shortTermCap)
-    }
-
-    /** `S'_s = S * e^(w17 * (G - 3 + w18))` — same-day re-review. */
-    fun shortTermStability(stability: Double, grade: Grade): Double =
-        stability * exp(w(17) * (grade.value - 3 + w(18)))
-
-    fun nextStability(
-        difficulty: Double,
-        stability: Double,
-        retrievability: Double,
-        grade: Grade,
-    ): Double = when (grade) {
-        Grade.AGAIN -> nextForgetStability(difficulty, stability, retrievability)
-        else -> nextRecallStability(difficulty, stability, retrievability, grade)
+    /** Difficulty and stability after grade [g], [t] days after the last review. */
+    private fun nextState(d: Double, s: Double, t: Long, g: Int, retrievability: Double?): Pair<Double, Double> {
+        if (d == 0.0 && s == 0.0) return clamp(initDifficulty(g), 1.0, 10.0) to initStability(g)
+        require(d >= 1 && s >= Fsrs.MIN_STABILITY) { "Invalid memory state { difficulty: $d, stability: $s }" }
+        val r = retrievability ?: forgettingCurve(t.toDouble(), s)
+        val newS = if (g == Grade.AGAIN.value) {
+            // Short-term off: w17 and w18 count as 0, so the floor is S itself.
+            val afterFail = nextForgetStability(d, s, r)
+            clamp(roundTo(s / StrictMath.exp(0.0), 8), Fsrs.MIN_STABILITY, afterFail)
+        } else {
+            nextRecallStability(d, s, r, g)
+        }
+        return nextDifficulty(d, g) to newS
     }
 
     // ------------------------------------------------------------------ review
 
-    /**
-     * Applies a review of [card] at [now] with [grade] and returns the rescheduled card.
-     *
-     * A brand-new card ([CardState.NEW], or one with no prior review) is initialised.
-     * Same-day repeats use the short-term stability formula and do not re-lapse.
-     */
-    fun review(card: FsrsCard, grade: Grade, now: Instant): FsrsCard {
-        val daysSinceLastReview = card.lastReview
-            ?.let { Duration.between(it, now).toDays() }
+    /** The card after each of the four grades, reviewed at [now] (ts-fsrs `repeat`). */
+    fun preview(card: FsrsCard, now: Instant): Map<Grade, FsrsCard> {
+        val last = card.lastReview
+        val isNew = card.state == CardState.NEW
+        val elapsed = if (!isNew && last != null) utcDaysBetween(last, now) else 0L
+        // A new card starts from t = 0 with no retrievability; a reviewed one from its R at t.
+        val r = if (isNew) null else forgettingCurve(elapsed.toDouble(), card.stability)
+        val t = if (isNew) 0L else elapsed
+        val states = Grade.entries.associateWith { g -> nextState(card.difficulty, card.stability, t, g.value, r) }
 
-        val isFirstReview = card.state == CardState.NEW || card.lastReview == null
-        val isSameDayRepeat = !isFirstReview && (daysSinceLastReview ?: 0L) < 1L
+        val again = nextInterval(states.getValue(Grade.AGAIN).second)
+        val hard0 = nextInterval(states.getValue(Grade.HARD).second)
+        val good0 = nextInterval(states.getValue(Grade.GOOD).second)
+        val easy0 = nextInterval(states.getValue(Grade.EASY).second)
+        val againDays = minOf(again, hard0)
+        val hardDays = maxOf(hard0, againDays + 1)
+        val goodDays = maxOf(good0, hardDays + 1)
+        val easyDays = maxOf(easy0, goodDays + 1)
+        val days = mapOf(Grade.AGAIN to againDays, Grade.HARD to hardDays, Grade.GOOD to goodDays, Grade.EASY to easyDays)
 
-        val stability: Double
-        val difficulty: Double
-        when {
-            isFirstReview -> {
-                stability = initialStability(grade)
-                difficulty = initialDifficulty(grade)
-            }
-
-            isSameDayRepeat -> {
-                stability = shortTermStability(card.stability, grade)
-                difficulty = nextDifficulty(card.difficulty, grade)
-            }
-
-            else -> {
-                val r = retrievability(card, now)
-                stability = nextStability(card.difficulty, card.stability, r, grade)
-                difficulty = nextDifficulty(card.difficulty, grade)
-            }
+        return Grade.entries.associateWith { g ->
+            val (difficulty, stability) = states.getValue(g)
+            val interval = days.getValue(g)
+            card.copy(
+                due = now.plusMillis(interval * DAY_MS),
+                stability = stability,
+                difficulty = difficulty,
+                elapsedDays = t.toInt(),
+                scheduledDays = interval.toInt(),
+                reps = card.reps + 1,
+                lapses = card.lapses + if (g == Grade.AGAIN && !isNew) 1 else 0,
+                state = CardState.REVIEW,
+                lastReview = now,
+            )
         }
-
-        val boundedStability = max(stability, Fsrs.MIN_STABILITY)
-        val lapsed = grade == Grade.AGAIN && !isFirstReview
-        val nextState = when {
-            lapsed -> CardState.RELEARNING
-            else -> CardState.REVIEW
-        }
-        val interval = intervalDays(boundedStability)
-
-        return card.copy(
-            due = now.plus(Duration.ofDays(interval)),
-            stability = boundedStability,
-            difficulty = difficulty,
-            elapsedDays = (daysSinceLastReview ?: 0L).coerceAtLeast(0L).toInt(),
-            scheduledDays = interval.toInt(),
-            reps = card.reps + 1,
-            lapses = card.lapses + if (grade == Grade.AGAIN) 1 else 0,
-            state = nextState,
-            lastReview = now,
-        )
     }
 
-    /** Creates the first card for a word that has just cleared the learning ladder. */
+    /** Applies a review of [card] at [now] with [grade] and returns the rescheduled card. */
+    fun review(card: FsrsCard, grade: Grade, now: Instant): FsrsCard = preview(card, now).getValue(grade)
+
+    /** The first card of a word that has just graduated, reviewed once with [grade]. */
     fun newCard(wordId: Long, now: Instant, grade: Grade = Grade.GOOD): FsrsCard {
-        val blank = FsrsCard(
-            wordId = wordId,
-            due = now,
-            stability = 0.0,
-            difficulty = 0.0,
-            state = CardState.NEW,
-        )
+        val blank = FsrsCard(wordId = wordId, due = now, stability = 0.0, difficulty = 0.0, state = CardState.NEW)
         return review(blank, grade, now)
     }
 
-    /**
-     * Number of days until [card] decays to [target] retrievability, from its last review.
-     * Handy for the "next review in N days" copy on the summary screen.
-     */
-    fun daysUntilRetention(card: FsrsCard, target: Double = desiredRetention): Long {
-        if (card.stability <= 0.0) return 0
-        val exponent = ln(target) / Fsrs.DECAY
-        return ((exp(exponent) - 1.0) * card.stability / Fsrs.FACTOR).roundToLong()
+    private companion object {
+        const val DAY_MS = 86_400_000L
+
+        /** JavaScript's `Math.round`: the nearest integer, halves towards +infinity. */
+        fun jsRound(x: Double): Double {
+            val f = Math.floor(x)
+            return if (x - f >= 0.5) f + 1 else f
+        }
+
+        /** ts-fsrs `roundTo`. */
+        fun roundTo(x: Double, decimals: Int): Double {
+            val factor = StrictMath.pow(10.0, decimals.toDouble())
+            return jsRound(x * factor) / factor
+        }
+
+        fun clamp(value: Double, min: Double, max: Double): Double = minOf(maxOf(value, min), max)
+
+        /** `+x.toFixed(8)`: exact decimal rounding of the binary value, then parsed back. */
+        fun toFixed8(x: Double): Double = BigDecimal(x).setScale(8, RoundingMode.HALF_UP).toDouble()
+
+        /** ts-fsrs `dateDiffInDays`: the difference of the two UTC calendar dates. */
+        fun utcDaysBetween(last: Instant, now: Instant): Long =
+            ChronoUnit.DAYS.between(last.atOffset(ZoneOffset.UTC).toLocalDate(), now.atOffset(ZoneOffset.UTC).toLocalDate())
     }
 }
