@@ -157,74 +157,70 @@ private fun StreamBar(done: Int, total: Int, onPause: () -> Unit) {
 }
 
 /**
- * One step's frame: its content scrolls; the step's answer area (the piece bank, the word
- * options) sits fixed above the action at the foot, so it never moves under the thumb.
- * On a short screen the answer area scrolls within the lower part of the frame.
+ * One step's frame: the step and its answer area (the piece bank, the word options, the
+ * letter tiles) above the action at the foot. When they fit, the answer area sits at the
+ * bottom, above the action; when a tall step (a large picture, a long definition) does not
+ * fit, both scroll as one page, so the tray is never hidden under the bank.
  */
 @Composable
 private fun StepFrame(view: StepView, nowPlaying: String?, viewModel: StreamViewModel) {
     val spacing = MorphoTheme.spacing
     val verdict = view.verdict
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val answerMax = maxHeight * ANSWER_SHARE
-        Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val viewport = maxHeight
             Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = spacing.screenGutter)
-                    .padding(top = spacing.xxs, bottom = spacing.sm),
+                    .padding(horizontal = spacing.screenGutter),
             ) {
-                when {
-                    verdict != null -> ReviewResultContent(view, verdict, nowPlaying, viewModel)
-                    view.step.kind == StepKind.KNOW -> KnowContent(view, nowPlaying, viewModel)
-                    else -> TaskContent(view, nowPlaying, viewModel)
-                }
-            }
-            if (verdict == null && view.task != null) {
                 Column(
-                    Modifier
-                        .heightIn(max = answerMax)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = spacing.screenGutter),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = viewport),
+                    verticalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    AnswerArea(view, viewModel)
+                    Column(Modifier.padding(top = spacing.xxs, bottom = spacing.sm)) {
+                        when {
+                            verdict != null -> ReviewResultContent(view, verdict, nowPlaying, viewModel)
+                            view.step.kind == StepKind.KNOW -> KnowContent(view, nowPlaying, viewModel)
+                            else -> TaskContent(view, nowPlaying, viewModel)
+                        }
+                    }
+                    if (verdict == null && view.task != null) {
+                        Column { AnswerArea(view, viewModel) }
+                    }
                 }
             }
-            val action = Modifier.padding(horizontal = spacing.screenGutter, vertical = spacing.sm)
-            when {
-                verdict != null -> PrimaryButton(stringResource(R.string.action_continue), viewModel::onContinue, action)
-                // A rebuild review goes on to spelling the word once its rebuild is right.
-                view.step.kind == StepKind.REVIEW && view.task is RebuildState -> Column(action) {
-                    if (view.outcome == null) {
-                        Text(
-                            text = stringResource(R.string.stream_spell_next),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = spacing.xs),
-                        )
-                    }
-                    PrimaryButton(
-                        text = stringResource(R.string.stream_spell_now),
-                        onClick = viewModel::onContinue,
-                        enabled = view.outcome != null,
+        }
+        val action = Modifier.padding(horizontal = spacing.screenGutter, vertical = spacing.sm)
+        when {
+            verdict != null -> PrimaryButton(stringResource(R.string.action_continue), viewModel::onContinue, action)
+            // A rebuild review goes on to spelling the word once its rebuild is right.
+            view.step.kind == StepKind.REVIEW && view.task is RebuildState -> Column(action) {
+                if (view.outcome == null) {
+                    Text(
+                        text = stringResource(R.string.stream_spell_next),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = spacing.xs),
                     )
                 }
-                view.step.kind == StepKind.REVIEW -> Spacer(Modifier.height(spacing.sm))
-                else -> PrimaryButton(
-                    text = stringResource(R.string.action_continue),
+                PrimaryButton(
+                    text = stringResource(R.string.stream_spell_now),
                     onClick = viewModel::onContinue,
-                    enabled = view.step.kind == StepKind.KNOW || view.outcome != null,
-                    modifier = action,
+                    enabled = view.outcome != null,
                 )
             }
+            view.step.kind == StepKind.REVIEW -> Spacer(Modifier.height(spacing.sm))
+            else -> PrimaryButton(
+                text = stringResource(R.string.action_continue),
+                onClick = viewModel::onContinue,
+                enabled = view.step.kind == StepKind.KNOW || view.outcome != null,
+                modifier = action,
+            )
         }
     }
 }
-
-/** The most of the frame the answer area takes before it scrolls on its own. */
-private const val ANSWER_SHARE = 0.5f
 
 /** The lower half of a task: the bank of pieces, the four words, or the letter tiles. */
 @Composable

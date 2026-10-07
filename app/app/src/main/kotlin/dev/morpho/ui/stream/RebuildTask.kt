@@ -65,7 +65,7 @@ fun RebuildTray(
     val spacing = MorphoTheme.spacing
     val tokens = MorphoTheme.tokens
     val reducedMotion = MorphoTheme.reducedMotion
-    val dashed = MaterialTheme.colorScheme.outlineVariant
+    val dashed = openLine()
     val solvedLine = MorphoTheme.accents.correct
     val amplitude = with(LocalDensity.current) { tokens.sizes.shakeAmplitude.toPx() }
     val shake = remember { floatAnimatable() }
@@ -165,10 +165,17 @@ private fun GivenText(text: String) {
     }
 }
 
-/** An empty blank: a short rule, copper when it is the one the next piece fills. */
+/**
+ * The grey of an open blank's rule and the tray's dashes. The outline tokens match the
+ * tray's own fill in the dark theme, so the rule is drawn in the secondary ink, half strength.
+ */
+@Composable
+internal fun openLine(): Color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+
+/** An empty blank: a short grey rule, copper when it is the one the next piece fills. */
 @Composable
 private fun OpenBlank(next: Boolean, description: String) {
-    val color = if (next) MorphoTheme.accents.motifActive else MaterialTheme.colorScheme.outlineVariant
+    val color = if (next) MorphoTheme.accents.motifActive else openLine()
     Box(
         modifier = Modifier
             .padding(horizontal = TRAY_GAP)

@@ -173,7 +173,8 @@ private fun LetterCell(
     }
     val line = when (look) {
         Cell.GIVEN -> Color.Transparent
-        Cell.OPEN, Cell.FILLED -> colors.outlineVariant
+        Cell.OPEN -> openLine()
+        Cell.FILLED -> colors.outlineVariant
         Cell.NEXT -> accents.motifActive
         Cell.WRONG -> accents.wrong
         Cell.SOLVED -> accents.correct
