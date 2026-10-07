@@ -15,14 +15,16 @@ without a valid highlight.
 """
 
 import json
+import os
 import re
 
 import requests
 
 API = "http://127.0.0.1:30012/api"
 HEADERS = {"X-Morpho-User": "local"}
-INPUT_PATH = "/home/abysser/Code/learning/Morpho/ops/logs/coco-accepted.json"
-RESULTS_PATH = "/home/abysser/Code/learning/Morpho/ops/logs/coco-ingest-results.json"
+ROOT = os.environ.get("MORPHO_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+INPUT_PATH = f"{ROOT}/ops/logs/coco-accepted.json"
+RESULTS_PATH = f"{ROOT}/ops/logs/coco-ingest-results.json"
 
 
 def get_word(word_id):

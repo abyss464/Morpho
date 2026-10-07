@@ -22,13 +22,13 @@ import json, os, sqlite3, urllib.request, urllib.error
 import torch, open_clip
 from PIL import Image
 
-DB = "/home/abysser/Code/learning/Morpho/data/working.db"
-MEDIA = "/home/abysser/Code/learning/Morpho/data/media"
+ROOT = os.environ.get("MORPHO_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DB = os.environ.get("MORPHO_DB", f"{ROOT}/data/working.db")
+MEDIA = os.environ.get("MORPHO_MEDIA", f"{ROOT}/data/media")
 API = os.environ.get("MORPHO_API", "http://127.0.0.1:30012/api")
 REPORT_PATH = os.environ.get(
     "CLIP_REPORT",
-    "/tmp/claude-1000/-home-abysser-Code-learning-Morpho/"
-    "d3d89616-3276-4389-b525-1b3f57774b29/scratchpad/clip_scores.json",
+    f"{ROOT}/ops/logs/clip_scores.json",
 )
 MARGIN = 0.02          # new pick must beat current text-match by this
 DUP_SIM = 0.92         # visual-duplicate threshold within a question

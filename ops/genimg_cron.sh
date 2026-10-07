@@ -12,8 +12,8 @@
 
 set -uo pipefail
 
-ROOT="/home/abysser/Code/learning/Morpho"
-SCRATCH="/tmp/claude-1000/-home-abysser-Code-learning-Morpho/d3d89616-3276-4389-b525-1b3f57774b29/scratchpad"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRATCH="${MORPHO_GENIMG_DIR:-$ROOT/ops/logs/genimg}"
 GENDIR="$SCRATCH/genimg2"
 WORDS="$SCRATCH/image_gen_wave2.json"
 LOGDIR="$ROOT/ops/logs"

@@ -91,7 +91,8 @@ def download_image(url, timeout=DOWNLOAD_TIMEOUT):
         import time
         time.sleep(REQUEST_DELAY)
         headers = {
-            "User-Agent": "Morpho-vocab-research/1.0 (educational vocabulary app; abyss.gate@outlook.com)",
+            "User-Agent": "Morpho-vocab-research/1.0 (educational vocabulary app"
+            + (f"; {os.environ['MORPHO_CONTACT']}" if os.environ.get("MORPHO_CONTACT") else "") + ")",
             "Accept": "image/*",
         }
         for attempt in range(3):

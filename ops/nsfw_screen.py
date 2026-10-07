@@ -51,7 +51,7 @@ import urllib.request
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-ROOT = "/home/abysser/Code/learning/Morpho"
+ROOT = os.environ.get("MORPHO_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DB = os.environ.get("MORPHO_DB", f"{ROOT}/data/working.db")
 MEDIA = os.environ.get("MORPHO_MEDIA", f"{ROOT}/data/media")
 API = os.environ.get("MORPHO_API", "http://127.0.0.1:30012/api")

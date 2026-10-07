@@ -7,13 +7,14 @@ Matching is inflection-aware via a form->lemma map built from the lexicon
 ing with e-restoration, doubled-consonant forms).
 """
 
-import gzip, json, re, sys
+import gzip, json, os, re, sys
 import sqlite3
 from collections import defaultdict
 
-DB = "/home/abysser/Code/learning/Morpho/data/working.db"
-CORPUS = "/home/abysser/Code/learning/Morpho/content/corpora/opensubs-en.txt.gz"
-OUT = "/tmp/claude-1000/-home-abysser-Code-learning-Morpho/309aaf33-fdae-4549-a568-20411524c24a/scratchpad/mined_sentences.json"
+ROOT = os.environ.get("MORPHO_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DB = os.environ.get("MORPHO_DB", f"{ROOT}/data/working.db")
+CORPUS = os.environ.get("MORPHO_SUBS_CORPUS", f"{ROOT}/content/corpora/opensubs-en.txt.gz")
+OUT = f"{ROOT}/ops/logs/mined_sentences.json"
 K = 8
 
 conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)

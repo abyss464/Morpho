@@ -23,7 +23,7 @@ import sqlite3
 # The engine listens on 8787 inside its container; compose publishes it on
 # 30012. Override with MORPHO_API when running against a native build.
 API = os.environ.get("MORPHO_API", "http://127.0.0.1:30012/api")
-DB = "/home/abysser/Code/learning/Morpho/data/working.db"
+DB = os.environ.get("MORPHO_DB", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "working.db"))
 
 KINDS = {
     "definition": (

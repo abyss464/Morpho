@@ -56,7 +56,7 @@ import unicodedata
 import urllib.request
 from collections import Counter, defaultdict
 
-ROOT = os.environ.get("MORPHO_ROOT", "/home/abysser/Code/learning/Morpho")
+ROOT = os.environ.get("MORPHO_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_DB = f"{ROOT}/data/working.db"
 DEFAULT_LOGS = f"{ROOT}/ops/logs"
 

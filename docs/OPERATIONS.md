@@ -37,11 +37,11 @@ words. Always launch from the repo root, and put the `cd` inside the command so
 a backgrounded shell's drifted cwd cannot affect it:
 
 ```bash
-cd /home/abysser/Code/learning/Morpho && \
+cd "$(git rev-parse --show-toplevel)" && \
 PIXABAY_API_KEY='<key>' \
-MORPHO_WORDNET_DIR=/home/abysser/Code/learning/Morpho/data/wordnet/dict \
+MORPHO_WORDNET_DIR="$PWD/data/wordnet/dict" \
 RUST_LOG=warn \
-/home/abysser/Code/learning/Morpho/core/target/release/morphod serve
+"$PWD/core/target/release/morphod" serve
 ```
 
 Use absolute paths for the binary and env values. If a stray `core/data/`

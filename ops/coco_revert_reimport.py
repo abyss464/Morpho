@@ -79,7 +79,7 @@ import unicodedata
 
 import requests
 
-ROOT = "/home/abysser/Code/learning/Morpho"
+ROOT = os.environ.get("MORPHO_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 API = os.environ.get("MORPHO_API", "http://127.0.0.1:30012/api")
 DB = os.environ.get("MORPHO_DB", f"{ROOT}/data/working.db")
 ACTOR = os.environ.get("MORPHO_USER", "ops")

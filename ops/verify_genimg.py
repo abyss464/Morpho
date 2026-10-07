@@ -36,15 +36,12 @@ import open_clip
 import torch
 from PIL import Image
 
-ROOT = "/home/abysser/Code/learning/Morpho"
+ROOT = os.environ.get("MORPHO_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DB = f"{ROOT}/data/working.db"
 MEDIA = f"{ROOT}/data/media"
 API = os.environ.get("MORPHO_API", "http://127.0.0.1:30012/api")
 
-SCRATCH = (
-    "/tmp/claude-1000/-home-abysser-Code-learning-Morpho/"
-    "d3d89616-3276-4389-b525-1b3f57774b29/scratchpad"
-)
+SCRATCH = os.environ.get("MORPHO_GENIMG_DIR", f"{ROOT}/ops/logs/genimg")
 
 # Wave-1 defaults; every one is overridable from the command line (or the
 # matching MORPHO_GENIMG_* environment variable) so later waves reuse the
