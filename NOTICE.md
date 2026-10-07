@@ -78,9 +78,11 @@ ranks); see `content/wordlists/README.md`.
   (`app/app/licenses/Source-Serif-4-OFL.txt`).
 - The sound effects in `app/app/src/main/assets/sfx/` are synthesized by this project.
 
-## Not in this repository
+## Pictures and audio
 
-Pictures and audio are not part of the repository. The pipeline fetches pictures from
-Pixabay, Openverse and Wikimedia Commons (each under its own licence, recorded per picture
-where the source reports it) and synthesizes speech locally; whoever builds and distributes
-an APK with media is responsible for crediting those pictures.
+Pictures and audio are not part of the repository; the APK carries them. Every picture in the
+APK is listed with its source page, author and licence in `content/attribution/images.tsv`
+(Pixabay, Openverse, Wikimedia Commons and COCO 2014 / Flickr pictures, each under its own
+licence; two pictures uploaded by hand have no recorded source). Pictures under a
+noncommercial licence keep that restriction, and the APK is distributed for noncommercial use
+only. Speech is synthesized locally by this project's TTS adapter.
