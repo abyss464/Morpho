@@ -30,7 +30,10 @@ file, then renamed). A body that is not a version-1 document is refused with 400
   - `due` and `lastReview` are ISO-8601 UTC strings; `lastReview` may be null.
   - `state` is 0 New, 1 Learning, 2 Review, 3 Relearning.
 - **Stage**, a word being learned or relearned in the stream (stream.md §1):
-  `{ "stage": "learning" | "relearning", "next": "know" | "explain1" | "explain2" | "use", "immediate", "needClean", "thenUse", "flawed" }`.
+  `{ "stage": "learning", "next": "know" | "explain" | "spell" | "use", "immediate", "flawed", "attempt" }`.
+  A stage in an older document is read as follows: `next` `explain1` / `explain2` becomes
+  `explain`; a `relearning` stage is dropped (the word stays in Review with its card);
+  missing `attempt` is 0; `needClean` and `thenUse` are ignored.
   Stream positions (`since`) are per client and are never sent.
 - A client sends every word it has a card or a stage for. A word it has never met is absent.
 - Today's counters, step history, the daily new-word setting and the step on screen stay
@@ -47,7 +50,7 @@ are taken together:
 
 1. **Both have a card:** the one with the later `lastReview` wins. A missing `lastReview` counts as oldest; on a tie S stays.
 2. **Only one has a card:** it wins. A word graduated or reviewed anywhere is further along than one still being learned elsewhere.
-3. **Neither has a card:** the stage further along wins, by `next` (know < explain1 < explain2 < use). On a tie S stays.
+3. **Neither has a card:** the stage further along wins, by `next` (know < explain < spell < use). On a tie S stays.
 
 Words on only one side are kept. Notes: the later `at` wins. Sync never deletes anything.
 

@@ -7,14 +7,16 @@ platform adaptation.
 
 ## 1. Stages of a word
 
-Every word moves through four stages. A word is in exactly one stage at a time.
+Every word moves through three stages. A word is in exactly one stage at a time.
 
 | Stage | Meaning | Steps it owns |
 |---|---|---|
 | **New** | not yet met | — |
-| **Learning** | met today, not yet graduated | `know`, `explain1`, `explain2`, `use` |
+| **Learning** | met today, not yet graduated | `know`, `explain`, `spell`, `use` |
 | **Review** | graduated; scheduled by FSRS | `review` |
-| **Relearning** | a review was rated Again | `know`, `explain2` |
+
+A new word is learned in one pass: each step is passed once (§3). Its first review is the next
+day.
 
 Words enter in release learning order (`words.learning_order`), so an auxiliary word that a
 definition depends on is always met before the word that uses it.
@@ -27,7 +29,21 @@ All steps are completed with taps or clicks only. A keyboard is never required.
 Picture, word, phonetic, part of speech, definition, example. On arrival the word, its
 primary definition and its example are read aloud in that order. Always passes.
 
-### `explain1` / `explain2` — rebuild the meaning
+### Mistakes and passing
+Every task counts the learner's mistakes:
+- each blank found wrong at a check counts once (a wrong piece or letter left in its blank
+  and checked again is not counted again);
+- in `use` and fill-in reviews, each wrong pick counts once;
+- "Show the next piece" / "Show the next letter" counts once per use;
+- "Show the answer" / "Show the word" makes the task **failed** outright.
+
+| Mistakes | Outcome | Passed |
+|---|---|---|
+| 0 | **clean** | yes |
+| 1 | **shaky** | yes |
+| 2 or more, or the answer shown | **failed** | no |
+
+### `explain` — rebuild the meaning
 "What does *word* mean?" The primary definition stands in the tray with blanks (§4): the
 part that names the word, its prepositions and its punctuation are already in place, and the
 learner taps pieces into the blanks. Decoy pieces from other words are mixed in.
@@ -36,35 +52,29 @@ learner taps pieces into the blanks. Decoy pieces from other words are mixed in.
   pieces turn red and go back to the bank when tapped, reopening their blank. "Start over"
   empties every blank.
 - Two ways out are always there: "Show the next piece" puts the right piece into the first
-  blank that is open or wrong; "Show the answer" fills every blank. Either makes the step
-  **failed**.
-- `explain1` comes **immediately** after `know`, shows the picture, uses easy pieces and
-  decoys drawn from the words currently in the learning window.
-- `explain2` comes later (§5), shows no picture, uses hard pieces and decoys drawn from all
-  words already met.
+  blank that is open or wrong; "Show the answer" fills every blank.
+- Comes **immediately** after `know`, shows the picture, uses easy pieces and decoys drawn
+  from the words currently in the learning window.
 - Solving reads the definition aloud. Continue is disabled until the tray is correct.
 
-Outcome of an explain step:
-
-| Result | Name |
-|---|---|
-| solved, no failed check, no hint | **clean** |
-| solved after exactly one failed check, no hint | **shaky** |
-| solved with a hint, or after two or more failed checks | **failed** |
+### `spell` — spell the word from its meaning
+Comes **immediately** after a passed `explain`. The same task as a review's spelling (below):
+"Which word means this?" over the definition with the word blanked out, letter tiles with two
+decoys, the picture behind "Show picture". Solving plays the word.
 
 ### `use` — fill the word into its example
 The example sentence with the word blanked; four word options: the word and its three bound
 distractors (`distractors` table). Distractors the learner has already met are shown as they
 are; the order of options is shuffled deterministically per word. Picking the right word
 fills the blank and reads the sentence aloud. A wrong pick marks that option red, shows that
-word's own primary definition under it, and the learner picks again.
-
-Outcome: **clean** = right on the first pick; **failed** = otherwise.
+word's own primary definition under it, and the learner picks again. Comes after the word's
+`spell`, delayed (§5).
 
 ### `review` — one task per due word
 Shows the word only (picture behind a "Show picture" button) and plays the word. The task
-type alternates with the word's review count: odd reviews (1st, 3rd, …) are an `explain2`
-style rebuild followed by **spelling the word**; even reviews are a `use` style fill-in.
+type alternates with the word's review count: odd reviews (1st, 3rd, …) are a rebuild
+(hard pieces, no picture, decoys from all words already met) followed by **spelling the
+word**; even reviews are a `use` style fill-in.
 
 Spelling: "Which word means this?" over the primary definition with every form of the word
 blanked out; the picture stays behind "Show picture" and the word is not played. The word's
@@ -72,9 +82,8 @@ letters are blanks, except spaces, hyphens and hint letters: the first letter, a
 too when the word has more than five letters. The tiles are the missing letters plus two
 decoy letters the word does not contain, shuffled deterministically per word id. Tapping a
 tile fills the first open blank; filling the last blank checks it; wrong letters turn red
-and go back when tapped. "Show the next letter" and "Show the word" are always there and
-make the spelling **failed**; otherwise clean / shaky / failed as for a rebuild. Solving
-plays the word. The review's outcome is the worse of the rebuild and the spelling, and its
+and go back when tapped. "Show the next letter" and "Show the word" are always there.
+Solving plays the word. The review's outcome is the worse of the rebuild and the spelling, and its
 time is the two parts' time added. After the task, the full card is shown
 (picture, definition, example; definition read aloud) with the derived rating (§6), the next
 interval, and a four-button control to change the rating. "Say it in your own words" is an
@@ -84,20 +93,22 @@ optional note, saved per word and shown on the word card afterwards.
 
 | Step and outcome | Next for that word |
 |---|---|
-| `know` (Learning) | `explain1` at once |
-| `explain1` clean or shaky | `explain2` (delayed) |
-| `explain1` failed | `explain2` (delayed), and it must be **clean** twice |
-| `explain2` clean | `use` (delayed) |
-| `explain2` shaky | another `explain2` (delayed) |
-| `explain2` failed | `know`, then `explain2` (delayed) |
-| `use` clean | **graduates**: enters Review |
-| `use` failed | `explain2` (delayed), then `use` (delayed) |
-| `review` rated Again | Relearning: `know` at once, then `explain2` (delayed) |
-| Relearning `explain2` clean or shaky | back to Review (FSRS state already updated by the Again) |
-| Relearning `explain2` failed | `know`, then `explain2` (delayed) |
+| `know` | `explain` at once |
+| `explain` passed | `spell` at once |
+| `explain` failed | `explain` again (delayed) |
+| `spell` passed | `use` (delayed) |
+| `spell` failed | `spell` again (delayed) |
+| `use` passed | **graduates**: enters Review |
+| `use` failed | `use` again (delayed) |
+| `review` rated Again | stays in Review, due the next day; no extra steps today |
+
+A step done again is shuffled differently from the attempt before (its pieces, tiles or
+options are seeded with the word id and the attempt number; the first attempt uses the word
+id alone).
 
 Graduation rates the word's first FSRS review as **Good**, or **Hard** if any of its
-learning steps was shaky or failed. Its first due date follows from that.
+learning steps was shaky or failed. Whatever the rating, its first review is due at the start
+of the next local day.
 
 ## 4. Pieces
 
@@ -145,22 +156,24 @@ words, spacing **S = 3** steps, daily new words **N** (setting, default 20), bac
 
 To choose the next step:
 
+0. **Immediate steps.** `explain` after `know` and `spell` after a passed `explain` come
+   next, before anything else.
 1. **Delayed steps that are ready.** A delayed step is ready when at least S other steps have
    been taken since that word's last step. Take the ready one that has waited longest.
 2. **Otherwise alternate review and new.** Take up to two due reviews (lowest FSRS
    retrievability first), then one new word (`know`). A new word is allowed only when fewer
-   than W words are Learning or Relearning, fewer than N words were introduced today, and
-   fewer than B reviews are due.
+   than W words are Learning, fewer than N words were introduced today, and fewer than B
+   reviews are due.
 3. **Nothing ready but delayed steps pending.** Take the delayed step that has waited
    longest, even if not yet spaced.
 4. **Nothing left.** The stream for today is done.
 
 Two guards apply to every choice when an alternative exists: the same word never appears
-in two consecutive steps (except `know` → `explain1`), and the same step type never appears
-more than three times in a row.
+in two consecutive steps (except the immediate steps `know` → `explain` → `spell`), and the
+same step type never appears more than three times in a row.
 
 Progress shown to the learner: steps done today out of done + remaining, where remaining is
-due reviews + pending steps of Learning/Relearning words + 4 × new words still allowed today.
+due reviews + pending steps of Learning words + 4 × new words still allowed today.
 
 The learner can pause at any step; the stream resumes exactly where it stopped. "Meet 5 more
 words" on the done screen raises today's new-word allowance by 5.
@@ -178,6 +191,13 @@ Review ratings are derived from the task, never asked for first:
 
 The derived rating is applied at once and shown with its next interval; tapping another
 rating replaces it (the card is rescheduled from its state before this review).
+
+Scheduling is FSRS-6 with the default weights, request retention 0.9, no short-term
+(sub-day) steps and no interval fuzz (ts-fsrs `generatorParameters({ enable_short_term:
+false, enable_fuzz: false })`); the Android client ports the same long-term scheduler, so
+both clients give the same interval. Two dates are fixed rather than taken from FSRS: a
+graduated word's first review, and a review rated Again, are both due at the start of the
+next local day. Intervals are shown in whole days (at least 1 day).
 
 ## 7. Screens
 
