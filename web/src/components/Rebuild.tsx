@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { play } from '../audio';
-import { buildPuzzle } from '../explain';
+import { buildPuzzle, outcomeOf } from '../explain';
 import type { Difficulty } from '../explain';
 import type { Outcome } from '../stream';
 import type { WordFull } from '../types';
@@ -12,26 +12,29 @@ const norm = (s: string) => s.trim().toLowerCase();
  * Rebuild the meaning: the definition stands with its blanks open, the part that names the word,
  * its prepositions and punctuation already in place; the learner taps pieces into the blanks in
  * order, decoys mixed in. Filling the last blank checks it; wrong pieces turn red and go back with
- * a tap. At any time a hint fills the first wrong or open blank, or the whole answer is shown;
- * either counts as failed. Reports clean, shaky or failed once.
+ * a tap. At any time a hint fills the first wrong or open blank, or the whole answer is shown.
+ * Each wrong piece checked and each hint is a mistake; showing the answer fails it. Reports
+ * clean, shaky or failed once (contract §2).
  */
 export function Rebuild({
   w,
   pool,
   difficulty,
+  attempt = 0,
   onSolved,
 }: {
   w: WordFull;
   pool: WordFull[];
   difficulty: Difficulty;
+  attempt?: number;
   onSolved: (outcome: Outcome) => void;
 }) {
-  const puzzle = useMemo(() => buildPuzzle(w, pool, difficulty), [w, pool, difficulty]);
+  const puzzle = useMemo(() => buildPuzzle(w, pool, difficulty, attempt), [w, pool, difficulty, attempt]);
   const [filled, setFilled] = useState<(number | null)[]>(() => puzzle?.answer.map(() => null) ?? []);
   const [checked, setChecked] = useState(false);
-  const [misses, setMisses] = useState(0);
-  const [hinted, setHinted] = useState(false);
   const [solved, setSolved] = useState(false);
+  // Mistakes so far; a wrong piece left in its blank and checked again counts once.
+  const mistakes = useRef({ n: 0, seen: new Set<string>(), revealed: false });
 
   if (!puzzle) return null;
   const textOf = (id: number) => puzzle.pieces.find((p) => p.id === id)!.text;
@@ -40,23 +43,30 @@ export function Rebuild({
   const used = (id: number) => filled.includes(id);
   const nextOpen = filled.indexOf(null);
 
-  const check = (next: (number | null)[], usedHint: boolean) => {
+  const check = (next: (number | null)[]) => {
     if (next.includes(null)) return;
     setChecked(true);
     if (next.every((_, k) => right(k, next))) {
       setSolved(true);
       const def = primarySense(w)?.audio;
       if (def) play(def);
-      onSolved(usedHint || misses >= 2 ? 'failed' : misses === 1 ? 'shaky' : 'clean');
-    } else {
-      setMisses((m) => m + 1);
+      onSolved(outcomeOf(mistakes.current.n, mistakes.current.revealed));
+      return;
     }
+    const m = mistakes.current;
+    next.forEach((id, k) => {
+      const key = `${k}:${id}`;
+      if (!right(k, next) && !m.seen.has(key)) {
+        m.seen.add(key);
+        m.n += 1;
+      }
+    });
   };
 
-  const update = (next: (number | null)[], usedHint = hinted) => {
+  const update = (next: (number | null)[]) => {
     setFilled(next);
     setChecked(false);
-    check(next, usedHint);
+    check(next);
   };
   const place = (id: number) => {
     if (solved || used(id) || nextOpen < 0) return;
@@ -70,11 +80,12 @@ export function Rebuild({
     const k = filled.findIndex((_, i) => !right(i));
     const piece = puzzle.pieces.find((p) => norm(p.text) === answer[k] && !filled.some((x, i) => x === p.id && right(i)));
     if (k < 0 || !piece) return;
-    setHinted(true);
-    update(
-      filled.map((x, i) => (i === k ? piece.id : x === piece.id ? null : x)),
-      true,
-    );
+    mistakes.current.n += 1;
+    update(filled.map((x, i) => (i === k ? piece.id : x === piece.id ? null : x)));
+  };
+  const reveal = () => {
+    mistakes.current.revealed = true;
+    update(puzzle.answer);
   };
 
   const wrongShown = checked && !filled.includes(null) && !solved;
@@ -145,7 +156,7 @@ export function Rebuild({
           </button>
         )}
         {!solved && (
-          <button type="button" className="link" onClick={() => update(puzzle.answer, true)}>
+          <button type="button" className="link" onClick={reveal}>
             Show the answer
           </button>
         )}

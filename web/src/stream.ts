@@ -5,7 +5,7 @@ import { createEmptyCard, fsrs, generatorParameters, Rating } from 'ts-fsrs';
 import type { Card, Grade } from 'ts-fsrs';
 import type { Index } from './api';
 import { emptyDay, localDate } from './store';
-import type { Current, Progress, StepKind, StoredCard, WordState } from './store';
+import type { Current, Progress, StepKind, StoredCard } from './store';
 
 /** Learning window, spacing between a word's steps, backlog guard (contract §5). */
 export const WINDOW = 5;
@@ -14,8 +14,20 @@ export const BACKLOG = 50;
 
 export type Outcome = 'clean' | 'shaky' | 'failed';
 
-const scheduler = fsrs(generatorParameters({ enable_fuzz: true }));
+// Long-term FSRS-6 without fuzz, the scheduler the Android client ports (contract §6).
+const scheduler = fsrs(generatorParameters({ enable_short_term: false, enable_fuzz: false }));
 const toStored = (c: Card): StoredCard => JSON.parse(JSON.stringify(c)) as StoredCard;
+
+/** Due at the start of the next local day: a graduated word's first review, and a review rated Again. */
+function tomorrow(c: Card, now: Date): Card {
+  return { ...c, due: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1), scheduled_days: 1 };
+}
+
+/** A review of `prev` rated `rating` (contract §6). */
+function schedule(prev: StoredCard, now: Date, rating: Grade): Card {
+  const c = scheduler.next(prev, now, rating).card;
+  return rating === Rating.Again ? tomorrow(c, now) : c;
+}
 
 /** Today's counters, reset when the date changes. */
 export function today(p: Progress): Progress {
@@ -50,7 +62,9 @@ function mayIntroduce(p: Progress, index: Index, due: number): boolean {
   );
 }
 
-const reviewTask = (p: Progress, id: number): 'rebuild' | 'fill' => ((p.reviews[id] ?? 0) % 2 === 0 ? 'rebuild' : 'fill');
+/** Odd reviews (1st, 3rd, …) rebuild and spell; even ones fill in. */
+const reviewTask = (p: Progress, id: number): 'rebuild' | 'fill' =>
+  ((p.cards[id]?.reps ?? 1) - 1) % 2 === 0 ? 'rebuild' : 'fill';
 
 /** Chooses the next step, or null when today's stream is done (contract §5). */
 export function nextStep(input: Progress, index: Index, now = Date.now()): Current | null {
@@ -58,7 +72,7 @@ export function nextStep(input: Progress, index: Index, now = Date.now()): Curre
   const learning = Object.entries(p.words).map(([id, ws]) => ({ id: Number(id), ws }));
 
   const immediate = learning.filter((x) => x.ws.immediate).sort((a, b) => a.ws.since - b.ws.since)[0];
-  if (immediate) return { word: immediate.id, kind: immediate.ws.next };
+  if (immediate) return { word: immediate.id, kind: immediate.ws.next, attempt: immediate.ws.attempt };
 
   const delayed = learning.filter((x) => !x.ws.immediate).sort((a, b) => a.ws.since - b.ws.since);
   const ready = delayed.filter((x) => p.seq - x.ws.since >= SPACING);
@@ -71,9 +85,9 @@ export function nextStep(input: Progress, index: Index, now = Date.now()): Curre
   const mixed = p.day.cycle % 3 < 2 ? [...reviews, ...meet] : [...meet, ...reviews];
 
   const candidates: Current[] = [
-    ...ready.map((x) => ({ word: x.id, kind: x.ws.next })),
+    ...ready.map((x) => ({ word: x.id, kind: x.ws.next, attempt: x.ws.attempt })),
     ...mixed,
-    ...waiting.map((x) => ({ word: x.id, kind: x.ws.next })),
+    ...waiting.map((x) => ({ word: x.id, kind: x.ws.next, attempt: x.ws.attempt })),
   ];
   if (!candidates.length) return null;
 
@@ -83,26 +97,13 @@ export function nextStep(input: Progress, index: Index, now = Date.now()): Curre
   return candidates.find(fine) ?? candidates[0]!;
 }
 
-/** Steps still ahead of a Learning or Relearning word. */
-function stepsLeft(ws: WordState): number {
-  const after = ws.stage === 'learning' && ws.thenUse ? 1 : 0;
-  switch (ws.next) {
-    case 'know':
-      return 1 + ws.needClean + after;
-    case 'explain1':
-      return 1 + ws.needClean + after;
-    case 'explain2':
-      return ws.needClean + after;
-    case 'use':
-      return 1;
-  }
-}
+const STEPS_LEFT: Record<StepKind, number> = { know: 4, explain: 3, spell: 2, use: 1 };
 
 /** Steps done today and the estimated total, for the progress bar (contract §5). */
 export function streamProgress(input: Progress, index: Index, now = Date.now()): { done: number; total: number } {
   const p = today(input);
   const due = dueReviews(p, index, now).length;
-  const pending = Object.values(p.words).reduce((n, ws) => n + stepsLeft(ws), 0);
+  const pending = Object.values(p.words).reduce((n, ws) => n + STEPS_LEFT[ws.next], 0);
   const fresh = due < BACKLOG ? Math.min(newAllowance(p), index.words.length) : 0;
   return { done: p.day.steps, total: p.day.steps + due + pending + 4 * fresh };
 }
@@ -126,80 +127,48 @@ export function complete(input: Progress, cur: Current, outcome: Outcome, ms: nu
   p.history[p.day.date] = (p.history[p.day.date] ?? 0) + 1;
   p.current = null;
   const ws = p.words[id];
-  const later = (next: StepKind, extra: Partial<WordState> = {}) => {
-    p.words[id] = { ...p.words[id]!, next, immediate: false, since: p.seq, ...extra };
-  };
 
   switch (cur.kind) {
     case 'know':
       if (!ws) {
-        p.words[id] = {
-          stage: 'learning',
-          next: 'explain1',
-          immediate: true,
-          since: p.seq,
-          needClean: 1,
-          thenUse: true,
-          flawed: false,
-        };
         p.day.introduced += 1;
         p.day.cycle += 1;
-      } else {
-        later('explain2');
       }
+      p.words[id] = { stage: 'learning', next: 'explain', immediate: true, since: p.seq, flawed: ws?.flawed ?? false, attempt: 0 };
       break;
-    case 'explain1':
-      later('explain2', outcome === 'failed' ? { needClean: 2, flawed: true } : { flawed: ws!.flawed || outcome === 'shaky' });
-      break;
-    case 'explain2':
-      if (outcome === 'clean') {
-        const needClean = ws!.needClean - 1;
-        if (needClean > 0) later('explain2', { needClean });
-        else if (ws!.stage === 'learning' && ws!.thenUse) later('use', { needClean: 1 });
-        else delete p.words[id];
-      } else if (outcome === 'shaky') {
-        later('explain2', { flawed: true });
+    case 'explain':
+    case 'spell':
+    case 'use': {
+      const flawed = ws!.flawed || outcome !== 'clean';
+      if (outcome === 'failed') {
+        // Done again a few steps later, shuffled anew.
+        p.words[id] = { ...ws!, immediate: false, since: p.seq, flawed, attempt: ws!.attempt + 1 };
+      } else if (cur.kind === 'explain') {
+        p.words[id] = { ...ws!, next: 'spell', immediate: true, since: p.seq, flawed, attempt: 0 };
+      } else if (cur.kind === 'spell') {
+        p.words[id] = { ...ws!, next: 'use', immediate: false, since: p.seq, flawed, attempt: 0 };
       } else {
-        p.words[id] = { ...ws!, next: 'know', immediate: true, since: p.seq, flawed: true };
-      }
-      break;
-    case 'use':
-      if (outcome === 'clean') {
-        const rating = ws!.flawed ? Rating.Hard : Rating.Good;
-        p.cards[id] = toStored(scheduler.next(createEmptyCard(now), now, rating).card);
+        const first = scheduler.next(createEmptyCard(now), now, flawed ? Rating.Hard : Rating.Good).card;
+        p.cards[id] = toStored(tomorrow(first, now));
         delete p.words[id];
         p.day.met += 1;
-        if (!ws!.flawed) p.day.metClean += 1;
-      } else {
-        later('explain2', { needClean: 1, thenUse: true, flawed: true });
+        if (!flawed) p.day.metClean += 1;
       }
       break;
+    }
     case 'review': {
       const prev = p.cards[id]!;
       const rating = deriveRating(outcome, ms, cur.task ?? 'rebuild');
-      p.cards[id] = toStored(scheduler.next(prev, now, rating).card);
+      p.cards[id] = toStored(schedule(prev, now, rating));
       p.reviews[id] = (p.reviews[id] ?? 0) + 1;
       p.day.reviewed += 1;
       if (outcome === 'clean') p.day.reviewedClean += 1;
       p.day.cycle += 1;
       p.lastReview = { word: id, prev, rating };
-      if (rating === Rating.Again) relearn(p, id);
       break;
     }
   }
   return p;
-}
-
-function relearn(p: Progress, id: number): void {
-  p.words[id] = {
-    stage: 'relearning',
-    next: 'know',
-    immediate: true,
-    since: p.seq,
-    needClean: 1,
-    thenUse: false,
-    flawed: true,
-  };
 }
 
 /** Replaces the derived rating of the last review with the learner's own choice. */
@@ -207,17 +176,14 @@ export function overrideRating(input: Progress, rating: Grade, now = new Date())
   const last = input.lastReview;
   if (!last || last.rating === rating) return input;
   const p: Progress = structuredClone(input);
-  p.cards[last.word] = toStored(scheduler.next(last.prev, now, rating).card);
-  if (rating === Rating.Again) relearn(p, last.word);
-  else if (p.words[last.word]?.stage === 'relearning') delete p.words[last.word];
+  p.cards[last.word] = toStored(schedule(last.prev, now, rating));
   p.lastReview = { ...last, rating };
   return p;
 }
 
 /** When the next review would fall for each rating, from the card as it was before the review. */
 export function intervals(prev: StoredCard, now = new Date()): Record<Grade, number> {
-  const r = scheduler.repeat(prev, now);
-  const at = (g: Grade) => r[g].card.due.getTime() - now.getTime();
+  const at = (g: Grade) => schedule(prev, now, g).due.getTime() - now.getTime();
   return {
     [Rating.Again]: at(Rating.Again),
     [Rating.Hard]: at(Rating.Hard),

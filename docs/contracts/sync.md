@@ -50,7 +50,7 @@ are taken together:
 
 1. **Both have a card:** the one with the later `lastReview` wins. A missing `lastReview` counts as oldest; on a tie S stays.
 2. **Only one has a card:** it wins. A word graduated or reviewed anywhere is further along than one still being learned elsewhere.
-3. **Neither has a card:** the stage further along wins, by `next` (know < explain < spell < use). On a tie S stays.
+3. **Neither has a card:** the stage further along wins, by `next` (know < explain < spell < use), then by `attempt`. On a tie S stays.
 
 Words on only one side are kept. Notes: the later `at` wins. Sync never deletes anything.
 

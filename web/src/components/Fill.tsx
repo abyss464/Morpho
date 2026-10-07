@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { play } from '../audio';
-import { seeded, shuffle } from '../explain';
+import { outcomeOf, retrySeed, seeded, shuffle } from '../explain';
 import type { Outcome } from '../stream';
 import type { WordFull } from '../types';
 import { primarySense, wordPattern } from './parts';
@@ -21,12 +21,25 @@ function gap(w: WordFull): { before: string; target: string; after: string; audi
 
 /**
  * Use it: the word is blanked out of its example and picked from four look-alike words.
- * A wrong pick turns red and shows what that word means; the learner picks again. Reports
- * clean (right first time) or failed once the right word is picked.
+ * A wrong pick turns red and shows what that word means; the learner picks again. Each wrong
+ * pick is a mistake; reports clean, shaky or failed once the right word is picked.
  */
-export function Fill({ w, others, onSolved }: { w: WordFull; others: WordFull[]; onSolved: (outcome: Outcome) => void }) {
+export function Fill({
+  w,
+  others,
+  attempt = 0,
+  onSolved,
+}: {
+  w: WordFull;
+  others: WordFull[];
+  attempt?: number;
+  onSolved: (outcome: Outcome) => void;
+}) {
   const g = useMemo(() => gap(w), [w]);
-  const options = useMemo(() => shuffle([w, ...others.slice(0, 3)], seeded(w.id + 7)), [w, others]);
+  const options = useMemo(
+    () => shuffle([w, ...others.slice(0, 3)], seeded(retrySeed(w.id + 7, attempt))),
+    [w, others, attempt],
+  );
   const [wrong, setWrong] = useState<number[]>([]);
   const [solved, setSolved] = useState(false);
 
@@ -39,7 +52,7 @@ export function Fill({ w, others, onSolved }: { w: WordFull; others: WordFull[];
     }
     setSolved(true);
     if (g.audio) play(g.audio);
-    onSolved(wrong.length ? 'failed' : 'clean');
+    onSolved(outcomeOf(wrong.length, false));
   };
 
   return (

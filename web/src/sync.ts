@@ -41,13 +41,12 @@ function fromCard(c: SyncCard): StoredCard {
   };
 }
 
-const toStage = ({ stage, next, immediate, needClean, thenUse, flawed }: WordState): SyncStage => ({
+const toStage = ({ stage, next, immediate, flawed, attempt }: WordState): SyncStage => ({
   stage,
   next,
   immediate,
-  needClean,
-  thenUse,
   flawed,
+  attempt,
 });
 
 export function toDoc(p: Progress): SyncDoc {
@@ -67,7 +66,7 @@ function canon(e: SyncEntry | undefined): string {
   return JSON.stringify([
     c && [Date.parse(c.due), c.stability, c.difficulty, c.elapsedDays, c.scheduledDays, c.reps, c.lapses, c.state,
       c.lastReview ? Date.parse(c.lastReview) : null],
-    s && [s.stage, s.next, s.immediate, s.needClean, s.thenUse, s.flawed],
+    s && [s.stage, s.next, s.immediate, s.flawed, s.attempt],
   ]);
 }
 

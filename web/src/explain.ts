@@ -284,12 +284,19 @@ function blankTexts(parts: Part[]): string[] {
  * Builds the puzzle for one word. Decoys are pieces of the pool words' definitions: easy
  * puzzles draw from the words being learned alongside, hard ones from every word met.
  */
-export function buildPuzzle(w: WordFull, pool: WordFull[], difficulty: Difficulty = 'easy'): Puzzle | null {
+/** The seed for a task's shuffle: the first attempt's own seed, moved on for each retry (contract §3). */
+export const retrySeed = (seed: number, attempt = 0) => seed + attempt * 7919;
+
+/** Outcome from a task's mistakes: none is clean, one still passes as shaky, more fail (contract §2). */
+export const outcomeOf = (mistakes: number, revealed: boolean) =>
+  revealed || mistakes >= 2 ? 'failed' : mistakes === 1 ? 'shaky' : 'clean';
+
+export function buildPuzzle(w: WordFull, pool: WordFull[], difficulty: Difficulty = 'easy', attempt = 0): Puzzle | null {
   const sense = primarySense(w);
   if (!sense) return null;
   const parts = cut(sense.def, w.word, difficulty);
   const answerTexts = blankTexts(parts);
-  const rand = seeded(w.id);
+  const rand = seeded(retrySeed(w.id, attempt));
   const own = new Set(answerTexts.map((p) => p.toLowerCase()));
   const candidates = pool
     .filter((x) => x.id !== w.id)

@@ -13,7 +13,6 @@ export function Today({ index }: { index: Index }) {
   const progress = today(useProgress());
   const due = dueReviews(progress, index).length;
   const fresh = due < BACKLOG ? newAllowance(progress) : 0;
-  // A relearning word has a card and a stage: count it once.
   const met = new Set([...Object.keys(progress.cards), ...Object.keys(progress.words)]).size;
   const total = index.words.length;
   const days = week(progress);

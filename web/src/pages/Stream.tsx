@@ -38,12 +38,12 @@ const ordinal = (n: number) => {
 
 /** How a review task went, as the result card says it. */
 const HOW: Record<'rebuild' | 'fill', Record<Outcome, string>> = {
-  rebuild: { clean: 'Rebuilt with no mistakes', shaky: 'Rebuilt after one wrong check', failed: 'Needed help or several tries' },
-  fill: { clean: 'Filled in first time', shaky: 'Filled in after a wrong pick', failed: 'Filled in after a wrong pick' },
+  rebuild: { clean: 'Rebuilt with no mistakes', shaky: 'Rebuilt with one mistake', failed: 'Needed help or several tries' },
+  fill: { clean: 'Filled in first time', shaky: 'Filled in after one wrong pick', failed: 'Needed several picks' },
 };
 const SPELLED: Record<Outcome, string> = {
   clean: 'Spelled with no mistakes',
-  shaky: 'Spelled after one wrong check',
+  shaky: 'Spelled with one mistake',
   failed: 'Needed help or several tries to spell it',
 };
 const RANK: Record<Outcome, number> = { clean: 0, shaky: 1, failed: 2 };
@@ -64,11 +64,13 @@ function Stage({ kind, unit, again, nth }: { kind: Current['kind']; unit?: numbe
       ? ['mk learn', 'Look again']
       : kind === 'know'
         ? ['mk new', `New word${unit ? ` · Unit ${unit}` : ''}`]
-        : kind === 'explain1' || kind === 'explain2'
+        : kind === 'explain'
           ? ['mk learn', 'Explain it']
-          : kind === 'use'
-            ? ['mk learn', 'Use it']
-            : ['mk review', nth ? `Review · ${ordinal(nth)} time` : 'Review'];
+          : kind === 'spell'
+            ? ['mk learn', 'Spell it']
+            : kind === 'use'
+              ? ['mk learn', 'Use it']
+              : ['mk review', nth ? `Review · ${ordinal(nth)} time` : 'Review'];
   return (
     <span className="stage">
       <i className={mark} aria-hidden="true" />
@@ -80,7 +82,7 @@ function Stage({ kind, unit, again, nth }: { kind: Current['kind']; unit?: numbe
 /** Words whose definitions supply decoy pieces: those being learned now for easy puzzles, any met word for hard ones. */
 function poolIds(p: Progress, index: Index, cur: Current): number[] {
   const met = Object.keys(p.cards).map(Number);
-  if (cur.kind === 'explain1') {
+  if (cur.kind === 'explain') {
     const recent = met.sort((a, b) => (index.pos.get(b) ?? 0) - (index.pos.get(a) ?? 0)).slice(0, 8);
     return [...new Set([...Object.keys(p.words).map(Number), ...recent])].filter((id) => id !== cur.word);
   }
@@ -90,8 +92,7 @@ function poolIds(p: Progress, index: Index, cur: Current): number[] {
   ).slice(0, 12);
 }
 
-const needsPool = (c: Current) =>
-  c.kind === 'explain1' || c.kind === 'explain2' || (c.kind === 'review' && c.task === 'rebuild');
+const needsPool = (c: Current) => c.kind === 'explain' || (c.kind === 'review' && c.task === 'rebuild');
 const needsOthers = (c: Current) => c.kind === 'use' || (c.kind === 'review' && c.task === 'fill');
 
 interface Loaded {
@@ -127,7 +128,7 @@ export function Stream({ index }: { index: Index }) {
     return { w, pool, others };
     // Reload only when the step changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cur?.word, cur?.kind, cur?.task]);
+  }, [cur?.word, cur?.kind, cur?.task, cur?.attempt]);
   const loaded = data.status === 'ok' ? data.data : null;
 
   useEffect(() => {
@@ -213,10 +214,12 @@ export function Stream({ index }: { index: Index }) {
     );
   }
 
-  /* ---------- explain, use, review task ---------- */
+  /* ---------- explain, spell, use, review task ---------- */
   const review = cur.kind === 'review';
-  const rebuild = cur.kind === 'explain1' || cur.kind === 'explain2' || (review && cur.task === 'rebuild');
-  const showPicture = cur.kind === 'explain1' || cur.kind === 'use' || (review && !cover);
+  const rebuild = cur.kind === 'explain' || (review && cur.task === 'rebuild');
+  // A picture would give the word away while spelling or reviewing: it waits behind a button.
+  const coverable = review || cur.kind === 'spell';
+  const showPicture = !coverable || !cover;
   const solved = (o: Outcome) => {
     if (review && !rebuild) reviewed(o, Date.now() - started.current);
     else {
@@ -233,7 +236,7 @@ export function Stream({ index }: { index: Index }) {
           <span className="qm" aria-hidden="true">
             ?
           </span>
-          {review && (
+          {coverable && (
             <button type="button" className="btn" onClick={() => setCover(false)}>
               Show picture
             </button>
@@ -265,9 +268,41 @@ export function Stream({ index }: { index: Index }) {
     );
   }
 
+  const attempt = cur.attempt ?? 0;
+  const nav = !review && (
+    <StepNav
+      enabled={!!outcome}
+      onContinue={advance}
+      hint={
+        outcome === 'failed'
+          ? 'More than one mistake: this one comes back in a few steps.'
+          : outcome
+            ? undefined
+            : 'Continue opens once it is done.'
+      }
+    />
+  );
+
+  /* ---------- spell: from the meaning back to the word ---------- */
+  if (cur.kind === 'spell') {
+    return (
+      <>
+        <article className="card step" key={`${w.id}-spell-${attempt}`}>
+          {picture}
+          <div className="body">
+            <Stage kind="spell" />
+            <h1 className="ask-title">Which word means this?</h1>
+            <Spell w={w} attempt={attempt} onSolved={solved} />
+          </div>
+        </article>
+        {nav}
+      </>
+    );
+  }
+
   return (
     <>
-      <article className="card step" key={`${w.id}-${cur.kind}`}>
+      <article className="card step" key={`${w.id}-${cur.kind}-${attempt}`}>
         {picture}
         <div className="body">
           <Stage kind={cur.kind} nth={review ? progress.cards[cur.word]?.reps : undefined} />
@@ -282,25 +317,20 @@ export function Stream({ index }: { index: Index }) {
               <Rebuild
                 w={w}
                 pool={loaded.pool}
-                difficulty={cur.kind === 'explain1' ? 'easy' : 'hard'}
+                difficulty={cur.kind === 'explain' ? 'easy' : 'hard'}
+                attempt={attempt}
                 onSolved={solved}
               />
             </>
           ) : (
             <>
               <h1 className="ask-title">Which word fits?</h1>
-              <Fill w={w} others={loaded.others} onSolved={solved} />
+              <Fill w={w} others={loaded.others} attempt={attempt} onSolved={solved} />
             </>
           )}
         </div>
       </article>
-      {!review && (
-        <StepNav
-          enabled={!!outcome}
-          onContinue={advance}
-          hint={outcome ? undefined : 'Continue opens once it is done.'}
-        />
-      )}
+      {nav}
       {review && rebuild && (
         <StepNav
           enabled={!!outcome}
@@ -462,7 +492,7 @@ function Done({ index, progress }: { index: Index; progress: Progress }) {
             Met
           </span>
           <b>{p.day.met}</b>
-          <span>{p.day.metClean} explained and used first time</span>
+          <span>{p.day.metClean} with no mistakes</span>
         </div>
         <div className="tile">
           <span className="eyebrow">

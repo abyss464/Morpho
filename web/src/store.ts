@@ -4,6 +4,7 @@
 
 import { useSyncExternalStore } from 'react';
 import type { CardInput, Grade } from 'ts-fsrs';
+import { readStage } from './syncdoc';
 
 const KEY = 'morpho-web-v2';
 const OLD_KEY = 'morpho-web-v1';
@@ -16,23 +17,21 @@ export interface Note {
   at: string;
 }
 
-export type StepKind = 'know' | 'explain1' | 'explain2' | 'use';
+export type StepKind = 'know' | 'explain' | 'spell' | 'use';
 
-/** A word that is Learning (met, not graduated) or Relearning (a review was rated Again). */
+/** A word being learned: met, not graduated yet. */
 export interface WordState {
-  stage: 'learning' | 'relearning';
+  stage: 'learning';
   /** The word's next step. */
   next: StepKind;
-  /** The next step follows at once (know -> explain1, failed -> know) instead of after spacing. */
+  /** The next step follows at once (know -> explain -> spell) instead of after spacing. */
   immediate: boolean;
   /** Stream position when the next step was scheduled. */
   since: number;
-  /** Clean explain2 results still required before moving on. */
-  needClean: number;
-  /** A Learning word goes on to `use` after its explain2 steps. */
-  thenUse: boolean;
   /** Some step was shaky or failed: graduation rates Hard instead of Good. */
   flawed: boolean;
+  /** Attempts already made at `next`; a retry is shuffled differently. */
+  attempt: number;
 }
 
 export interface Day {
@@ -54,6 +53,7 @@ export interface Current {
   word: number;
   kind: StepKind | 'review';
   task?: 'rebuild' | 'fill';
+  attempt?: number;
 }
 
 /** The last review, so its derived rating can be replaced. */
@@ -115,10 +115,22 @@ function fresh(): Progress {
   };
 }
 
+/** Stages saved by the version with explain1/explain2 and relearning, in today's terms. */
+function upgrade(p: Progress): Progress {
+  const words: Record<string, WordState> = {};
+  for (const [id, ws] of Object.entries(p.words)) {
+    const stage = readStage(ws);
+    if (stage) words[id] = { ...stage, since: typeof ws.since === 'number' ? ws.since : 0 };
+  }
+  const kinds: string[] = ['know', 'explain', 'spell', 'use', 'review'];
+  const current = p.current && kinds.includes(p.current.kind) ? p.current : null;
+  return { ...p, words, current };
+}
+
 function read(): Progress {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...fresh(), ...(JSON.parse(raw) as Partial<Progress>), v: 2 };
+    if (raw) return upgrade({ ...fresh(), ...(JSON.parse(raw) as Partial<Progress>), v: 2 });
     // Progress from the unit-and-review version: studied words carry on in review.
     const old = localStorage.getItem(OLD_KEY);
     if (old) {
@@ -178,12 +190,9 @@ export function setNewPerDay(n: number): void {
   commit({ ...state, newPerDay: n });
 }
 
+/** A review interval in whole days (at least 1), then months, then years. */
 export function formatInterval(ms: number): string {
-  const min = Math.max(1, Math.round(ms / 60000));
-  if (min < 60) return `${min} min`;
-  const h = Math.round(min / 60);
-  if (h < 24) return `${h} h`;
-  const d = Math.round(h / 24);
+  const d = Math.max(1, Math.round(ms / 86_400_000));
   if (d < 31) return d === 1 ? '1 day' : `${d} days`;
   const mo = Math.round(d / 30.4);
   if (mo < 12) return mo === 1 ? '1 month' : `${mo} months`;
