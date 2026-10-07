@@ -576,3 +576,10 @@ fsrs_cards ( word_id PK, due, stability, difficulty, elapsed_days,
 daily_stats ( date PK, new_learned, reviewed, correct_rate )
 meta ( key PK, value )   -- content_version, schema_ver, daily_goal
 ```
+
+## License
+
+Source-available for noncommercial use only. Code: [PolyForm Noncommercial 1.0.0](LICENSE).
+Content written for Morpho: [CC BY-NC-SA 4.0](content/LICENSE). Third-party text in the
+shipped word database (Tatoeba, Wiktionary, WordNet and others) keeps its own licence and is
+credited row by row; see [NOTICE.md](NOTICE.md). Pictures and audio are not in the repository.

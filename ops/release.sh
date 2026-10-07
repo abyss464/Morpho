@@ -77,6 +77,8 @@ echo "    exported to $EXPORT_DIR"
 
 echo "==> copy release.db"
 cp "$EXPORT_DIR/release.db" app/app/src/main/assets/release.db
+# Credits for the third-party text it ships (NOTICE.md).
+python3 ops/attribution.py
 echo "    done"
 
 # ------------------------------------------------------------------ 6. sync media
@@ -225,9 +227,9 @@ echo "==> build + test"
 (cd app && ./gradlew :domain:test :app:testFatApkDebugUnitTest \
     :app:assembleFatApkDebug :app:assembleFatApkRelease)
 
-# Sign the release APK with the owner's release key, read in place from ~/.android-certs
-# (docs: the private keys never leave that directory). Without the key it stays unsigned.
-CERTS="$HOME/.android-certs"
+# Sign the release APK with releasekey.pk8 + releasekey.x509.pem, read in place from
+# MORPHO_SIGNING_DIR (default ~/.android-certs). Without the key it stays unsigned.
+CERTS="${MORPHO_SIGNING_DIR:-$HOME/.android-certs}"
 RELEASE_UNSIGNED="app/app/build/outputs/apk/fatApk/release/app-fatApk-release-unsigned.apk"
 RELEASE_APK="app/app/build/outputs/apk/fatApk/release/app-fatApk-release.apk"
 if [ -f "$CERTS/releasekey.pk8" ] && [ -f "$RELEASE_UNSIGNED" ]; then
@@ -244,7 +246,7 @@ echo "==> git commit"
 COMMIT_MSG="ops: cut release ${CONTENT_VERSION}"
 
 # Stage the files we changed.
-git add app/app/src/main/assets/release.db
+git add app/app/src/main/assets/release.db content/attribution
 # -f: the test sits under a .gitignore pattern, which makes a plain add fail even though it is tracked.
 git add -f "$TEST_FILE"
 # Stage specbook changes if any (includes untracked new specs).
